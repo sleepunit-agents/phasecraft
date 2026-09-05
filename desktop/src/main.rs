@@ -131,6 +131,15 @@ fn main() {
                 let _ = window.state::<AppState>().player.lock().unwrap().stop();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("could not start Phasecraft Player");
+        .build(tauri::generate_context!())
+        .expect("could not start Phasecraft Player")
+        .run(|app, event| {
+            // Application-menu Quit need not go through a window's close handler.
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                let _ = app.state::<AppState>().player.lock().unwrap().stop();
+            }
+        });
 }
