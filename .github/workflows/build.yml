@@ -70,7 +70,7 @@ jobs:
         include:
           - os: ubuntu-22.04
             name: linux-x64
-            bundles: deb
+            bundles: deb,appimage
           - os: windows-latest
             name: windows-x64
             bundles: nsis
@@ -105,6 +105,8 @@ jobs:
         working-directory: desktop
       - run: cargo clippy --locked --all-targets -- -D warnings
         working-directory: desktop
+      - run: cargo test --locked
+        working-directory: desktop
       - name: Browser interaction tests
         if: runner.os == 'Linux'
         working-directory: desktop
@@ -113,7 +115,17 @@ jobs:
           npx playwright test
       - name: Build native installer
         working-directory: desktop
-        run: npm run tauri -- build --bundles ${{ matrix.bundles }} --ci
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ github.event_name != 'pull_request' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        shell: bash
+        run: |
+          if [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            npm run tauri -- build --bundles ${{ matrix.bundles }} --ci --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          else
+            npm run tauri -- build --bundles ${{ matrix.bundles }} --ci
+          fi
       - name: Native player smoke test
         if: runner.os == 'Linux'
         run: |
@@ -121,8 +133,10 @@ jobs:
           python3 -m pip install selenium
           xvfb-run -a python3 desktop/tests/native.py desktop/target/release/phasecraft-player
       - name: Collect installer
+        if: github.event_name != 'pull_request'
         run: python .github/scripts/player-package.py ${{ matrix.name }}
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
         with:
           name: phasecraft-player-${{ matrix.name }}
           path: player-assets/*

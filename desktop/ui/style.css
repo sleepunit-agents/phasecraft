@@ -573,3 +573,15 @@ select:disabled {
   color: #a0b4ab;
   opacity: 0.65;
 }
+
+.update-chip {
+  border: 1px solid #93d5c6;
+  color: #b4efdf;
+  background: #213c37;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 11px;
+}
+#version[role="button"] {
+  cursor: pointer;
+}

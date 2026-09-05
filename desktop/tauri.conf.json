@@ -44,7 +44,20 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libasound2"]
+        "depends": [
+          "libasound2"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNFMEYxN0M2RjQxODUyMzkKUldRNVVoajB4aGNQUGhZL2FHbHFLcytka2JiVFkyVDR2Z2dtaktTYUtCbU9QR1Eva1YrUEorekkK",
+      "endpoints": [
+        "https://github.com/sleepunit-agents/phasecraft/releases/download/dev/player-update.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

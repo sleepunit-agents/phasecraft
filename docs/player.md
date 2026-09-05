@@ -18,10 +18,18 @@ Download the player for your platform from the [dev release](https://github.com/
   and WebKitGTK 4.1 libraries; the package declares its shared-library dependencies.
 
 These are development builds, without purchased Windows/macOS signing identities.
-The GUI is separate from the CLI. To update it, close the player and install the
-latest player package (on Debian use `apt install --reinstall ./...deb` if the
-version number is unchanged). `phasecraft update` continues to update only the CLI.
-Projects stay outside the application installation and are preserved.
+The GUI checks the rolling `dev` release on launch and every five minutes. When
+its full Git commit differs, an **Update & restart** chip appears. Click it to stop
+MIDI cleanly, verify and install the signed package, and restart. Projects and
+settings stay intact; playback never starts automatically after updating.
+Click the build label at bottom left to check immediately. Failed checks or
+installs are retryable and do not prevent using the player.
+
+Install this updater-enabled build once manually. Windows and macOS support
+in-app updates. On Linux, use `phasecraft-player-linux-x64.AppImage` (mark it
+executable with `chmod +x`). `.deb` installations remain package-manager-owned:
+`sudo apt install --reinstall ./phasecraft-player-linux-x64.deb`.
+Source/debug builds do not self-update. `phasecraft update` updates only the CLI.
 
 Choose **Open project** and select a folder containing `phasecraft.toml`, or use
 **New project** to choose a new folder name. Existing destinations are refused.
@@ -97,3 +105,17 @@ also drives the actual packaged Tauri binary through WebKitWebDriver, opening a
 real project, playing, stopping/restarting, handling invalid/valid watched edits,
 switching compositions and closing during playback. MIDI hardware acceptance
 remains a check on the music machine.
+
+
+## Publishing desktop updates
+
+CI signs Windows NSIS, macOS app archives, and Linux AppImage payloads with the
+repository secret `TAURI_SIGNING_PRIVATE_KEY`. The public verification key is in
+`desktop/tauri.conf.json`; keep the private key outside the repository and retain
+a secure backup. Local builds do not require this key. Signed builds pass
+`--config '{"bundle":{"createUpdaterArtifacts":true}}'` to Tauri.
+
+`player-update.json` is published after the packages, with signed targets and
+`0.1.0+<full-commit>` metadata. The Player compares commits rather than SemVer
+precedence. A publication race can fail signature verification; retry once the
+release finishes. The CLI continues to use its separate `update.json` feed.

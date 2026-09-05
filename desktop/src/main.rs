@@ -7,12 +7,14 @@ use phasecraft::{
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
 use tauri::Manager;
+mod updates;
 
 #[derive(Default)]
 struct AppState {
     player: Mutex<Player>,
     recent: Mutex<Vec<PathBuf>>,
     preferences: Mutex<Option<PathBuf>>,
+    updates: updates::State,
 }
 #[derive(Serialize)]
 struct Opened {
@@ -86,11 +88,15 @@ fn start(
     silent: bool,
     state: tauri::State<AppState>,
 ) -> Result<(), String> {
-    state
-        .player
-        .lock()
-        .map_err(|e| e.to_string())?
-        .play(port, virtual_port, silent)
+    let mut player = state.player.lock().map_err(|e| e.to_string())?;
+    if state
+        .updates
+        .installing
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err("Update in progress".into());
+    }
+    player.play(port, virtual_port, silent)
 }
 #[tauri::command(async)]
 fn stop(state: tauri::State<AppState>) -> Result<(), String> {
@@ -103,6 +109,7 @@ fn snapshot(state: tauri::State<AppState>) -> Result<Snapshot, String> {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -124,7 +131,9 @@ fn main() {
             select_composition,
             start,
             stop,
-            snapshot
+            snapshot,
+            updates::check_update,
+            updates::install_update
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {

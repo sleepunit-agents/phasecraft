@@ -17,6 +17,16 @@ async function boot(page) {
               recent: ["/music/night-maps"],
               version: { commit: "6d0bae765cf", platform: "windows-x64" },
             };
+          if (command === "check_update") {
+            if (window.updateOffline) throw new Error("offline");
+            return { commit: window.remoteCommit || null, supported: true };
+          }
+          if (command === "install_update") {
+            playing = false;
+            if (window.updateFail)
+              throw new Error("Signature verification failed");
+            return new Promise(() => {}); // successful install exits the process
+          }
           if (command === "destinations") return ["Phasecraft"];
           if (command === "plugin:dialog|open") return "/music/night-maps";
           if (command === "plugin:dialog|save") return "/music/new-set";
@@ -123,4 +133,55 @@ test("new project and recent folders are accessible, including at minimum width"
       window.calls.some((c) => c.command === "new_project"),
     ),
   ).toBe(true);
+});
+
+test("update chip checks quietly, compares builds and installs only on click", async ({
+  page,
+}) => {
+  await boot(page);
+  await expect(page.locator("#update-chip")).toBeHidden();
+  await page.evaluate(() => (window.remoteCommit = "b".repeat(40)));
+  await page.locator("#version").click();
+  await expect(page.locator("#update-chip")).toContainText("bbbbbbb");
+  expect(
+    await page.evaluate(() =>
+      window.calls.some((c) => c.command === "install_update"),
+    ),
+  ).toBe(false);
+  await page.locator("#open").click();
+  await page.locator("#play").click();
+  await page.locator("#update-chip").click();
+  await expect(page.locator("#update-chip")).toBeDisabled();
+  await expect(page.locator("#play")).toBeDisabled();
+  await expect(page.locator("#state")).toContainText("STOPPED");
+  expect(
+    await page.evaluate(
+      () => window.calls.filter((c) => c.command === "install_update").length,
+    ),
+  ).toBe(1);
+});
+test("offline checks and failed installs are recoverable", async ({ page }) => {
+  await boot(page);
+  await page.locator("#open").click();
+  await page.locator("#play").click();
+  await page.evaluate(() => (window.updateOffline = true));
+  await page.locator("#version").click();
+  await expect(page.locator("#update-chip")).toContainText(
+    "Retry update check",
+  );
+  await expect(page.locator("#state")).toContainText("PLAYING");
+  await page.evaluate(() => {
+    window.updateOffline = false;
+    window.remoteCommit = "c".repeat(40);
+    window.updateFail = true;
+  });
+  await page.locator("#update-chip").click();
+  await expect(page.locator("#update-chip")).toContainText("ccccccc");
+  await page.locator("#update-chip").click();
+  await expect(page.locator("#error")).toContainText(
+    "Signature verification failed",
+  );
+  await expect(page.locator("#play")).toBeEnabled();
+  await page.locator("#update-chip").click();
+  await expect(page.locator("#update-chip")).toContainText("ccccccc");
 });

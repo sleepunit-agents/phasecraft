@@ -16,7 +16,7 @@ It installs for your account and adds a Start menu shortcut. Launch **Phasecraft
 Player**, choose **Open project**, and point it at your project folder. Select a
 composition and MIDI destination, then press **Play**. **New project** seeds the
 909 techno and DnB examples. **Silent preview** runs the same transport without MIDI.
-Mac builds ship as DMGs; Linux x64 ships as a Debian package. See the
+Mac builds ship as DMGs; Linux x64 ships as an AppImage and Debian package. See the
 [desktop guide](docs/player.md) for installation, playback and visualization details.
 
 **CLI:** on Windows, download `phasecraft-windows-x64.zip` and extract it. Open
@@ -45,7 +45,7 @@ requests. Use `update --force` to reinstall the same commit.
 Public updates require no credentials. If you supply a GitHub CLI login or
 `GH_TOKEN` / `GITHUB_TOKEN`, it is used for authenticated requests. No token belongs
 in your TOML. This updater manages the CLI executable; update the desktop player
-by installing its latest package. See [update details](docs/authoring.md#updating-phasecraft).
+using its **Update & restart** chip. See [update details](docs/authoring.md#updating-phasecraft).
 
 ## Start a project
 

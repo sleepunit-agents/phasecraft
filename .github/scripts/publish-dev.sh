@@ -22,6 +22,7 @@ assets=(
   release-assets/phasecraft-player-macos-arm64.dmg
   release-assets/phasecraft-player-macos-x64.dmg
 )
+assets+=(release-assets/phasecraft-player-*.sig release-assets/phasecraft-player-*.app.tar.gz release-assets/phasecraft-player-*.AppImage)
 for asset in "${assets[@]}"; do
   test -s "$asset"
 done
@@ -29,6 +30,7 @@ done
 assets+=(release-assets/SHA256SUMS.txt)
 
 python3 .github/scripts/update-manifest.py release-assets "$GITHUB_SHA"
+python3 .github/scripts/player-manifest.py release-assets "$GITHUB_SHA"
 
 cat > release-notes.md <<EOF
 Rolling development build from main. These downloads are replaced after all
@@ -50,7 +52,7 @@ in the extracted folder. Run:
 
 After this first manual download, use .\phasecraft.exe update to install future
 builds in place (update --check compares commits). Public downloads need no GitHub login. The CLI updater updates the CLI;
-install the latest player package to update the desktop application.
+use the Player update chip for desktop updates (Linux: use AppImage).
 
 See the included README for MIDI routing into Ableton. No Rust installation
 is needed to run the executable. SHA256SUMS.txt contains archive checksums.
@@ -70,3 +72,5 @@ fi
 
 # Publish the commit/checksum manifest last. A concurrent reader fails closed on mixed assets.
 gh release upload dev release-assets/update.json --clobber
+
+gh release upload dev release-assets/player-update.json --clobber
