@@ -115,3 +115,41 @@ For agent authors: run `validate PATH --json` after editing, use `expand PATH` t
 check inheritance, and `inspect PATH` to inspect decision provenance. Errors include
 source paths and Part context where available. Standard TOML errors may refer to
 the expanded structure rather than the original source line.
+
+## Updating Phasecraft
+
+`phasecraft --version` reports version, full source commit and native platform.
+`phasecraft version --json` provides those fields for scripts.
+
+`phasecraft update --check` compares the installed commit with the published `dev`
+manifest. `phasecraft update` downloads the platform executable, checks its size
+and SHA-256, verifies its reported commit/platform, and replaces the running
+executable. The next command uses the update. `--force` reinstalls the same commit.
+A different commit means a different build; this follows `dev`, not semantic-version
+ordering or Git ancestry. A locally built executable reports its checkout HEAD
+(or `unknown` without Git); uncommitted edits are not a separate release identity.
+
+The private repository requires access. Use an existing GitHub CLI login
+(`gh auth login`), or supply `GH_TOKEN` / `GITHUB_TOKEN` in the environment. A
+fine-grained token needs repository **Contents: read** access and any organization
+approval required by your account. Tokens are neither saved by Phasecraft nor
+accepted in TOML. They are sent to GitHub over HTTPS and stripped from cross-host
+download redirects. Expired/insufficient credentials produce an actionable error.
+See [GitHub CLI authentication](https://cli.github.com/manual/gh_auth_login).
+
+Stop playback before updating. Updating touches only the executable; projects,
+config, edited examples and adjacent files are preserved. Embedded starter
+files and built-in behaviors update with the executable. Download the full package
+when you want refreshed standalone examples/docs. `play` never checks the network
+or silently installs anything. The first updater-enabled executable still needs
+one manual download.
+
+Publication uploads native assets first and `update.json` last. Concurrent
+publication can temporarily return a missing asset or checksum mismatch; retry
+shortly. Download, checksum or candidate validation failures leave the installed
+executable unchanged. Replacement requires a writable installation directory.
+The updater uses [self-replace](https://docs.rs/self-replace/latest/self_replace/)
+for native Windows/Unix replacement and cleanup, with a subprocess replacement
+test on every supported native CI platform. Checksums detect mixed/corrupted
+assets; release authenticity relies on GitHub HTTPS and repository permissions,
+not a separate signing infrastructure.

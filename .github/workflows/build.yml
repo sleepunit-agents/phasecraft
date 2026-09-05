@@ -38,6 +38,7 @@ jobs:
           cp -R examples/. package/examples/
           cp -R docs package/docs
           tar -czf phasecraft-${{ matrix.name }}.tar.gz -C package .
+          cp target/release/phasecraft phasecraft-update-${{ matrix.name }}.bin
       - name: Package Windows executable
         if: runner.os == 'Windows'
         shell: pwsh
@@ -47,12 +48,15 @@ jobs:
           Copy-Item examples/* package/examples/ -Recurse
           Copy-Item docs package/ -Recurse
           Compress-Archive -Path package/* -DestinationPath phasecraft-${{ matrix.name }}.zip
+          Copy-Item target/release/phasecraft.exe phasecraft-update-${{ matrix.name }}.exe
       - uses: actions/upload-artifact@v4
         with:
           name: phasecraft-${{ matrix.name }}
           path: |
             phasecraft-*.tar.gz
             phasecraft-*.zip
+            phasecraft-update-*.bin
+            phasecraft-update-*.exe
           if-no-files-found: error
 
   dev-release:

@@ -106,3 +106,12 @@ an audio measurement.
 
 Example paths moved to `examples/quickstart`, `examples/studies` and
 `examples/showcases`; older paths above describe the historical test runs.
+
+## Commit-aware self-update
+
+The updater adds manifest/schema/platform validation, corrupted/mixed asset
+rejection, bounded downloads, HTTP failure and redirect credential tests. A native
+subprocess replaces a temporary copy of its own test executable with Phasecraft,
+then runs the replacement and checks adjacent project files remain unchanged.
+This test runs on all four release platforms. `--version` and JSON version output
+are checked, and the existing musical golden traces remain in the suite.

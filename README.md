@@ -18,6 +18,25 @@ It replaces the same downloads in place and includes the source commit and SHA-2
 checksums. Pull requests do not publish releases. Maintainers can also rerun the
 build using Actions → Test and package → Run workflow on `main`.
 
+## Update in place
+
+Download this updater-enabled build once, then:
+
+```powershell
+.\phasecraft.exe --version
+.\phasecraft.exe update --check
+.\phasecraft.exe update
+```
+
+Updates compare Git commits against the rolling `dev` release, verify the download,
+and replace only the executable. Stop playback first; your next command uses the
+new build. Your projects and configuration stay intact. `play` makes no update
+requests. Use `update --force` to reinstall the same commit.
+
+While the repo is private, Phasecraft uses your existing `gh auth login` credentials
+or a `GH_TOKEN` / `GITHUB_TOKEN` environment variable with repository Contents: read
+access. No token belongs in your TOML. See [update details](docs/authoring.md#updating-phasecraft).
+
 ## Start a project
 
 The project directory can hold a track, an album, or a live set. It is a collection

@@ -11,13 +11,27 @@ use std::{
 };
 
 #[derive(Parser)]
-#[command(version, about = "Small deterministic musical systems, played live")]
+#[command(version = env!("PHASECRAFT_VERSION"), about = "Small deterministic musical systems, played live")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Report this executable's source commit and native platform.
+    Version {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Install the current rolling dev release in place (requires private repo access).
+    Update {
+        /// Compare commits without downloading or installing the executable.
+        #[arg(long, conflicts_with = "force")]
+        check: bool,
+        /// Reinstall even when the installed commit matches.
+        #[arg(long)]
+        force: bool,
+    },
     /// Create a project with playable 909 beats and separate musical libraries/config.
     New { directory: PathBuf },
     /// Validate a file, or every composition listed in a project (without MIDI).
@@ -99,6 +113,19 @@ fn open_output(
 }
 pub fn run() -> Result<(), String> {
     match Cli::parse().command {
+        Command::Version { json } => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&phasecraft::update::version())
+                        .map_err(|e| e.to_string())?
+                );
+            } else {
+                println!("Phasecraft {}", env!("PHASECRAFT_VERSION"));
+            }
+            Ok(())
+        }
+        Command::Update { check, force } => phasecraft::update::run(check, force),
         Command::New { directory } => {
             phasecraft::authoring::project::create(&directory)?;
             println!(
