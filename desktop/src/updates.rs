@@ -8,7 +8,9 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
+#[cfg(target_os = "linux")]
+use tauri::Manager;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 #[derive(Default)]
@@ -33,7 +35,10 @@ pub async fn check_update(
     state: tauri::State<'_, AppState>,
 ) -> Result<Status, String> {
     // Package managers own .deb installations. Only AppImage supports in-app Linux replacement.
-    let supported = !cfg!(target_os = "linux") || app.env().appimage.is_some();
+    #[cfg(target_os = "linux")]
+    let supported = app.env().appimage.is_some();
+    #[cfg(not(target_os = "linux"))]
+    let supported = true;
     if !supported || cfg!(debug_assertions) {
         return Ok(Status {
             commit: None,
