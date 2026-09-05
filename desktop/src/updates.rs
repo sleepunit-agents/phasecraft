@@ -40,7 +40,7 @@ pub async fn check_update(
             supported: false,
         });
     }
-    let update = app
+    let mut update = app
         .updater_builder()
         .timeout(Duration::from_secs(120))
         .version_comparator(|_, release| {
@@ -51,6 +51,10 @@ pub async fn check_update(
         .check()
         .await
         .map_err(|e| e.to_string())?;
+    if let Some(update) = &mut update {
+        // The plugin applies builder timeout to checks only, not downloaded payloads.
+        update.timeout = Some(Duration::from_secs(300));
+    }
     let commit = update
         .as_ref()
         .and_then(|u| u.version.split_once('+').map(|(_, c)| c.to_owned()));
