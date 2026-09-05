@@ -1,0 +1,17 @@
+# A personal component library. Paths are relative to the importing file.
+[library.behaviors."my.rolling_rim"]
+compose = ["kit.909.rim", "std.no_accent"]
+[library.behaviors."my.rolling_rim".trigger]
+rhythm = { type = "binary", op = "a_not_b", a = { type = "euclidean", steps = 15, pulses = 5, rotation = -2 }, b = { type = "part", id = "kick", mode = "hits" } }
+probability = 0.7
+probability_mode = "continuous"
+[library.behaviors."my.rolling_rim".accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 3 }
+probability = 0.8
+[library.behaviors."my.rolling_rim".profile]
+use = "my.soft_punch"
+
+[library.profiles."my.soft_punch"]
+compose = ["accent.punch"]
+base = 48
+boost = 26

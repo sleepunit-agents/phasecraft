@@ -35,7 +35,7 @@ jobs:
         run: |
           mkdir -p package/examples
           cp target/release/phasecraft README.md package/
-          cp examples/*.toml package/examples/
+          cp -R examples/. package/examples/
           tar -czf phasecraft-${{ matrix.name }}.tar.gz -C package .
       - name: Package Windows executable
         if: runner.os == 'Windows'
@@ -43,7 +43,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force package/examples
           Copy-Item target/release/phasecraft.exe, README.md package/
-          Copy-Item examples/*.toml package/examples/
+          Copy-Item examples/* package/examples/ -Recurse
           Compress-Archive -Path package/* -DestinationPath phasecraft-${{ matrix.name }}.zip
       - uses: actions/upload-artifact@v4
         with:

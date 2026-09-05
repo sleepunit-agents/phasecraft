@@ -133,15 +133,65 @@ impl Default for VelocityProfile {
 }
 impl Composition {
     pub fn parse(text: &str) -> Result<Self, String> {
-        let c: Self = toml::from_str(text).map_err(|e| e.to_string())?;
-        c.validate()?;
-        Ok(c)
+        crate::library::expand(text, None)?
+            .try_into()
+            .map_err(|e: toml::de::Error| e.to_string())
     }
     pub fn read(path: &std::path::Path) -> Result<Self, String> {
-        Self::parse(&std::fs::read_to_string(path).map_err(|e| e.to_string())?)
+        let source =
+            std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        crate::library::expand(&source, path.parent())?
+            .try_into()
+            .map_err(|e: toml::de::Error| e.to_string())
     }
     pub fn phrase_steps(&self) -> u64 {
         u64::from(self.phrase_bars) * 16
+    }
+    pub fn evaluation_order(&self) -> Result<Vec<&Part>, String> {
+        fn visit<'a>(
+            part: &'a Part,
+            parts: &std::collections::BTreeMap<&str, &'a Part>,
+            active: &mut Vec<String>,
+            done: &mut std::collections::HashSet<String>,
+            result: &mut Vec<&'a Part>,
+        ) -> Result<(), String> {
+            if done.contains(&part.id) {
+                return Ok(());
+            }
+            if active.contains(&part.id) {
+                return Err(format!(
+                    "Part dependency cycle: {} -> {}",
+                    active.join(" -> "),
+                    part.id
+                ));
+            }
+            active.push(part.id.clone());
+            for id in part
+                .trigger
+                .rhythm
+                .references()
+                .into_iter()
+                .chain(part.accent.rhythm.references())
+            {
+                let target = parts
+                    .get(id)
+                    .ok_or_else(|| format!("Part {:?} references missing Part {id:?}", part.id))?;
+                visit(target, parts, active, done, result)?;
+            }
+            active.pop();
+            done.insert(part.id.clone());
+            result.push(part);
+            Ok(())
+        }
+        let parts: std::collections::BTreeMap<_, _> =
+            self.parts.iter().map(|p| (p.id.as_str(), p)).collect();
+        let mut result = vec![];
+        let mut active = vec![];
+        let mut done = std::collections::HashSet::new();
+        for part in parts.values() {
+            visit(part, &parts, &mut active, &mut done, &mut result)?;
+        }
+        Ok(result)
     }
     pub fn validate(&self) -> Result<(), String> {
         if !self.tempo.is_finite() || !(20.0..=400.0).contains(&self.tempo) {
@@ -168,6 +218,7 @@ impl Composition {
                 ));
             }
         }
+        self.evaluation_order()?;
         Ok(())
     }
 }

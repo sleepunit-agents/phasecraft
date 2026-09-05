@@ -32,7 +32,12 @@ enum Command {
         steps: u64,
         #[arg(long, default_value_t = 0)]
         start: u64,
+        /// Readable per-Part decisions and resolved MIDI values.
+        #[arg(long)]
+        human: bool,
     },
+    /// Print the fully expanded, validated composition with defaults.
+    Expand { file: PathBuf },
     /// Loop all Parts until Ctrl-C; optionally reload at phrase boundaries.
     Play {
         file: PathBuf,
@@ -102,7 +107,21 @@ fn run() -> Result<(), String> {
             }
             Ok(())
         }
-        Command::Inspect { file, steps, start } => {
+        Command::Expand { file } => {
+            let c = Composition::read(&file)?;
+            write!(
+                io::stdout().lock(),
+                "{}",
+                toml::to_string_pretty(&c).map_err(|e| e.to_string())?
+            )
+            .map_err(|e| e.to_string())
+        }
+        Command::Inspect {
+            file,
+            steps,
+            start,
+            human,
+        } => {
             let c = Composition::read(&file)?;
             let end = start
                 .checked_add(steps)
@@ -111,8 +130,30 @@ fn run() -> Result<(), String> {
             let mut out = io::BufWriter::new(io::stdout().lock());
             for step in start..end {
                 for trace in resolve_step(&c, step).0 {
-                    serde_json::to_writer(&mut out, &trace).map_err(|e| e.to_string())?;
-                    writeln!(out).map_err(|e| e.to_string())?;
+                    if human {
+                        let part = c.parts.iter().find(|p| p.id == trace.part).unwrap();
+                        let result = trace
+                            .event
+                            .as_ref()
+                            .map(|event| {
+                                let midi = phasecraft::engine::to_midi(part, event);
+                                format!(
+                                    "note={} channel={} velocity={} gate={} ticks accent={:.2}",
+                                    part.output.note,
+                                    part.output.channel,
+                                    midi[0].bytes[2],
+                                    event.duration_ticks,
+                                    event.accent.amount
+                                )
+                            })
+                            .unwrap_or_else(|| "rest".into());
+                        writeln!(out, "{} {} | trigger pattern={} roll={:.4} p={:.2} fired={} | accent pattern={} roll={:.4} p={:.2} admitted={} | {}",
+                            trace.position,trace.part,trace.trigger.rhythm.active(),trace.trigger.roll,trace.trigger.probability,trace.trigger.admitted,
+                            trace.accent.rhythm.active(),trace.accent.roll,trace.accent.probability,trace.accent.admitted,result).map_err(|e|e.to_string())?;
+                    } else {
+                        serde_json::to_writer(&mut out, &trace).map_err(|e| e.to_string())?;
+                        writeln!(out).map_err(|e| e.to_string())?;
+                    }
                 }
             }
             out.flush().map_err(|e| e.to_string())
@@ -194,7 +235,8 @@ fn play<S: MidiOutput + 'static>(
             ""
         }
     );
-    let mut last_source = std::fs::read_to_string(&options.file).unwrap_or_default();
+    let mut last_source = serde_json::to_string(&c).map_err(|e| e.to_string())?;
+    let mut last_error = String::new();
     let mut skipped_steps = 0u64;
     let planned = (|| {
         let mut step = 0;
@@ -205,32 +247,31 @@ fn play<S: MidiOutput + 'static>(
                 continue;
             }
             if options.watch && step > 0 && step % c.phrase_steps() == 0 {
-                match std::fs::read_to_string(&options.file) {
-                    Ok(source) if source != last_source => {
-                        last_source = source.clone();
-                        match Composition::parse(&source) {
-                            Ok(next)
-                                if next.tempo == c.tempo && next.phrase_bars == c.phrase_bars =>
-                            {
-                                c = next;
-                                eprintln!(
-                                    "Applied configuration at bar {} (seed {}).",
-                                    step / 16 + 1,
-                                    c.seed
-                                );
-                            }
-                            Ok(_) => eprintln!(
-                                "Reload rejected: restart playback to change tempo or phrase_bars."
-                            ),
-                            Err(e) => {
-                                eprintln!("Reload rejected; continuing previous configuration: {e}")
-                            }
+                let reload = Composition::read(&options.file).and_then(|next| {
+                    if next.tempo != c.tempo || next.phrase_bars != c.phrase_bars {
+                        return Err("restart playback to change tempo or phrase_bars".into());
+                    }
+                    Ok(next)
+                });
+                match reload {
+                    Ok(next) => {
+                        last_error.clear();
+                        let source = serde_json::to_string(&next).map_err(|e| e.to_string())?;
+                        if source != last_source {
+                            last_source = source;
+                            c = next;
+                            eprintln!(
+                                "Applied configuration at bar {} (seed {}).",
+                                step / 16 + 1,
+                                c.seed
+                            );
                         }
                     }
-                    Ok(_) => {}
-                    Err(e) => {
-                        eprintln!("Reload read failed; continuing previous configuration: {e}")
+                    Err(error) if error != last_error => {
+                        eprintln!("Reload rejected; continuing previous configuration: {error}");
+                        last_error = error;
                     }
+                    Err(_) => {}
                 }
             }
             // After a stalled producer, jump over obsolete positions. Stateless

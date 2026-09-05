@@ -1,0 +1,23 @@
+# Same rules and Part IDs as probability-locked; only the song seed changes.
+# Same rhythmic grid and seed; listen to admissions over repeated four-bar phrases.
+tempo = 132
+seed = 910
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+use = "techno.kick"
+
+[[parts]]
+id = "hat"
+compose = ["kit.909.closed_hat", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 11, rotation = 0, reset_on_phrase = false }
+probability = 0.7
+probability_mode = "phrase_locked"
+[parts.accent]
+probability_mode = "phrase_locked"
+rhythm = { type = "euclidean", steps = 16, pulses = 5, rotation = 0, reset_on_phrase = false }
+probability = 0.75
+[parts.profile]
+use = "accent.subtle"

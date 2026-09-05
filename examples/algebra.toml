@@ -1,0 +1,73 @@
+# All five Boolean operators; distinct voices share the same two source cycles.
+tempo = 132
+seed = 909
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+use = "techno.kick"
+
+[[parts]]
+id = "or"
+compose = ["kit.909.rim", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "binary", op = "or", a = { type = "euclidean", steps = 16, pulses = 5, rotation = 0, reset_on_phrase = false }, b = { type = "euclidean", steps = 7, pulses = 2, rotation = -1, reset_on_phrase = false } }
+probability = 1.0
+probability_mode = "phrase_locked"
+[parts.accent]
+rhythm = { type = "euclidean", steps = 5, pulses = 2, rotation = 0, reset_on_phrase = false }
+probability = 0.75
+[parts.profile]
+use = "accent.subtle"
+
+[[parts]]
+id = "and"
+compose = ["kit.909.snare", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "binary", op = "and", a = { type = "euclidean", steps = 16, pulses = 5, rotation = 0, reset_on_phrase = false }, b = { type = "euclidean", steps = 7, pulses = 2, rotation = -1, reset_on_phrase = false } }
+probability = 1.0
+probability_mode = "phrase_locked"
+[parts.accent]
+rhythm = { type = "euclidean", steps = 5, pulses = 2, rotation = 0, reset_on_phrase = false }
+probability = 0.75
+[parts.profile]
+use = "accent.subtle"
+
+[[parts]]
+id = "xor"
+compose = ["kit.909.clap", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "binary", op = "and", a = { type = "binary", op = "xor", a = { type = "euclidean", steps = 16, pulses = 5, rotation = 0, reset_on_phrase = false }, b = { type = "euclidean", steps = 7, pulses = 2, rotation = -1, reset_on_phrase = false } }, b = { type = "euclidean", steps = 16, pulses = 12, rotation = 1, reset_on_phrase = false } }
+probability = 1.0
+probability_mode = "phrase_locked"
+[parts.accent]
+rhythm = { type = "euclidean", steps = 5, pulses = 2, rotation = 0, reset_on_phrase = false }
+probability = 0.75
+[parts.profile]
+use = "accent.subtle"
+
+[[parts]]
+id = "a_not_b"
+compose = ["kit.909.closed_hat", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "binary", op = "a_not_b", a = { type = "euclidean", steps = 16, pulses = 5, rotation = 0, reset_on_phrase = false }, b = { type = "euclidean", steps = 7, pulses = 2, rotation = -1, reset_on_phrase = false } }
+probability = 1.0
+probability_mode = "phrase_locked"
+[parts.accent]
+rhythm = { type = "euclidean", steps = 5, pulses = 2, rotation = 0, reset_on_phrase = false }
+probability = 0.75
+[parts.profile]
+use = "accent.subtle"
+
+[[parts]]
+id = "b_not_a"
+compose = ["kit.909.ride", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "binary", op = "b_not_a", a = { type = "euclidean", steps = 16, pulses = 5, rotation = 0, reset_on_phrase = false }, b = { type = "euclidean", steps = 7, pulses = 2, rotation = -1, reset_on_phrase = false } }
+probability = 1.0
+probability_mode = "phrase_locked"
+[parts.accent]
+rhythm = { type = "euclidean", steps = 5, pulses = 2, rotation = 0, reset_on_phrase = false }
+probability = 0.75
+[parts.profile]
+use = "accent.subtle"

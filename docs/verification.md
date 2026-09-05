@@ -55,3 +55,28 @@ compatibility baseline.
   from that project is included here.
 
 The new full-kit grooves still need listening/recording in the user's Ableton.
+
+## Reusable authoring and interlocking rhythms — 2026-09-05
+
+- 38 tests cover the prior engine plus named-behavior equivalence, deep overrides,
+  expression replacement, component precedence, profile resolution, personal
+  imports, missing definitions, duplicate names, import cycles, Part reference
+  cycles, structural/admitted-hit semantics, and ordering independence.
+- All 17 playable examples validate and produce complete ordered MIDI note pairs.
+  Controlled pairs assert reset/probability/profile/seed differences and accent
+  edits that preserve trigger decisions.
+- Original hat/techno/DnB JSONL output matches the previous release byte-for-byte
+  over 560 steps each. Compact reusable genre examples match their explicit forms.
+- Import-watch integration changes library admission at bar 2, rejects malformed
+  library content at bar 3 while preserving the previous model, and recovers at
+  bar 4. The main file is untouched throughout.
+- Clippy, formatting, and optimized Linux build pass.
+- The six-Part showcase ran eight bars with import-aware watch: 330 MIDI messages
+  to the silent sink, zero late drops, maximum dispatch lateness 0.084ms.
+- Expanded standalone showcase TOML reproduces its imported source's 128-step
+  JSONL decision stream exactly.
+
+Native packaging now includes the examples directory recursively, including the
+listening guide and imported personal library. These new grooves need the same
+real-host listening evaluation as previous milestones; dry-run timing is not
+an audio measurement.

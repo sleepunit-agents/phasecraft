@@ -116,6 +116,77 @@ Configuration reloads apply the entire composition at a phrase boundary, includi
 added/removed Parts. Gates end before that boundary, so outgoing notes are released
 before new routing takes effect.
 
+## Reusable authoring
+
+The [909 listening guide](examples/README.md) covers the focused examples and
+`showcase.toml`. The original hat/techno/DnB files remain unchanged; their compact
+`techno-reuse.toml` and `dnb-reuse.toml` counterparts produce identical events.
+
+```toml
+tempo = 132
+seed = 91827
+
+[[parts]]
+id = "kick"
+use = "techno.kick"
+
+[[parts]]
+id = "closed_hat"
+use = "techno.closed_hat"
+[parts.trigger]
+probability = 0.8
+[parts.accent.rhythm]
+steps = 11
+pulses = 4
+[parts.profile]
+use = "accent.subtle"
+```
+
+Built-ins include `techno.{kick,clap,closed_hat,open_hat,rim}` and
+`dnb.{kick,snare,closed_hat,open_hat,rim}`; smaller components include
+`std.backbeat`, `std.no_accent`, and `kit.909.{kick,rim,snare,clap,closed_hat,open_hat,low_tom,ride}`.
+Velocity profiles are `accent.velocity_only` (80 + 35 × amount), `accent.subtle`
+(70 + 12 × amount), and `accent.punch` (72 + 40 × amount).
+
+`use` selects one definition. `compose = ["std.backbeat", "std.no_accent",
+"kit.909.clap"]` combines definitions from left to right. Local fields override
+the result. Do not specify both `use` and `compose` on one table. Overrides merge
+nested fields; changing a rhythm's `type` replaces that expression, and selecting
+a different profile with `use` replaces the previous profile's settings. Arrays
+replace rather than append. Every Part instance supplies its own stable `id`.
+
+Define personal behaviors under `[library.behaviors."my.name"]` and profiles
+under `[library.profiles."my.name"]`, either in the composition or in a file loaded
+with `imports = ["library/personal.toml"]`. Imports are relative to the file that
+names them. A library file contains only `imports` and `library`. Named definitions
+may compose other definitions; duplicate names, unknown references, import cycles,
+and dependency cycles are errors. Reusing the same imported file is idempotent.
+Reachable definitions are expanded and the result is validated before playback;
+unreferenced behavior bodies are not independently complete Parts.
+
+Use `phasecraft expand FILE` to inspect the fully resolved configuration, or save
+its output as a standalone TOML with no library dependencies. `inspect FILE
+--human` shows readable admissions and resulting MIDI values; default inspection
+retains full JSONL rhythm trees. Library expansion happens in the producer, outside
+MIDI dispatch. `--watch` reloads imports too, preserving the whole previous model
+if the new composition cannot be resolved or validated.
+
+## Rhythmic relationships
+
+An expression can reference another Part's trigger lane:
+
+```toml
+rhythm = { type = "binary", op = "a_not_b", a = { type = "euclidean", steps = 16, pulses = 7 }, b = { type = "part", id = "kick", mode = "hits" } }
+```
+
+`mode = "hits"` uses that Part's admitted trigger after probability. `mode =
+"structural"` uses its trigger expression before its own lane admission. The mode
+is required. Both modes refer to the same absolute grid position. Neither creates
+an extra random decision; Part ordering cannot affect the result. Both trigger
+and accent expressions can contain references, but all Part dependencies must form
+an acyclic graph. Cycles (including self-references) and missing targets reject the
+configuration before any of it is applied.
+
 ## Tune the system
 
 The smallest starting composition is in `examples/hat.toml`. It uses one stable

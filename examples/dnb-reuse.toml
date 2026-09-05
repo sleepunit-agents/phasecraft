@@ -1,0 +1,24 @@
+# Same events as dnb.toml, assembled from reusable behaviors.
+tempo = 172
+seed = 172909
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+use = "dnb.kick"
+
+[[parts]]
+id = "snare"
+use = "dnb.snare"
+
+[[parts]]
+id = "closed_hat"
+use = "dnb.closed_hat"
+
+[[parts]]
+id = "open_hat"
+use = "dnb.open_hat"
+
+[[parts]]
+id = "rim"
+use = "dnb.rim"

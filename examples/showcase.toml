@@ -1,0 +1,41 @@
+# Steady 909 anchors, independent cycles, and percussion that answers the kick.
+imports = ["library/personal.toml"]
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+use = "techno.kick"
+[[parts]]
+id = "clap"
+compose = ["std.backbeat", "std.no_accent", "kit.909.clap"]
+[parts.profile]
+base = 100
+boost = 0
+[[parts]]
+id = "open_hat"
+use = "techno.open_hat"
+[[parts]]
+id = "closed_hat"
+use = "techno.closed_hat"
+[parts.trigger]
+rhythm = { type = "binary", op = "a_not_b", a = { type = "binary", op = "or", a = { type = "euclidean", steps = 16, pulses = 4 }, b = { type = "euclidean", steps = 11, pulses = 3, rotation = -1 } }, b = { type = "part", id = "open_hat", mode = "hits" } }
+probability = 0.9
+[parts.accent]
+probability = 0.65
+[parts.profile]
+use = "accent.subtle"
+[[parts]]
+id = "rim"
+use = "my.rolling_rim"
+[[parts]]
+id = "ride"
+compose = ["kit.909.ride", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "binary", op = "and", a = { type = "euclidean", steps = 16, pulses = 8, rotation = 1 }, b = { type = "euclidean", steps = 5, pulses = 2, reset_on_phrase = true } }
+probability = 0.55
+probability_mode = "continuous"
+[parts.profile]
+base = 48
+boost = 0

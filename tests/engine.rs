@@ -15,7 +15,13 @@ fn euclid(steps: u32, pulses: u32, rotation: i32, reset_on_phrase: bool) -> Expr
 }
 fn pattern(e: &Expression, length: u64) -> String {
     (0..length)
-        .map(|s| if e.evaluate(s, 64).active() { 'x' } else { '.' })
+        .map(|s| {
+            if e.evaluate(s, 64, &|_, _| unreachable!()).active() {
+                'x'
+            } else {
+                '.'
+            }
+        })
         .collect()
 }
 
@@ -34,7 +40,10 @@ fn all_small_euclidean_cycles_have_exact_pulse_counts_and_balanced_gaps() {
         for pulses in 0..=steps {
             let e = euclid(steps, pulses, 0, false);
             let hits: Vec<u32> = (0..steps)
-                .filter(|s| e.evaluate(u64::from(*s), 64).active())
+                .filter(|s| {
+                    e.evaluate(u64::from(*s), 64, &|_, _| unreachable!())
+                        .active()
+                })
                 .collect();
             assert_eq!(hits.len(), pulses as usize);
             if pulses > 0 {
@@ -86,7 +95,7 @@ fn nested_expressions_and_independent_cycles() {
         b: Box::new(euclid(7, 3, 0, false)),
     };
     let values: Vec<_> = (0..1120)
-        .map(|s| expression.evaluate(s, 64).active())
+        .map(|s| expression.evaluate(s, 64, &|_, _| unreachable!()).active())
         .collect();
     assert_eq!(values[..560], values[560..]);
     for period in [5, 7, 16, 64, 80, 112, 280] {
@@ -97,8 +106,8 @@ fn nested_expressions_and_independent_cycles() {
 fn reset_policy_is_per_leaf_and_separate_from_probability_identity() {
     let continuing = euclid(5, 2, 0, false);
     let resetting = euclid(5, 2, 0, true);
-    assert!(!continuing.evaluate(64, 64).active());
-    assert!(resetting.evaluate(64, 64).active());
+    assert!(!continuing.evaluate(64, 64, &|_, _| unreachable!()).active());
+    assert!(resetting.evaluate(64, 64, &|_, _| unreachable!()).active());
     let mut c = config();
     c.parts[0].trigger.rhythm = continuing;
     assert_eq!(resolve(&c, 0).trigger.roll, resolve(&c, 64).trigger.roll);

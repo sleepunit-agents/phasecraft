@@ -1,0 +1,24 @@
+# Same events as techno.toml, assembled from reusable behaviors.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+use = "techno.kick"
+
+[[parts]]
+id = "clap"
+use = "techno.clap"
+
+[[parts]]
+id = "closed_hat"
+use = "techno.closed_hat"
+
+[[parts]]
+id = "open_hat"
+use = "techno.open_hat"
+
+[[parts]]
+id = "rim"
+use = "techno.rim"

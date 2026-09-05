@@ -22,6 +22,13 @@ impl BooleanOp {
         }
     }
 }
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferenceMode {
+    Structural,
+    Hits,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Expression {
@@ -37,6 +44,10 @@ pub enum Expression {
         op: BooleanOp,
         a: Box<Expression>,
         b: Box<Expression>,
+    },
+    Part {
+        id: String,
+        mode: ReferenceMode,
     },
 }
 #[derive(Clone, Debug, Serialize)]
@@ -55,11 +66,18 @@ pub enum RhythmTrace {
         b: Box<RhythmTrace>,
         active: bool,
     },
+    Part {
+        id: String,
+        mode: ReferenceMode,
+        active: bool,
+    },
 }
 impl RhythmTrace {
     pub fn active(&self) -> bool {
         match self {
-            Self::Euclidean { active, .. } | Self::Binary { active, .. } => *active,
+            Self::Euclidean { active, .. }
+            | Self::Binary { active, .. }
+            | Self::Part { active, .. } => *active,
         }
     }
 }
@@ -74,6 +92,11 @@ impl Expression {
                     return Err("Euclidean requires 1 <= steps <= 65536 and pulses <= steps".into());
                 }
             }
+            Self::Part { id, .. } => {
+                if id.trim().is_empty() {
+                    return Err("Part reference id cannot be empty".into());
+                }
+            }
             Self::Binary { a, b, .. } => {
                 a.validate(depth + 1)?;
                 b.validate(depth + 1)?;
@@ -81,7 +104,23 @@ impl Expression {
         }
         Ok(())
     }
-    pub fn evaluate(&self, absolute_step: u64, phrase_steps: u64) -> RhythmTrace {
+    pub fn references(&self) -> Vec<&str> {
+        match self {
+            Self::Part { id, .. } => vec![id],
+            Self::Binary { a, b, .. } => {
+                let mut refs = a.references();
+                refs.extend(b.references());
+                refs
+            }
+            Self::Euclidean { .. } => vec![],
+        }
+    }
+    pub fn evaluate(
+        &self,
+        absolute_step: u64,
+        phrase_steps: u64,
+        reference: &dyn Fn(&str, ReferenceMode) -> bool,
+    ) -> RhythmTrace {
         match self {
             Self::Euclidean {
                 steps,
@@ -108,9 +147,14 @@ impl Expression {
                     active,
                 }
             }
+            Self::Part { id, mode } => RhythmTrace::Part {
+                id: id.clone(),
+                mode: *mode,
+                active: reference(id, *mode),
+            },
             Self::Binary { op, a, b } => {
-                let a = Box::new(a.evaluate(absolute_step, phrase_steps));
-                let b = Box::new(b.evaluate(absolute_step, phrase_steps));
+                let a = Box::new(a.evaluate(absolute_step, phrase_steps, reference));
+                let b = Box::new(b.evaluate(absolute_step, phrase_steps, reference));
                 let active = op.apply(a.active(), b.active());
                 RhythmTrace::Binary {
                     op: *op,
@@ -179,15 +223,15 @@ fn admission(
     part_id: &str,
     step: u64,
     name: &str,
-    expression: &Expression,
-    probability: f64,
-    mode: ProbabilityMode,
+    lane: (&Expression, f64, ProbabilityMode),
+    reference: &dyn Fn(&str, ReferenceMode) -> bool,
 ) -> DecisionTrace {
+    let (expression, probability, mode) = lane;
     let event_identity = match mode {
         ProbabilityMode::PhraseLocked => step % c.phrase_steps(),
         ProbabilityMode::Continuous => step,
     };
-    let rhythm = expression.evaluate(step, c.phrase_steps());
+    let rhythm = expression.evaluate(step, c.phrase_steps(), reference);
     let roll = decision_roll(c.seed, part_id, name, event_identity, "admission");
     let admitted = rhythm.active() && roll < probability;
     DecisionTrace {
@@ -198,24 +242,35 @@ fn admission(
         admitted,
     }
 }
-pub fn resolve(c: &Composition, part: &Part, step: u64) -> StepTrace {
+fn resolve_part(
+    c: &Composition,
+    part: &Part,
+    step: u64,
+    reference: &dyn Fn(&str, ReferenceMode) -> bool,
+) -> StepTrace {
     let trigger = admission(
         c,
         &part.id,
         step,
         "trigger",
-        &part.trigger.rhythm,
-        part.trigger.probability,
-        part.trigger.probability_mode,
+        (
+            &part.trigger.rhythm,
+            part.trigger.probability,
+            part.trigger.probability_mode,
+        ),
+        reference,
     );
     let accent = admission(
         c,
         &part.id,
         step,
         "accent",
-        &part.accent.rhythm,
-        part.accent.probability,
-        part.accent.probability_mode,
+        (
+            &part.accent.rhythm,
+            part.accent.probability,
+            part.accent.probability_mode,
+        ),
+        reference,
     );
     let event = trigger.admitted.then(|| MusicalEvent {
         tick: step * STEP_TICKS,
@@ -278,19 +333,37 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> [MidiEvent; 2] {
 /// Merge one grid position before dispatch. Sending each Part's on/off pair
 /// immediately would delay simultaneous hits behind the first Part's note-off.
 pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEvent>) {
-    let mut parts: Vec<_> = c.parts.iter().collect();
-    parts.sort_by(|a, b| a.id.cmp(&b.id));
-    let mut traces = Vec::with_capacity(parts.len());
+    let parts = c
+        .evaluation_order()
+        .expect("resolve_step requires a validated composition");
+    let mut resolved = std::collections::BTreeMap::<String, StepTrace>::new();
     let mut midi = Vec::with_capacity(parts.len() * 2);
     for part in parts {
-        let trace = resolve(c, part, step);
+        let reference = |id: &str, mode| {
+            let target = &resolved[id];
+            match mode {
+                ReferenceMode::Structural => target.trigger.rhythm.active(),
+                ReferenceMode::Hits => target.trigger.admitted,
+            }
+        };
+        let trace = resolve_part(c, part, step, &reference);
         if let Some(event) = &trace.event {
             midi.extend(to_midi(part, event));
         }
-        traces.push(trace);
+        resolved.insert(part.id.clone(), trace);
     }
+    let traces = resolved.into_values().collect();
     // Gates are shorter than a step, so successive step batches cannot overlap.
     // Equal deadlines are ordered by MIDI bytes (off before on, then route).
     midi.sort_by_key(|event| (event.tick, event.bytes));
     (traces, midi)
+}
+
+/// Resolve one member Part with the same dependency graph used by live playback.
+pub fn resolve(c: &Composition, part: &Part, step: u64) -> StepTrace {
+    resolve_step(c, step)
+        .0
+        .into_iter()
+        .find(|trace| trace.part == part.id)
+        .expect("resolve requires a member of the validated composition")
 }

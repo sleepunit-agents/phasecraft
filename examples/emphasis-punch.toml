@@ -1,0 +1,21 @@
+# Identical events to the other emphasis example; only the velocity profile changes.
+tempo = 132
+seed = 909
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+use = "techno.kick"
+
+[[parts]]
+id = "hat"
+compose = ["kit.909.closed_hat", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 8, rotation = 0, reset_on_phrase = false }
+probability = 1.0
+probability_mode = "phrase_locked"
+[parts.accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 3, rotation = 0, reset_on_phrase = false }
+probability = 0.75
+[parts.profile]
+use = "accent.punch"

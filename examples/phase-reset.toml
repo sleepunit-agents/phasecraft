@@ -1,0 +1,21 @@
+# Compare with phase-continue.toml; only the short-cycle reset policy changes.
+tempo = 132
+seed = 909
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+use = "techno.kick"
+
+[[parts]]
+id = "hat"
+compose = ["kit.909.closed_hat", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 5, pulses = 2, rotation = 0, reset_on_phrase = true }
+probability = 1.0
+probability_mode = "phrase_locked"
+[parts.accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 3, rotation = 0, reset_on_phrase = true }
+probability = 1.0
+[parts.profile]
+use = "accent.subtle"

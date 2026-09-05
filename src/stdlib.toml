@@ -1,0 +1,184 @@
+[profiles."accent.velocity_only"]
+base = 80
+boost = 35
+[profiles."accent.subtle"]
+base = 70
+boost = 12
+[profiles."accent.punch"]
+base = 72
+boost = 40
+
+[behaviors."std.no_accent".accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0 }
+[behaviors."std.backbeat".trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 4 }
+
+
+[behaviors."techno.kick".trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 4, rotation = 0 }
+probability = 1.0
+[behaviors."techno.kick".accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[behaviors."techno.kick".profile]
+base = 110
+boost = 0
+[behaviors."techno.kick".output]
+channel = 10
+note = 36
+
+
+[behaviors."techno.clap".trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 4 }
+probability = 1.0
+[behaviors."techno.clap".accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[behaviors."techno.clap".profile]
+base = 100
+boost = 0
+[behaviors."techno.clap".output]
+channel = 10
+note = 39
+
+
+[behaviors."techno.closed_hat".trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 4, rotation = 0 }
+probability = 1.0
+[behaviors."techno.closed_hat".accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 3, rotation = 0 }
+amount = 1.0
+[behaviors."techno.closed_hat".profile]
+base = 66
+boost = 16
+[behaviors."techno.closed_hat".output]
+channel = 10
+note = 42
+
+
+[behaviors."techno.open_hat".trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 4, rotation = 2 }
+probability = 1.0
+[behaviors."techno.open_hat".accent]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 6 }
+amount = 1.0
+[behaviors."techno.open_hat".profile]
+base = 78
+boost = 8
+[behaviors."techno.open_hat".output]
+channel = 10
+note = 46
+
+
+[behaviors."techno.rim".trigger]
+rhythm = { type = "euclidean", steps = 15, pulses = 2, rotation = 3 }
+probability = 0.55
+[behaviors."techno.rim".accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 2, rotation = 0 }
+amount = 1.0
+[behaviors."techno.rim".profile]
+base = 52
+boost = 12
+[behaviors."techno.rim".output]
+channel = 10
+note = 37
+
+[behaviors."dnb.kick".trigger]
+rhythm = { type = "binary", op = "or", a = { type = "euclidean", steps = 16, pulses = 1, rotation = 0 }, b = { type = "euclidean", steps = 16, pulses = 1, rotation = 10 } }
+probability = 1.0
+[behaviors."dnb.kick".accent]
+rhythm = { type = "euclidean", steps = 16, pulses = 1, rotation = 0 }
+amount = 1.0
+[behaviors."dnb.kick".profile]
+base = 108
+boost = 8
+[behaviors."dnb.kick".output]
+channel = 10
+note = 36
+
+
+[behaviors."dnb.snare".trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 4 }
+probability = 1.0
+[behaviors."dnb.snare".accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[behaviors."dnb.snare".profile]
+base = 110
+boost = 0
+[behaviors."dnb.snare".output]
+channel = 10
+note = 38
+
+
+[behaviors."dnb.closed_hat".trigger]
+rhythm = { type = "binary", op = "a_not_b", a = { type = "euclidean", steps = 1, pulses = 1, rotation = 0 }, b = { type = "euclidean", steps = 16, pulses = 1, rotation = 14 } }
+probability = 1.0
+[behaviors."dnb.closed_hat".accent]
+rhythm = { type = "euclidean", steps = 16, pulses = 8, rotation = 0 }
+amount = 1.0
+[behaviors."dnb.closed_hat".profile]
+base = 48
+boost = 24
+[behaviors."dnb.closed_hat".output]
+channel = 10
+note = 42
+
+
+[behaviors."dnb.open_hat".trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 1, rotation = 14 }
+probability = 1.0
+[behaviors."dnb.open_hat".accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[behaviors."dnb.open_hat".profile]
+base = 76
+boost = 0
+[behaviors."dnb.open_hat".output]
+channel = 10
+note = 46
+
+
+[behaviors."dnb.rim".trigger]
+rhythm = { type = "binary", op = "or", a = { type = "euclidean", steps = 16, pulses = 1, rotation = 7 }, b = { type = "euclidean", steps = 16, pulses = 1, rotation = 15 } }
+probability = 0.65
+[behaviors."dnb.rim".accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 2, rotation = 0 }
+amount = 1.0
+[behaviors."dnb.rim".profile]
+base = 42
+boost = 10
+[behaviors."dnb.rim".output]
+channel = 10
+note = 37
+[behaviors."kit.909.kick".output]
+channel = 10
+note = 36
+
+[behaviors."kit.909.rim".output]
+channel = 10
+note = 37
+
+[behaviors."kit.909.snare".output]
+channel = 10
+note = 38
+
+[behaviors."kit.909.clap".output]
+channel = 10
+note = 39
+
+[behaviors."kit.909.closed_hat".output]
+channel = 10
+note = 42
+
+[behaviors."kit.909.open_hat".output]
+channel = 10
+note = 46
+
+[behaviors."kit.909.low_tom".output]
+channel = 10
+note = 44
+
+[behaviors."kit.909.ride".output]
+channel = 10
+note = 51

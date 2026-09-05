@@ -1,0 +1,27 @@
+# Rim avoids admitted kick hits; compare the other interlock example.
+tempo = 132
+seed = 909
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+use = "techno.kick"
+[parts.trigger]
+probability = 0.5
+
+[[parts]]
+id = "rim"
+compose = ["kit.909.rim", "std.no_accent"]
+[parts.trigger]
+rhythm = { type = "binary", op = "a_not_b", a = { type = "euclidean", steps = 16, pulses = 11, rotation = 0, reset_on_phrase = false }, b = { type = "part", id = "kick", mode = "hits" } }
+probability = 1.0
+probability_mode = "phrase_locked"
+[parts.accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 3, rotation = 0, reset_on_phrase = false }
+probability = 0.75
+[parts.profile]
+use = "accent.subtle"
+
+[[parts]]
+id = "clap"
+use = "techno.clap"
