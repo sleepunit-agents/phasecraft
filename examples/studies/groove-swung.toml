@@ -1,0 +1,8 @@
+# Same hats with timing, three-note run contours and occasional soft ghost hits.
+tempo = 132
+seed = 58
+[parts.kick]
+use = "techno.kick"
+[parts.closed_hat]
+compose = ["techno.closed_hat", "groove.ukg", "groove.ramp_up", "groove.ghosts"]
+trigger.rhythm = { steps = 16, pulses = 13 }

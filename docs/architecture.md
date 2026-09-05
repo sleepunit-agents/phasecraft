@@ -10,6 +10,7 @@ MIDI. Musical definitions are grouped by what a musician wants to find.
 | `src/authoring/syntax.rs` | Keyed Parts and rhythm shorthand |
 | `src/music/mod.rs` | Typed composition, Parts, lanes, profiles and validation |
 | `src/music/rhythm.rs` | Rhythm expressions and structural provenance |
+| `src/music/groove.rs` | Swing, bounded timing offsets, run contours and ghost interpretation |
 | `src/music/resolve.rs` | Keyed probability, semantic events, resolution and MIDI translation |
 | `src/playback/mod.rs` | Clock conversion, MIDI sinks, deadline dispatch and cleanup |
 | `src/playback/transport.rs` | Lookahead producer, looping and phrase-boundary reload |
@@ -27,8 +28,8 @@ The model's existing parse/read convenience methods delegate to authoring; event
 resolution and dispatch do not interpret project files. The producer expands and
 validates a complete composition before applying it to the transport.
 
-This split deliberately keeps related code together. Add groove definitions when
-there is working groove behavior to put in them. No plugin discovery, arrangement
+This split deliberately keeps related code together. Reusable groove components
+now live in `library/grooves/`; project-specific groove overrides live in `patterns/grooves.toml`. No plugin discovery, arrangement
 engine, schema code generation, or controller abstraction is introduced here.
 
 ## Desktop player

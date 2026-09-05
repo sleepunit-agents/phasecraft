@@ -43,12 +43,12 @@ fn scaffold_is_portable_valid_and_preserves_proven_beats() {
     fs::rename(original, &p).unwrap();
     let report = project::validate(&p);
     assert!(report.valid, "{:?}", report.errors);
-    assert_eq!(report.files.len(), 2);
+    assert_eq!(report.files.len(), 3);
     assert_eq!(
         project::load(&p).unwrap().midi.port.as_deref(),
         Some("Phasecraft")
     );
-    for genre in ["techno", "dnb"] {
+    for genre in ["techno", "dnb", "garage"] {
         let c = Composition::read(&p.join(format!("compositions/{genre}.toml"))).unwrap();
         let old = Composition::read(
             &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -201,7 +201,7 @@ fn validation_checks_all_compositions_and_produces_machine_readable_errors() {
     assert!(!output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["valid"], false);
-    assert_eq!(report["files"].as_array().unwrap().len(), 2);
+    assert_eq!(report["files"].as_array().unwrap().len(), 3);
     assert!(report["errors"][0].as_str().unwrap().contains("dnb.toml"));
     assert!(project::validate(&p.join("compositions/techno.toml")).valid);
 }
@@ -231,7 +231,7 @@ fn shared_library_edits_are_resolved_for_every_composition() {
     let file = p.join("kits/909.toml");
     let source = fs::read_to_string(&file).unwrap();
     fs::write(file, source.replace("note = 36", "note = 35")).unwrap();
-    for genre in ["techno", "dnb"] {
+    for genre in ["techno", "dnb", "garage"] {
         let c = Composition::read(&p.join(format!("compositions/{genre}.toml"))).unwrap();
         assert_eq!(
             c.parts.iter().find(|p| p.id == "kick").unwrap().output.note,

@@ -63,7 +63,16 @@ with tempfile.TemporaryDirectory(prefix="phasecraft-native-") as work:
             wait.until(lambda d: d.find_element(By.ID, "tempo").text == "172")
             driver.find_element(By.ID, "play").click()
             wait.until(lambda d: "SILENT PREVIEW" in d.find_element(By.ID, "state").text)
-            driver.close()  # The actual window-close path must stop the running engine.
+            driver.find_element(By.ID, "stop").click()
+            wait.until(lambda d: "STOPPED" in d.find_element(By.ID, "state").text)
+            driver.find_elements(By.CSS_SELECTOR, "#compositions button")[2].click()
+            wait.until(lambda d: len(d.find_elements(By.CSS_SELECTOR, ".part-card")) == 6)
+            driver.find_element(By.ID, "send-clock").click()
+            driver.find_element(By.ID, "play").click()
+            wait.until(lambda d: "SILENT PREVIEW" in d.find_element(By.ID, "state").text)
+            driver.find_element(By.CSS_SELECTOR, '[data-part="closed_hat"]').click()
+            wait.until(lambda d: "Timing +" in d.find_element(By.ID, "detail-body").text)
+            driver.close()  # Window-close must stop both groove playback and MIDI clock.
             print("Native player: open, repeated playback, watched error/recovery, selection and close passed")
         except Exception:
             if driver:

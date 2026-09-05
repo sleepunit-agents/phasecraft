@@ -1,3 +1,4 @@
+pub mod groove;
 pub mod resolve;
 pub mod rhythm;
 use rhythm::Expression;
@@ -82,6 +83,8 @@ pub struct Part {
     pub output: Output,
     #[serde(default)]
     pub profile: VelocityProfile,
+    #[serde(default, skip_serializing_if = "groove::Groove::is_default")]
+    pub groove: groove::Groove,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -92,7 +95,7 @@ pub struct Lane {
     #[serde(default)]
     pub probability_mode: ProbabilityMode,
 }
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProbabilityMode {
     #[default]
@@ -242,6 +245,7 @@ impl Part {
             .rhythm
             .validate(0)
             .map_err(|e| format!("accent.rhythm: {e}"))?;
+        self.groove.validate()?;
         let o = &self.output;
         if !(1..=16).contains(&o.channel) || o.note > 127 {
             return Err("MIDI channel must be 1..16 and note 0..127".into());

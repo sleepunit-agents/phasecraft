@@ -1,0 +1,16 @@
+# Compose these with any drum behavior; local overrides remain ordinary TOML.
+[behaviors."groove.ukg".groove]
+swing = 0.58
+
+[behaviors."groove.ghosts".groove]
+ghost_probability = 0.35
+ghost_gain = 0.45
+
+[behaviors."groove.ramp_up".groove]
+run = "ramp_up"
+
+[behaviors."groove.low_high_low".groove]
+run = "low_high_low"
+
+[behaviors."groove.laid_back".groove]
+delay_ticks = 12

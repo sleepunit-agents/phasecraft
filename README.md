@@ -333,5 +333,8 @@ MIDI/audio timing. Listening and recording the real MIDI output remain the final
 acceptance test on each music machine.
 
 The desktop GUI is a player and visualizer; TOML remains the authoring surface.
-No harmony, arranger, groove engine, E16 integration, AI/MCP, or DSP is included.
+No harmony, arranger, E16 integration, AI/MCP, or DSP is included.
+
+Reusable swing, laid-back timing, run contours and ghost articulation are available;
+see [groove and the 909 garage example](docs/groove.md).
 The first design contracts are recorded in `docs/vertical-slice.md`.

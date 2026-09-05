@@ -1,0 +1,8 @@
+# Compare groove-swung.toml: exactly the same triggers and accent admissions.
+tempo = 132
+seed = 58
+[parts.kick]
+use = "techno.kick"
+[parts.closed_hat]
+use = "techno.closed_hat"
+trigger.rhythm = { steps = 16, pulses = 13 }

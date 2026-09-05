@@ -144,3 +144,11 @@ accents and kits; internal source separates authoring, music and playback.
 These are organization/authoring changes, with golden pre-refactor traces retained.
 They do not implement arrangement, groove, stateful accent or 303 control behavior.
 See `authoring.md` and `architecture.md` for the current contracts and paths.
+
+### Groove follow-up
+
+Swing, positive within-step offsets, admitted-run contours and independent ghost
+articulation are implemented as reusable behavior components. The 909 garage
+example and controlled straight/grooved pair are shipped. See `groove.md` for
+precise semantics and timing bounds. Multi-control/stateful and shared accents,
+phrase variants and arrangement remain future work.

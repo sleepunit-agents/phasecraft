@@ -187,12 +187,20 @@ const FILES: &[(&str, &str)] = &[
         include_str!("../../templates/project/compositions/dnb.toml"),
     ),
     (
+        "compositions/garage.toml",
+        include_str!("../../templates/project/compositions/garage.toml"),
+    ),
+    (
         "patterns/drums.toml",
         include_str!("../../templates/project/patterns/drums.toml"),
     ),
     (
         "patterns/accents.toml",
         include_str!("../../templates/project/patterns/accents.toml"),
+    ),
+    (
+        "patterns/grooves.toml",
+        include_str!("../../templates/project/patterns/grooves.toml"),
     ),
     (
         "kits/909.toml",

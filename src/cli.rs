@@ -177,12 +177,13 @@ pub fn run() -> Result<(), String> {
                             .map(|event| {
                                 let midi = phasecraft::music::resolve::to_midi(part, event);
                                 format!(
-                                    "note={} channel={} velocity={} gate={} ticks accent={:.2}",
+                                    "note={} channel={} velocity={} gate={} ticks accent={:.2} onset_tick={}",
                                     part.output.note,
                                     part.output.channel,
                                     midi[0].bytes[2],
                                     event.duration_ticks,
-                                    event.accent.amount
+                                    event.accent.amount,
+                                    event.tick
                                 )
                             })
                             .unwrap_or_else(|| "rest".into());

@@ -69,6 +69,28 @@ async function boot(page) {
             return loaded
               ? {
                   ...fixture,
+                  traces: fixture.traces.map((t) =>
+                    window.testGroove && t.part === "closed_hat"
+                      ? {
+                          ...t,
+                          event: {
+                            tick: 2280,
+                            duration_ticks: 100,
+                            accent: { active: false, amount: 0 },
+                            groove: {
+                              offset_ticks: 120,
+                              requested_gate_ticks: 120,
+                              ghost_roll: 0.2,
+                              ghost: true,
+                              run_before: 1,
+                              run_after: 1,
+                              velocity_factor: 0.4,
+                            },
+                          },
+                        }
+                      : t,
+                  ),
+                  progress: window.testProgress ?? fixture.progress,
                   playing,
                   step: playing ? 9 : null,
                   reload_error: window.reloadError || null,
@@ -219,4 +241,23 @@ test("native MIDI setup selects sender and sync is explicit at playback", async 
       () => window.calls.findLast((c) => c.command === "start").args,
     ),
   ).toMatchObject({ port: "Phasecraft Send", sendClock: true });
+});
+
+test("groove inspection exposes timing and the hit flash waits for the onset", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.evaluate(() => {
+    window.testGroove = true;
+    window.testProgress = 0.25;
+  });
+  await page.locator("#open").click();
+  await page.locator("#play").click();
+  const hat = page.locator('[data-part="closed_hat"]');
+  await hat.click();
+  await expect(page.locator("#detail-body")).toContainText("Timing +120 ticks");
+  await expect(page.locator("#detail-body")).toContainText("ghost hit");
+  await expect(hat).not.toHaveClass(/fired/);
+  await page.evaluate(() => (window.testProgress = 0.55));
+  await expect(hat).toHaveClass(/fired/);
 });

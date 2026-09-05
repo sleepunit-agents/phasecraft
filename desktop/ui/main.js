@@ -18,7 +18,7 @@ app.innerHTML = `
   <section class="transport" aria-label="Playback controls"><button id="play" class="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button><div class="metric"><label>POSITION</label><strong id="position">1.1.1</strong></div><div class="metric"><label>BPM</label><strong id="tempo">—</strong></div><div class="metric seed"><label>SEED</label><strong id="seed">—</strong></div><div class="routing"><label for="destination">MIDI DESTINATION</label><div><select id="destination"><option value="">Choose an output…</option><option value="@silent">Silent preview</option></select><button id="refresh" title="Refresh MIDI outputs" aria-label="Refresh MIDI outputs">↻</button></div><label class="sync-control"><input id="send-clock" type="checkbox"> Send tempo & transport</label></div></section>
   <div id="windows-midi" class="windows-midi" hidden><button id="setup-midi">Set up Windows MIDI</button><button id="midi-tools">Get MIDI tools ↗</button><span id="midi-setup-info">Optional: connect through Windows MIDI Services.</span></div>
   <div id="error" role="alert" hidden></div><div id="midi-error" class="notice" hidden></div><div id="reload-error" class="notice" hidden></div>
-  <section id="welcome"><div class="welcome-rings" aria-hidden="true"><i></i><i></i><i></i><b>◉</b></div><div class="eyebrow">A FRONT PANEL FOR YOUR IDEAS</div><h2>Every cycle has<br>something to say.</h2><p>Independent rhythms, probability and emphasis.<br>Your musical systems, made visible.</p><button id="welcome-open" class="primary">Open a project folder ↗</button><p class="welcome-hint">New here? New project includes 909 techno and DnB.</p></section>
+  <section id="welcome"><div class="welcome-rings" aria-hidden="true"><i></i><i></i><i></i><b>◉</b></div><div class="eyebrow">A FRONT PANEL FOR YOUR IDEAS</div><h2>Every cycle has<br>something to say.</h2><p>Independent rhythms, probability and emphasis.<br>Your musical systems, made visible.</p><button id="welcome-open" class="primary">Open a project folder ↗</button><p class="welcome-hint">New here? New project includes 909 techno, DnB and garage.</p></section>
   <section id="system" hidden><div class="section-heading"><div><span class="eyebrow">THE SYSTEM</span><h2>Independent cycles. Shared time.</h2></div><div class="legend"><span><i class="hit"></i>Hit</span><span><i class="accent"></i>Accent</span><span><i class="rejected"></i>Omitted</span></div></div><div id="cards"></div>
   <section id="detail" hidden><div class="detail-heading"><div class="eyebrow">UNDER THE SURFACE</div><h2 id="detail-title"></h2></div><div id="detail-body"></div></section></section>
   <footer><span id="state">READY WHEN YOU ARE</span><span>Files are the score. This is the player.</span></footer>
@@ -331,9 +331,15 @@ function drawCard(view, trace) {
     gap = 5,
     box = (width - gap * 15) / 16;
   for (let i = 0; i < 16; i++) {
-    const item = history[i - (16 - history.length)]?.parts.find(
+    let item = history[i - (16 - history.length)]?.parts.find(
       (p) => p.id === trace.part,
     );
+    if (
+      snapshot.playing &&
+      history[i - (16 - history.length)]?.step === snapshot.step &&
+      snapshot.progress < (trace.event?.groove?.offset_ticks || 0) / 240
+    )
+      item = null;
     ctx.fillStyle = item?.accented
       ? "#f6b980"
       : item?.fired
@@ -356,14 +362,17 @@ function drawCard(view, trace) {
     snapshot.playing &&
     snapshot.step !== null &&
     trace.event &&
-    snapshot.progress < 0.65;
+    snapshot.progress >= (trace.event.groove?.offset_ticks || 0) / 240 &&
+    snapshot.progress < (trace.event.groove?.offset_ticks || 0) / 240 + 0.65;
   view.card.classList.toggle("fired", !!hit);
   view.card.classList.toggle("accented", !!(hit && trace.event.accent.active));
   view.card.classList.toggle("selected-part", trace.part === selectedPart);
   view.badge.textContent = hit
-    ? trace.event.accent.active
-      ? "ACCENT"
-      : "HIT"
+    ? trace.event.groove?.ghost
+      ? "GHOST"
+      : trace.event.accent.active
+        ? "ACCENT"
+        : "HIT"
     : snapshot.playing
       ? "RUNNING"
       : "READY";
@@ -397,6 +406,19 @@ function renderDetail() {
           : `${r.label}: ${r.id} (${r.mode})`;
       block.append(p);
     }
+    $("detail-body").append(block);
+  }
+  if (trace.event?.groove) {
+    const g = trace.event.groove;
+    const block = document.createElement("div");
+    block.className = "lane-detail";
+    const heading = document.createElement("h4");
+    heading.textContent = "Groove";
+    const detail = document.createElement("p");
+    detail.textContent = `Timing +${g.offset_ticks} ticks · base velocity ×${g.velocity_factor.toFixed(3)} · ${g.ghost ? "ghost hit" : "normal hit"} · ghost roll ${g.ghost_roll.toFixed(3)}`;
+    const context = document.createElement("p");
+    context.textContent = `Run context: ${g.run_before} before / ${g.run_after} after (up to 2 each) · gate ${trace.event.duration_ticks}/${g.requested_gate_ticks} ticks`;
+    block.append(heading, detail, context);
     $("detail-body").append(block);
   }
   const result = document.createElement("p");

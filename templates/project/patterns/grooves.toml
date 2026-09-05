@@ -1,0 +1,4 @@
+# Shared timing feel: every garage Part using this component follows this setting.
+[library.behaviors."my.garage_swing"]
+use = "groove.ukg"
+groove.swing = 0.58

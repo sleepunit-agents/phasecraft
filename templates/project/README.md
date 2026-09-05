@@ -15,12 +15,13 @@ phasecraft play compositions/dnb.toml --watch
 ```
 
 Drop Ableton's **909 Core Kit** on a MIDI track and enable monitoring for your
-loopback input. Techno is 132 BPM; DnB is 172 BPM. Both use channel 10.
+loopback input. Techno is 132 BPM; DnB is 172 BPM. Garage is a swung 132 BPM system. All three use channel 10.
 
 - `phasecraft.toml`: default composition, all compositions to validate, shared libraries.
 - `compositions/`: the choices specific to each piece. Add files to the manifest list.
 - `patterns/drums.toml`: reusable drum behaviors and trigger patterns.
 - `patterns/accents.toml`: emphasis patterns and response profiles.
+- `patterns/grooves.toml`: shared swing feel for the garage Parts.
 - `kits/909.toml`: reusable musical pad mappings.
 - `config/midi.toml`: this machine's MIDI destination and scheduler lookahead.
 

@@ -80,3 +80,8 @@ next example when that groove layer exists.
 The comparison files supply B_NOT_A/XOR coverage, alternate reference semantics,
 and isolated demonstrations without forcing every possible mechanism into this
 one groove.
+
+## Groove and garage
+
+Compare `studies/groove-straight.toml` with `studies/groove-swung.toml`, then try
+`quickstart/garage.toml` with the 909 Core Kit. See [the groove guide](../docs/groove.md).

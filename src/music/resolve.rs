@@ -36,6 +36,8 @@ pub struct MusicalEvent {
     pub tick: u64,
     pub duration_ticks: u64,
     pub accent: Accent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groove: Option<super::groove::GrooveTrace>,
 }
 /// A realized window is generic; source cycles need not fit in the window.
 #[derive(Clone, Debug, Serialize)]
@@ -111,6 +113,7 @@ fn resolve_part(
     let event = trigger.admitted.then(|| MusicalEvent {
         tick: step * STEP_TICKS,
         duration_ticks: part.output.gate_ticks,
+        groove: None,
         accent: Accent {
             active: accent.admitted,
             amount: if accent.admitted {
@@ -147,6 +150,7 @@ pub struct MidiEvent {
 pub fn to_midi(part: &Part, event: &MusicalEvent) -> [MidiEvent; 2] {
     let output = &part.output;
     let velocity = (f64::from(part.profile.base)
+        * event.groove.as_ref().map_or(1.0, |g| g.velocity_factor)
         + if event.accent.active {
             event.accent.amount * f64::from(part.profile.boost)
         } else {
@@ -168,12 +172,12 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> [MidiEvent; 2] {
 
 /// Merge one grid position before dispatch. Sending each Part's on/off pair
 /// immediately would delay simultaneous hits behind the first Part's note-off.
-pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEvent>) {
+fn resolve_raw(c: &Composition, step: u64) -> Vec<StepTrace> {
     let parts = c
         .evaluation_order()
         .expect("resolve_step requires a validated composition");
     let mut resolved = std::collections::BTreeMap::<String, StepTrace>::new();
-    let mut midi = Vec::with_capacity(parts.len() * 2);
+
     for part in parts {
         let reference = |id: &str, mode| {
             let target = &resolved[id];
@@ -183,14 +187,87 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
             }
         };
         let trace = resolve_part(c, part, step, &reference);
-        if let Some(event) = &trace.event {
-            midi.extend(to_midi(part, event));
-        }
         resolved.insert(part.id.clone(), trace);
     }
-    let traces = resolved.into_values().collect();
-    // Gates are shorter than a step, so successive step batches cannot overlap.
-    // Equal deadlines are ordered by MIDI bytes (off before on, then route).
+    resolved.into_values().collect()
+}
+
+/// Groove stays inside the source sixteenth; even long gates cannot overlap batches.
+/// Part references always see source-grid admissions, independent of groove interpretation.
+pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEvent>) {
+    use super::groove::{GrooveTrace, RunContour};
+    let mut traces = resolve_raw(c, step);
+    let needs_context = c.parts.iter().any(|p| p.groove.run != RunContour::None);
+    let mut neighbors = std::collections::BTreeMap::new();
+    if needs_context {
+        for s in [
+            step.checked_sub(2),
+            step.checked_sub(1),
+            step.checked_add(1),
+            step.checked_add(2),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if s < u64::MAX / STEP_TICKS {
+                neighbors.insert(s, resolve_raw(c, s));
+            }
+        }
+    }
+    let mut midi = Vec::with_capacity(c.parts.len() * 2);
+    for trace in &mut traces {
+        let part = c.parts.iter().find(|p| p.id == trace.part).unwrap();
+        if let Some(event) = &mut trace.event {
+            let g = &part.groove;
+            if !g.is_default() {
+                let fired = |s: Option<u64>| {
+                    s.and_then(|s| neighbors.get(&s)).is_some_and(|traces| {
+                        traces
+                            .iter()
+                            .any(|t| t.part == part.id && t.trigger.admitted)
+                    })
+                };
+                let mut before = 0;
+                let mut after = 0;
+                if g.run != RunContour::None {
+                    for n in 1..=2 {
+                        if fired(step.checked_sub(n)) {
+                            before += 1
+                        } else {
+                            break;
+                        }
+                    }
+                    for n in 1..=2 {
+                        if fired(step.checked_add(n)) {
+                            after += 1
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                let identity = match g.ghost_mode {
+                    ProbabilityMode::PhraseLocked => step % c.phrase_steps(),
+                    ProbabilityMode::Continuous => step,
+                };
+                let roll = decision_roll(c.seed, &part.id, "groove", identity, "ghost");
+                let ghost = !event.accent.active && roll < g.ghost_probability;
+                let offset = g.offset(step);
+                event.tick += offset;
+                event.duration_ticks = event.duration_ticks.min(STEP_TICKS - offset - 1);
+                event.groove = Some(GrooveTrace {
+                    offset_ticks: offset,
+                    requested_gate_ticks: part.output.gate_ticks,
+                    ghost_roll: roll,
+                    ghost,
+                    run_before: before,
+                    run_after: after,
+                    velocity_factor: g.contour(before, after)
+                        * if ghost { g.ghost_gain } else { 1.0 },
+                });
+            }
+            midi.extend(to_midi(part, event));
+        }
+    }
     midi.sort_by_key(|event| (event.tick, event.bytes));
     (traces, midi)
 }
