@@ -1,0 +1,20 @@
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[part]
+id = "hat"
+
+[part.trigger]
+probability = 0.85
+probability_mode = "phrase_locked"
+rhythm = { type = "binary", op = "xor", a = { type = "euclidean", steps = 16, pulses = 7 }, b = { type = "euclidean", steps = 5, pulses = 2, rotation = 1 } }
+
+[part.accent]
+probability = 0.75
+amount = 0.8
+rhythm = { type = "euclidean", steps = 7, pulses = 3 }
+
+[part.output]
+channel = 10
+note = 42

@@ -1,0 +1,143 @@
+use crate::engine::Expression;
+use serde::{Deserialize, Serialize};
+
+pub const PPQN: u64 = 960;
+pub const STEP_TICKS: u64 = PPQN / 4;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Composition {
+    pub tempo: f64,
+    pub seed: u64,
+    #[serde(default = "four")]
+    pub phrase_bars: u32,
+    pub part: Part,
+}
+fn four() -> u32 {
+    4
+}
+fn one() -> f64 {
+    1.0
+}
+fn channel() -> u8 {
+    10
+}
+fn gate() -> u64 {
+    120
+}
+fn velocity() -> u8 {
+    80
+}
+fn boost() -> u8 {
+    35
+}
+fn amount() -> f64 {
+    0.8
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Part {
+    pub id: String,
+    pub trigger: Lane,
+    pub accent: AccentLane,
+    pub output: Output,
+    #[serde(default)]
+    pub profile: VelocityProfile,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Lane {
+    pub rhythm: Expression,
+    #[serde(default = "one")]
+    pub probability: f64,
+    #[serde(default)]
+    pub probability_mode: ProbabilityMode,
+}
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbabilityMode {
+    #[default]
+    PhraseLocked,
+    Continuous,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccentLane {
+    pub rhythm: Expression,
+    #[serde(default = "one")]
+    pub probability: f64,
+    #[serde(default)]
+    pub probability_mode: ProbabilityMode,
+    #[serde(default = "amount")]
+    pub amount: f64,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Output {
+    #[serde(default = "channel")]
+    pub channel: u8,
+    pub note: u8,
+    #[serde(default = "gate")]
+    pub gate_ticks: u64,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct VelocityProfile {
+    pub base: u8,
+    pub boost: u8,
+}
+impl Default for VelocityProfile {
+    fn default() -> Self {
+        Self {
+            base: velocity(),
+            boost: boost(),
+        }
+    }
+}
+impl Composition {
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let c: Self = toml::from_str(text).map_err(|e| e.to_string())?;
+        c.validate()?;
+        Ok(c)
+    }
+    pub fn read(path: &std::path::Path) -> Result<Self, String> {
+        Self::parse(&std::fs::read_to_string(path).map_err(|e| e.to_string())?)
+    }
+    pub fn phrase_steps(&self) -> u64 {
+        u64::from(self.phrase_bars) * 16
+    }
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.tempo.is_finite() || !(20.0..=400.0).contains(&self.tempo) {
+            return Err("tempo must be finite and within 20..400 BPM".into());
+        }
+        if !(1..=1024).contains(&self.phrase_bars) {
+            return Err("phrase_bars must be 1..1024 (4/4)".into());
+        }
+        if self.part.id.trim().is_empty() {
+            return Err("part.id cannot be empty".into());
+        }
+        for (name, value) in [
+            ("trigger.probability", self.part.trigger.probability),
+            ("accent.probability", self.part.accent.probability),
+            ("accent.amount", self.part.accent.amount),
+        ] {
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                return Err(format!("{name} must be finite and within 0..1"));
+            }
+        }
+        self.part.trigger.rhythm.validate(0)?;
+        self.part.accent.rhythm.validate(0)?;
+        let o = &self.part.output;
+        if !(1..=16).contains(&o.channel) || o.note > 127 {
+            return Err("MIDI channel must be 1..16 and note 0..127".into());
+        }
+        if o.gate_ticks == 0 || o.gate_ticks >= STEP_TICKS {
+            return Err("gate_ticks must be 1..239 for this drum slice".into());
+        }
+        if !(1..=127).contains(&self.part.profile.base) || self.part.profile.boost > 127 {
+            return Err("velocity base must be 1..127 and boost 0..127".into());
+        }
+        Ok(())
+    }
+}
