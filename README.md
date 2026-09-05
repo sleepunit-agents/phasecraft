@@ -5,6 +5,18 @@ loop it, and inspect every decision. This first slice plays one hat Part:
 `XOR(E(7,16), E(2,5))` triggers with an independent `E(3,7)` accent lane.
 Ableton (or any MIDI host) supplies the sound.
 
+## Download
+
+Grab a native package from the [rolling dev release](https://github.com/sleepunit-agents/phasecraft/releases/tag/dev).
+On Windows, download `phasecraft-windows-x64.zip` and extract it. Open PowerShell
+in the extracted folder; no Rust installation is needed. Sign into GitHub with
+repository access while this project is private.
+
+The `dev` prerelease follows `main` after all four native builds and tests pass.
+It replaces the same downloads in place and includes the source commit and SHA-256
+checksums. Pull requests do not publish releases. Maintainers can also rerun the
+build using Actions → Test and package → Run workflow on `main`.
+
 ## Run
 
 From a native package, use `./phasecraft` (Windows: `.\phasecraft.exe`). No Rust

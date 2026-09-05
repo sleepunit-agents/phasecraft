@@ -1,5 +1,9 @@
 name: Test and package
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -48,3 +52,26 @@ jobs:
             phasecraft-*.tar.gz
             phasecraft-*.zip
           if-no-files-found: error
+
+  dev-release:
+    name: Update rolling dev release
+    needs: native
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: phasecraft-dev-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: phasecraft-*
+          merge-multiple: true
+          path: release-assets
+      - name: Publish tested native packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/publish-dev.sh
