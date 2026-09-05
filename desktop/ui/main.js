@@ -15,7 +15,8 @@ app.innerHTML = `
 </aside>
 <main>
   <header><div><div class="eyebrow">PHASECRAFT / PLAYER</div><h1 id="title">Small systems.<br>Long stories.</h1><p id="subtitle">Open a folder. Find the groove. Watch it unfold.</p></div><div class="header-right"><button id="update-chip" class="update-chip" hidden></button><span id="watch-status" class="pill">TOML → LIVE MIDI</span><span id="part-count"></span></div></header>
-  <section class="transport" aria-label="Playback controls"><button id="play" class="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button><div class="metric"><label>POSITION</label><strong id="position">1.1.1</strong></div><div class="metric"><label>BPM</label><strong id="tempo">—</strong></div><div class="metric seed"><label>SEED</label><strong id="seed">—</strong></div><div class="routing"><label for="destination">MIDI DESTINATION</label><div><select id="destination"><option value="">Choose an output…</option><option value="@silent">Silent preview</option></select><button id="refresh" title="Refresh MIDI outputs" aria-label="Refresh MIDI outputs">↻</button></div></div></section>
+  <section class="transport" aria-label="Playback controls"><button id="play" class="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button><div class="metric"><label>POSITION</label><strong id="position">1.1.1</strong></div><div class="metric"><label>BPM</label><strong id="tempo">—</strong></div><div class="metric seed"><label>SEED</label><strong id="seed">—</strong></div><div class="routing"><label for="destination">MIDI DESTINATION</label><div><select id="destination"><option value="">Choose an output…</option><option value="@silent">Silent preview</option></select><button id="refresh" title="Refresh MIDI outputs" aria-label="Refresh MIDI outputs">↻</button></div><label class="sync-control"><input id="send-clock" type="checkbox"> Send tempo & transport</label></div></section>
+  <div id="windows-midi" class="windows-midi" hidden><button id="setup-midi">Set up Windows MIDI</button><button id="midi-tools">Get MIDI tools ↗</button><span id="midi-setup-info">Optional: connect through Windows MIDI Services.</span></div>
   <div id="error" role="alert" hidden></div><div id="midi-error" class="notice" hidden></div><div id="reload-error" class="notice" hidden></div>
   <section id="welcome"><div class="welcome-rings" aria-hidden="true"><i></i><i></i><i></i><b>◉</b></div><div class="eyebrow">A FRONT PANEL FOR YOUR IDEAS</div><h2>Every cycle has<br>something to say.</h2><p>Independent rhythms, probability and emphasis.<br>Your musical systems, made visible.</p><button id="welcome-open" class="primary">Open a project folder ↗</button><p class="welcome-hint">New here? New project includes 909 techno and DnB.</p></section>
   <section id="system" hidden><div class="section-heading"><div><span class="eyebrow">THE SYSTEM</span><h2>Independent cycles. Shared time.</h2></div><div class="legend"><span><i class="hit"></i>Hit</span><span><i class="accent"></i>Accent</span><span><i class="rejected"></i>Omitted</span></div></div><div id="cards"></div>
@@ -59,6 +60,8 @@ function controls() {
   $("stop").disabled = busy || !playing;
   $("destination").disabled = busy || playing;
   $("refresh").disabled = busy || playing;
+  $("send-clock").disabled = busy || playing;
+  $("setup-midi").disabled = busy || playing;
   $("open").disabled = busy;
   $("new").disabled = busy;
   $("welcome-open").disabled = busy;
@@ -109,6 +112,7 @@ async function openPath(path, create = false) {
       });
     $("compositions").append(b);
   }
+  $("send-clock").checked = result.send_clock || false;
   const wanted = result.virtual_port ? "@virtual" : result.port || "";
   if (wanted && ![...$("destination").options].some((o) => o.value === wanted))
     $("destination").add(new Option(`${wanted} (unavailable)`, wanted));
@@ -158,6 +162,15 @@ async function refreshPorts() {
   $("destination").value = previous;
   controls();
 }
+$("setup-midi").onclick = () =>
+  action(async () => {
+    const port = await invoke("setup_windows_midi");
+    await refreshPorts();
+    $("destination").value = port;
+    $("midi-setup-info").textContent =
+      "Connected. In Ableton, enable Track (and Sync for tempo) on Phasecraft Receive.";
+  });
+$("midi-tools").onclick = () => action(() => invoke("get_midi_tools"));
 $("refresh").onclick = () => action(refreshPorts);
 $("destination").onchange = controls;
 $("play").onclick = () =>
@@ -167,6 +180,7 @@ $("play").onclick = () =>
       port: output.startsWith("@") ? null : output,
       virtualPort: output === "@virtual",
       silent: output === "@silent",
+      sendClock: $("send-clock").checked,
     });
   });
 $("stop").onclick = () => action(() => invoke("stop"));
@@ -442,6 +456,7 @@ async function poll() {
     const data = await invoke("initial");
     recent = data.recent;
     platform = data.version.platform;
+    $("windows-midi").hidden = platform !== "windows-x64";
     $("version").textContent = `DEV / ${data.version.commit.slice(0, 7)}`;
     renderRecent();
     await refreshPorts();

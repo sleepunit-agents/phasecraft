@@ -22,6 +22,7 @@ struct Manifest {
 pub struct MidiSettings {
     pub port: Option<String>,
     pub virtual_port: bool,
+    pub send_clock: bool,
     pub lookahead_ms: u64,
 }
 impl Default for MidiSettings {
@@ -29,6 +30,7 @@ impl Default for MidiSettings {
         Self {
             port: None,
             virtual_port: false,
+            send_clock: false,
             lookahead_ms: 100,
         }
     }

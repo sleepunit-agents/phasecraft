@@ -27,7 +27,15 @@ async function boot(page) {
               throw new Error("Signature verification failed");
             return new Promise(() => {}); // successful install exits the process
           }
-          if (command === "destinations") return ["Phasecraft"];
+          if (command === "setup_windows_midi") {
+            window.nativeMidi = true;
+            return "Phasecraft Send";
+          }
+          if (command === "get_midi_tools") return;
+          if (command === "destinations")
+            return window.nativeMidi
+              ? ["Phasecraft", "Phasecraft Send", "Phasecraft Receive"]
+              : ["Phasecraft"];
           if (command === "plugin:dialog|open") return "/music/night-maps";
           if (command === "plugin:dialog|save") return "/music/new-set";
           if (command === "open_project" || command === "new_project") {
@@ -190,4 +198,25 @@ test("offline checks and failed installs are recoverable", async ({ page }) => {
   await expect(page.locator("#play")).toBeEnabled();
   await page.locator("#update-chip").click();
   await expect(page.locator("#update-chip")).toContainText("ccccccc");
+});
+
+test("native MIDI setup selects sender and sync is explicit at playback", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.locator("#open").click();
+  await page.locator("#setup-midi").click();
+  await expect(page.locator("#destination")).toHaveValue("Phasecraft Send");
+  await expect(page.locator("#midi-setup-info")).toContainText(
+    "Phasecraft Receive",
+  );
+  await page.locator("#send-clock").check();
+  await page.locator("#play").click();
+  await expect(page.locator("#send-clock")).toBeDisabled();
+  await expect(page.locator("#setup-midi")).toBeDisabled();
+  expect(
+    await page.evaluate(
+      () => window.calls.findLast((c) => c.command === "start").args,
+    ),
+  ).toMatchObject({ port: "Phasecraft Send", sendClock: true });
 });

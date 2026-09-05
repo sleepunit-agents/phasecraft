@@ -22,6 +22,7 @@ struct Opened {
     selected: Option<PathBuf>,
     port: Option<String>,
     virtual_port: bool,
+    send_clock: bool,
 }
 #[derive(Serialize)]
 struct Initial {
@@ -66,6 +67,7 @@ fn open_project(path: PathBuf, state: tauri::State<AppState>) -> Result<Opened, 
         selected: player.selected.clone(),
         port: player.midi.port.clone(),
         virtual_port: player.midi.virtual_port,
+        send_clock: player.midi.send_clock,
     })
 }
 #[tauri::command(async)]
@@ -86,6 +88,7 @@ fn start(
     port: Option<String>,
     virtual_port: bool,
     silent: bool,
+    send_clock: bool,
     state: tauri::State<AppState>,
 ) -> Result<(), String> {
     let mut player = state.player.lock().map_err(|e| e.to_string())?;
@@ -96,7 +99,7 @@ fn start(
     {
         return Err("Update in progress".into());
     }
-    player.play(port, virtual_port, silent)
+    player.play(port, virtual_port, silent, send_clock)
 }
 #[tauri::command(async)]
 fn stop(state: tauri::State<AppState>) -> Result<(), String> {
@@ -105,6 +108,30 @@ fn stop(state: tauri::State<AppState>) -> Result<(), String> {
 #[tauri::command]
 fn snapshot(state: tauri::State<AppState>) -> Result<Snapshot, String> {
     Ok(state.player.lock().map_err(|e| e.to_string())?.poll())
+}
+#[tauri::command(async)]
+fn setup_windows_midi(state: tauri::State<AppState>) -> Result<String, String> {
+    let mut player = state.player.lock().map_err(|e| e.to_string())?;
+    if player.poll().playing {
+        return Err("Stop playback before setting up MIDI ports".into());
+    }
+    phasecraft::playback::windows_setup::setup()
+}
+#[tauri::command(async)]
+fn get_midi_tools() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let windows = std::env::var_os("WINDIR").ok_or("Windows directory unavailable")?;
+        std::process::Command::new(PathBuf::from(windows).join("explorer.exe"))
+            .arg(phasecraft::playback::windows_setup::TOOLS_URL)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Microsoft MIDI tools are for Windows".into())
+    }
 }
 fn main() {
     tauri::Builder::default()
@@ -126,6 +153,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             initial,
             destinations,
+            setup_windows_midi,
+            get_midi_tools,
             open_project,
             new_project,
             select_composition,

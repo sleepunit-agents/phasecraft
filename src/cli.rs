@@ -44,6 +44,8 @@ enum Command {
     },
     /// Print available MIDI output destinations.
     Ports,
+    /// Create Phasecraft ports using installed Windows MIDI Services tools.
+    SetupMidi,
     /// Resolve steps as JSONL, including rests and their decision provenance.
     Inspect {
         file: PathBuf,
@@ -70,6 +72,9 @@ enum Command {
         /// Exercise the realtime transport without a MIDI device.
         #[arg(long)]
         dry_run: bool,
+        /// Send MIDI Clock and Start/Stop so the host follows this sequencer.
+        #[arg(long)]
+        send_clock: bool,
         /// Stop after this many 4/4 bars; omitted means continuous playback.
         #[arg(long)]
         bars: Option<u64>,
@@ -128,6 +133,11 @@ pub fn run() -> Result<(), String> {
             } else {
                 Err("validation failed".into())
             }
+        }
+        Command::SetupMidi => {
+            let port = phasecraft::playback::windows_setup::setup()?;
+            println!("Send to {port}; in your host receive from Phasecraft Receive.");
+            Ok(())
         }
         Command::Ports => {
             let midi = midir::MidiOutput::new("Phasecraft").map_err(|e| e.to_string())?;
@@ -192,6 +202,7 @@ pub fn run() -> Result<(), String> {
             port,
             virtual_port,
             dry_run,
+            send_clock,
             bars,
             watch,
             trace,
@@ -217,6 +228,7 @@ pub fn run() -> Result<(), String> {
                 steps,
                 watch,
                 trace,
+                send_clock: send_clock || loaded.midi.send_clock,
                 lookahead: Duration::from_millis(lookahead_ms),
             };
             if dry_run {

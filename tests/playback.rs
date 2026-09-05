@@ -186,3 +186,50 @@ fn stopping_releases_all_simultaneous_drum_voices() {
         assert!(messages.contains(&vec![0x89, note, 0]));
     }
 }
+
+#[test]
+fn clock_start_precedes_notes_and_cancel_sends_note_off_then_stop() {
+    use std::sync::atomic::Ordering;
+    let recording = Recording::default();
+    let messages = recording.messages.clone();
+    let running = Arc::new(AtomicBool::new(true));
+    let (tx, rx) = mpsc::channel();
+    tx.send(on(0)).unwrap();
+    let control = running.clone();
+    let worker = std::thread::spawn(move || {
+        dispatch_loop_with_sync(
+            recording,
+            rx,
+            control,
+            Instant::now() + Duration::from_millis(20),
+            MusicalClock { tempo: 132. },
+            Duration::from_millis(20),
+            sync::SyncOptions {
+                enabled: true,
+                end_tick: None,
+            },
+        )
+    });
+    let timeout = Instant::now() + Duration::from_secs(2);
+    while !messages
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|b| b == &[0x99, 42, 100])
+        && Instant::now() < timeout
+    {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    running.store(false, Ordering::Relaxed);
+    worker.join().unwrap().unwrap();
+    drop(tx);
+    let messages = messages.lock().unwrap();
+    assert_eq!(
+        &messages[..3],
+        &[vec![0xfa], vec![0xf8], vec![0x99, 42, 100]]
+    );
+    assert_eq!(
+        &messages[messages.len() - 2..],
+        &[vec![0x89, 42, 0], vec![0xfc]]
+    );
+}

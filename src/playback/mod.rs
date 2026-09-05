@@ -1,12 +1,14 @@
 pub mod ports;
+pub mod sync;
 pub mod transport;
+pub mod windows_setup;
 use crate::music::{PPQN, resolve::MidiEvent};
 use std::{
     collections::BTreeSet,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc::{Receiver, RecvTimeoutError},
+        mpsc::{Receiver, TryRecvError},
     },
     time::{Duration, Instant},
 };
@@ -38,6 +40,7 @@ impl MusicalClock {
 #[derive(Default, Debug)]
 pub struct DispatchStats {
     pub sent: u64,
+    pub clock_pulses: u64,
     pub dropped_late_notes: u64,
     pub max_lateness: Duration,
 }
@@ -110,36 +113,66 @@ pub fn dispatch_loop<S: MidiOutput>(
     clock: MusicalClock,
     late_limit: Duration,
 ) -> Result<DispatchStats, String> {
+    dispatch_loop_with_sync(
+        sink,
+        rx,
+        running,
+        origin,
+        clock,
+        late_limit,
+        sync::SyncOptions::default(),
+    )
+}
+
+pub fn dispatch_loop_with_sync<S: MidiOutput>(
+    sink: S,
+    rx: Receiver<MidiEvent>,
+    running: Arc<AtomicBool>,
+    origin: Instant,
+    clock: MusicalClock,
+    late_limit: Duration,
+    options: sync::SyncOptions,
+) -> Result<DispatchStats, String> {
     let mut dispatcher = EventDispatcher::new(sink);
+    let mut sync = sync::ClockOutput::new(origin, clock, options);
     let result = (|| {
+        let mut pending = None;
         while running.load(Ordering::Relaxed) {
-            let event = match rx.recv_timeout(Duration::from_millis(10)) {
-                Ok(event) => event,
-                Err(RecvTimeoutError::Timeout) => continue,
-                Err(RecvTimeoutError::Disconnected) => break,
-            };
-            let deadline = origin + clock.time_at_tick(event.tick);
-            loop {
-                if !running.load(Ordering::Relaxed) {
-                    return Ok(());
+            if pending.is_none() {
+                match rx.try_recv() {
+                    Ok(event) => pending = Some(event),
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => break,
                 }
-                let now = Instant::now();
-                if now >= deadline {
-                    break;
-                }
-                std::thread::sleep((deadline - now).min(Duration::from_millis(2)));
             }
-            dispatcher.dispatch(
-                &event,
-                Instant::now().saturating_duration_since(deadline),
-                late_limit,
-            )?;
+            let note_deadline = pending
+                .as_ref()
+                .map(|e| origin + clock.time_at_tick(e.tick));
+            let pulse_deadline = sync.deadline();
+            let now = Instant::now();
+            let deadline = note_deadline
+                .into_iter()
+                .chain(pulse_deadline)
+                .min()
+                .unwrap_or(now + Duration::from_millis(2));
+            if now < deadline {
+                std::thread::sleep((deadline - now).min(Duration::from_millis(2)));
+                continue;
+            }
+            // At a shared deadline, Start/Clock precede the first note.
+            if pulse_deadline.is_some_and(|d| d == deadline) {
+                sync.send(&mut dispatcher.sink, now)?;
+            } else if let Some(event) = pending.take() {
+                dispatcher.dispatch(&event, now.saturating_duration_since(deadline), late_limit)?;
+            }
         }
         Ok(())
     })();
     running.store(false, Ordering::Relaxed);
     let cleanup = dispatcher.cleanup();
-    result.and(cleanup)?;
+    let stop = sync.stop(&mut dispatcher.sink);
+    dispatcher.stats.clock_pulses = sync.pulses();
+    result.and(cleanup).and(stop)?;
     Ok(std::mem::take(&mut dispatcher.stats))
 }
 

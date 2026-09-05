@@ -1,6 +1,6 @@
 use crate::{
     music::{Composition, MAX_PARTS, STEP_TICKS, resolve::resolve_step},
-    playback::{MidiOutput, MusicalClock, dispatch_loop},
+    playback::{MidiOutput, MusicalClock, dispatch_loop_with_sync, sync::SyncOptions},
 };
 use std::{
     io::{self, Write},
@@ -17,6 +17,7 @@ pub struct PlayOptions {
     pub steps: Option<u64>,
     pub watch: bool,
     pub trace: bool,
+    pub send_clock: bool,
     pub lookahead: Duration,
 }
 pub fn play<S: MidiOutput + 'static>(
@@ -56,13 +57,17 @@ pub fn run_controlled<S: MidiOutput + 'static>(
     let dispatch_running = running.clone();
     // Late threshold is shorter than one sixteenth even at the maximum BPM.
     let worker = std::thread::spawn(move || {
-        dispatch_loop(
+        dispatch_loop_with_sync(
             sink,
             rx,
             dispatch_running,
             origin,
             clock,
             Duration::from_millis(20),
+            SyncOptions {
+                enabled: options.send_clock,
+                end_tick: options.steps.map(|s| s * STEP_TICKS),
+            },
         )
     });
     eprintln!(
@@ -168,8 +173,9 @@ pub fn run_controlled<S: MidiOutput + 'static>(
         .map_err(|_| "MIDI dispatch thread panicked".to_string())?;
     let stats = dispatched?;
     eprintln!(
-        "Stopped: {} messages sent, {} late notes dropped, maximum dispatch lateness {:.3} ms.",
+        "Stopped: {} note messages, {} clock pulses, {} late notes dropped, maximum dispatch lateness {:.3} ms.",
         stats.sent,
+        stats.clock_pulses,
         stats.dropped_late_notes,
         stats.max_lateness.as_secs_f64() * 1000.0
     );

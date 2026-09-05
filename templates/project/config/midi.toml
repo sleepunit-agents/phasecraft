@@ -4,3 +4,6 @@ port = "Phasecraft"
 lookahead_ms = 100
 # CLI --port / --virtual-port / --dry-run override this destination.
 # MIDI settings are read at startup; restart playback after changing them.
+
+# Send MIDI Clock plus Start/Stop so the host follows Phasecraft.
+send_clock = false

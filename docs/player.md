@@ -119,3 +119,51 @@ a secure backup. Local builds do not require this key. Signed builds pass
 `0.1.0+<full-commit>` metadata. The Player compares commits rather than SemVer
 precedence. A publication race can fail signature verification; retry once the
 release finishes. The CLI continues to use its separate `update.json` feed.
+
+
+## Let Ableton follow tempo and transport
+
+Enable **Send tempo & transport** before pressing Play. Phasecraft sends standard
+MIDI Clock (24 pulses per quarter note), Start, and Stop on the selected MIDI
+output. This works over an existing loopMIDI connection too. Clock continues
+through rests and is independent of every Part and random decision.
+
+In Live → Settings → Link, Tempo & MIDI, enable **Track** and **Sync** for the
+input receiving Phasecraft, then enable **EXT** in Live's transport. Use Phasecraft
+Play/Stop. Avoid enabling Sync for the return output back into Phasecraft or for
+multiple competing clock inputs. Live can take a moment to settle to the incoming
+tempo. BPM is conveyed by pulse timing, not a literal “132 BPM” MIDI message.
+
+Every Play begins from the start; Pause/Continue and seeking are not implemented.
+Tempo edits still require stopping and restarting. Sync is off by default and can
+be saved in `config/midi.toml` as `send_clock = true`, or enabled for a CLI run with
+`phasecraft play --send-clock`. A player checkbox overrides the file for that run.
+Silent preview sends no MIDI, including no clock. If dispatch falls a full clock
+pulse behind, playback stops rather than emitting a burst of stale clock messages.
+
+See [Ableton's external MIDI sync instructions](https://help.ableton.com/hc/en-us/articles/209071149-Synchronizing-Live-via-MIDI).
+
+## Windows without loopMIDI (experimental setup)
+
+On fully updated Windows 11 25H2, Microsoft's MIDI service provides native
+loopback endpoints. **Get MIDI tools** opens Microsoft's official download page;
+install the recommended x64 SDK Runtime and Tools package once. Then click
+**Set up Windows MIDI** while stopped. It creates the Phasecraft Send/Receive
+pair and selects **Phasecraft Send** as our destination. In Ableton use the
+**Phasecraft Receive** input, enabling Track and optionally Sync.
+
+The setup uses the installed Microsoft console (`midi loopback create`) outside
+playback. Phasecraft's engine still sends directly through the MIDI API. There is
+no loopMIDI driver to bundle and no MIDI console process in the playback path.
+The recommended RC4 tools create transient endpoints that last until the MIDI
+service restarts; repeat setup after restarting Windows if the pair is missing.
+Existing pairs are reused. The CLI equivalent is `phasecraft setup-midi`.
+
+This path depends on the Windows MIDI service and installed SDK version and still
+needs testing with a real Windows/Ableton installation. If the ports are not
+exposed to MIDI 1.0 apps, inspect Windows MIDI Settings; the player reports this
+instead of silently selecting an unrelated output. Existing loopMIDI destinations
+remain usable. Phasecraft does not install or restart system MIDI services.
+
+Sources: [Microsoft MIDI Services](https://microsoft.github.io/MIDI/),
+[console setup implementation at RC4](https://github.com/microsoft/MIDI/blob/rc-4/src/user-tools/midi-console/Midi/Commands/Loopback/CreateLoopbackCommand.cs).

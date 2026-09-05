@@ -27,6 +27,9 @@ It replaces the same downloads in place and includes the source commit and SHA-2
 checksums. Pull requests do not publish releases. Maintainers can also rerun the
 build using Actions → Test and package → Run workflow on `main`.
 
+The player can send MIDI tempo/transport sync and offers experimental native
+Windows MIDI setup. See [routing and sync](docs/player.md#let-ableton-follow-tempo-and-transport).
+
 ## Update in place
 
 Download this updater-enabled build once, then:

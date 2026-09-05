@@ -100,19 +100,30 @@ impl Player {
         port: Option<String>,
         virtual_port: bool,
         silent: bool,
+        send_clock: bool,
     ) -> Result<(), String> {
         let sink: Box<dyn MidiOutput> = if silent {
             Box::new(SilentOutput)
         } else {
             Box::new(ports::open_output(port, virtual_port)?)
         };
-        self.start(sink)
+        self.start_with_clock(sink, Some(send_clock))
     }
     pub fn start<S: MidiOutput + 'static>(&mut self, sink: S) -> Result<(), String> {
+        self.start_with_clock(sink, None)
+    }
+    fn start_with_clock<S: MidiOutput + 'static>(
+        &mut self,
+        sink: S,
+        send_clock: Option<bool>,
+    ) -> Result<(), String> {
         self.stop()?;
         let file = self.selected.clone().ok_or("open a project first")?;
         let loaded = project::load(&file)?;
         self.midi = loaded.midi;
+        if let Some(send_clock) = send_clock {
+            self.midi.send_clock = send_clock;
+        }
         self.composition = Some(Arc::new(loaded.composition.clone()));
         self.reset_view();
         let running = Arc::new(AtomicBool::new(true));
@@ -123,6 +134,7 @@ impl Player {
             steps: None,
             watch: true,
             trace: false,
+            send_clock: self.midi.send_clock,
             lookahead: Duration::from_millis(self.midi.lookahead_ms),
         };
         let worker = std::thread::spawn(move || {
@@ -315,6 +327,7 @@ mod tests {
             steps: Some(2),
             watch: false,
             trace: false,
+            send_clock: false,
             lookahead: Duration::from_millis(10),
         };
         let began = Instant::now();
