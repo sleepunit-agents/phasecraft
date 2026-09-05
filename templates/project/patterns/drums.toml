@@ -1,0 +1,11 @@
+# Reusable musical ideas. Keep related patterns together in one file.
+# These inherit the proven beats; tune a shared behavior here, or a Part locally.
+[library.behaviors."my.techno_kick"]
+compose = ["techno.kick", "my.kit.kick"]
+
+[library.behaviors."my.dnb_kick"]
+compose = ["dnb.kick", "my.kit.kick"]
+
+# Example of a pattern without a MIDI destination: combine it with a kit component.
+[library.behaviors."my.backbeat".trigger]
+rhythm = { steps = 16, pulses = 2, rotation = 4 }

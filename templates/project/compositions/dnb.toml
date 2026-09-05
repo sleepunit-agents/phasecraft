@@ -1,0 +1,19 @@
+# The validated 909 dnb beat. Each table name is a stable musical identity.
+tempo = 172
+seed = 172909
+phrase_bars = 4
+
+[parts.kick]
+use = "my.dnb_kick"
+
+[parts.snare]
+use = "dnb.snare"
+
+[parts.closed_hat]
+use = "dnb.closed_hat"
+
+[parts.open_hat]
+use = "dnb.open_hat"
+
+[parts.rim]
+use = "dnb.rim"

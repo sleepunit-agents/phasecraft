@@ -1,0 +1,6 @@
+# Run `phasecraft ports` and put the destination's exact name here.
+# On Windows, create this port in loopMIDI, then enable its Track input in Live.
+port = "Phasecraft"
+lookahead_ms = 100
+# CLI --port / --virtual-port / --dry-run override this destination.
+# MIDI settings are read at startup; restart playback after changing them.

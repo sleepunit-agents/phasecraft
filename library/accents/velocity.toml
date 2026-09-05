@@ -1,0 +1,9 @@
+[profiles."accent.velocity_only"]
+base = 80
+boost = 35
+[profiles."accent.subtle"]
+base = 70
+boost = 12
+[profiles."accent.punch"]
+base = 72
+boost = 40

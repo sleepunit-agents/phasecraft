@@ -3,7 +3,7 @@ use phasecraft::{
     engine::*,
 };
 fn config() -> Composition {
-    Composition::parse(include_str!("../examples/hat.toml")).unwrap()
+    Composition::parse(include_str!("../examples/quickstart/hat.toml")).unwrap()
 }
 fn euclid(steps: u32, pulses: u32, rotation: i32, reset_on_phrase: bool) -> Expression {
     Expression::Euclidean {
@@ -201,7 +201,7 @@ fn realization_and_midi_preserve_musical_times_and_emphasis() {
 }
 #[test]
 fn malformed_configs_fail_before_playback() {
-    let source = include_str!("../examples/hat.toml");
+    let source = include_str!("../examples/quickstart/hat.toml");
     for text in [
         source.replace("tempo = 132", "tempo = nan"),
         source.replace("steps = 16", "steps = 0"),

@@ -74,6 +74,9 @@ impl Registry {
         stack: &mut Vec<String>,
     ) -> Result<Value, String> {
         let mut local = table(value)?.clone();
+        if !profile {
+            super::syntax::behavior(&mut local)?;
+        }
         let used = local.remove("use");
         let composed = local.remove("compose");
         let refs = match (used, composed) {
@@ -169,13 +172,31 @@ fn imports(
 }
 
 pub fn expand(source: &str, base: Option<&Path>) -> Result<Value, String> {
+    expand_with_libraries(source, base, &[])
+}
+
+pub(super) fn expand_with_libraries(
+    source: &str,
+    base: Option<&Path>,
+    libraries: &[PathBuf],
+) -> Result<Value, String> {
     let mut registry = Registry::default();
-    registry.add(
-        toml::from_str(include_str!("stdlib.toml"))
-            .map_err(|e| format!("built-in library: {e}"))?,
-    )?;
+    for source in [
+        include_str!("../../library/drums/common.toml"),
+        include_str!("../../library/drums/techno.toml"),
+        include_str!("../../library/drums/dnb.toml"),
+        include_str!("../../library/accents/velocity.toml"),
+        include_str!("../../library/kits/909.toml"),
+    ] {
+        registry.add(toml::from_str(source).map_err(|e| format!("built-in library: {e}"))?)?;
+    }
     let mut root: Table = toml::from_str(source).map_err(|e| e.to_string())?;
-    imports(&mut root, base, &mut registry, &mut vec![], &mut vec![])?;
+    let mut loaded = vec![];
+    for path in libraries {
+        load_library(path, &mut registry, &mut vec![], &mut loaded)?;
+    }
+    imports(&mut root, base, &mut registry, &mut vec![], &mut loaded)?;
+    super::syntax::keyed_parts(&mut root)?;
     if let Some(library) = root.remove("library") {
         registry.add(library)?;
     }
@@ -191,17 +212,25 @@ pub fn expand(source: &str, base: Option<&Path>) -> Result<Value, String> {
         if let Some(profile) = fields.get_mut("profile") {
             *profile = registry.expand(profile, true, &mut vec![])?;
         }
+        let _: crate::music::Part = expanded
+            .clone()
+            .try_into()
+            .map_err(|e: toml::de::Error| e.to_string())?;
         Ok(expanded)
     }
+    fn fields_id(value: &Value) -> &str {
+        value.get("id").and_then(Value::as_str).unwrap_or("?")
+    }
     if let Some(value) = root.get_mut("part") {
-        *value = part(&registry, value)?;
+        *value = part(&registry, value).map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
     }
     if let Some(value) = root.get_mut("parts") {
         let parts = value
             .as_array_mut()
             .ok_or("parts must be an array of tables")?;
         for value in parts {
-            *value = part(&registry, value)?;
+            *value =
+                part(&registry, value).map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
         }
     }
     Ok(Value::Table(root))

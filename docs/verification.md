@@ -80,3 +80,29 @@ Native packaging now includes the examples directory recursively, including the
 listening guide and imported personal library. These new grooves need the same
 real-host listening evaluation as previous milestones; dry-run timing is not
 an audio measurement.
+
+## Project authoring and structural refactor
+
+- 48 integration tests pass locally, including ten project/authoring tests.
+- Saved SHA-256 fingerprints of 560-step JSONL traces from pre-refactor release
+  `951df512f4641bed4a56afc05a7419410f6978eb`; the original hat, techno, DnB and
+  showcase traces remain byte-identical. Fixtures are in
+  `tests/fixtures/pre-project-provenance.json` and run on every native platform.
+- Generated projects validate both compositions, retain identical genre traces,
+  survive moving the project directory, and run the default composition through
+  realtime dry-run playback without opening MIDI.
+- Project library edits apply at phrase boundaries; invalid edits retain the
+  previous music and subsequent valid edits recover. Shared-kit edits resolve
+  for both compositions. Existing standalone import-watch tests still pass.
+- New-directory refusal preserves existing files. Validation aggregates errors
+  from listed compositions and emits parseable JSON with nonzero failure status.
+- Keyed Parts, inferred rhythm kinds, explicit syntax, references, partial
+  overrides and expression-kind changes are covered by equivalence/error tests.
+- `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`, and
+  `cargo build --release --locked` pass locally. Native CI additionally runs the
+  complete test suite on Windows, Linux and both Mac architectures.
+- No new physical MIDI recording was made for this authoring refactor. Playback
+  acceptance recordings from the prior milestone remain the listening evidence.
+
+Example paths moved to `examples/quickstart`, `examples/studies` and
+`examples/showcases`; older paths above describe the historical test runs.

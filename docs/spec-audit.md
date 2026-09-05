@@ -134,3 +134,13 @@ remaining gap between the working engine and the intended authoring experience.
 Next earn cross-Part rhythm references with an interlocking 909 example, while
 strengthening generic realization/provenance as needed. Shared/stateful accent,
 phrase derivation, and broader timing should be separately scoped extensions.
+
+### Project authoring follow-up
+
+Project scaffolding (`new`), a neutral multi-composition manifest, separate MIDI
+configuration, shared pattern/kit files, keyed Parts, rhythm shorthand, and
+whole-project validation are implemented. Musical source is grouped into drums,
+accents and kits; internal source separates authoring, music and playback.
+These are organization/authoring changes, with golden pre-refactor traces retained.
+They do not implement arrangement, groove, stateful accent or 303 control behavior.
+See `authoring.md` and `architecture.md` for the current contracts and paths.

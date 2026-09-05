@@ -1,0 +1,31 @@
+[behaviors."kit.909.kick".output]
+channel = 10
+note = 36
+
+[behaviors."kit.909.rim".output]
+channel = 10
+note = 37
+
+[behaviors."kit.909.snare".output]
+channel = 10
+note = 38
+
+[behaviors."kit.909.clap".output]
+channel = 10
+note = 39
+
+[behaviors."kit.909.closed_hat".output]
+channel = 10
+note = 42
+
+[behaviors."kit.909.open_hat".output]
+channel = 10
+note = 46
+
+[behaviors."kit.909.low_tom".output]
+channel = 10
+note = 44
+
+[behaviors."kit.909.ride".output]
+channel = 10
+note = 51

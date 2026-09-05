@@ -4,10 +4,10 @@ use phasecraft::{
 };
 
 fn techno() -> Composition {
-    Composition::parse(include_str!("../examples/techno.toml")).unwrap()
+    Composition::parse(include_str!("../examples/quickstart/techno.toml")).unwrap()
 }
 fn dnb() -> Composition {
-    Composition::parse(include_str!("../examples/dnb.toml")).unwrap()
+    Composition::parse(include_str!("../examples/quickstart/dnb.toml")).unwrap()
 }
 fn positions(c: &Composition, id: &str) -> Vec<u64> {
     let part = c.parts.iter().find(|p| p.id == id).unwrap();
@@ -124,20 +124,20 @@ fn invalid_part_collections_are_rejected() {
     assert!(c.validate().is_err());
     let mixed = format!(
         "{}\n{}",
-        include_str!("../examples/hat.toml"),
-        include_str!("../examples/techno.toml")
+        include_str!("../examples/quickstart/hat.toml"),
+        include_str!("../examples/quickstart/techno.toml")
             .split("[[parts]]")
             .skip(1)
             .map(|s| format!("[[parts]]{s}"))
             .collect::<String>()
     );
     assert!(Composition::parse(&mixed).is_err());
-    let source = include_str!("../examples/techno.toml");
+    let source = include_str!("../examples/quickstart/techno.toml");
     assert!(Composition::parse(&source.replace("id = \"kick\"", "id = \"\"")).is_err());
 }
 #[test]
 fn legacy_hat_and_new_parts_syntax_produce_identical_streams() {
-    let source = include_str!("../examples/hat.toml");
+    let source = include_str!("../examples/quickstart/hat.toml");
     let old = Composition::parse(source).unwrap();
     let new = Composition::parse(
         &source

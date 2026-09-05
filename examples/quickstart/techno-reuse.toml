@@ -3,22 +3,17 @@ tempo = 132
 seed = 91827
 phrase_bars = 4
 
-[[parts]]
-id = "kick"
+[parts.kick]
 use = "techno.kick"
 
-[[parts]]
-id = "clap"
+[parts.clap]
 use = "techno.clap"
 
-[[parts]]
-id = "closed_hat"
+[parts.closed_hat]
 use = "techno.closed_hat"
 
-[[parts]]
-id = "open_hat"
+[parts.open_hat]
 use = "techno.open_hat"
 
-[[parts]]
-id = "rim"
+[parts.rim]
 use = "techno.rim"

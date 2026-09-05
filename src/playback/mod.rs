@@ -1,4 +1,5 @@
-use crate::{config::PPQN, engine::MidiEvent};
+pub mod transport;
+use crate::music::{PPQN, resolve::MidiEvent};
 use std::{
     collections::BTreeSet,
     sync::{

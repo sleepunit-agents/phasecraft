@@ -1,0 +1,19 @@
+# The validated 909 techno beat. Each table name is a stable musical identity.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[parts.kick]
+use = "my.techno_kick"
+
+[parts.clap]
+use = "techno.clap"
+
+[parts.closed_hat]
+use = "techno.closed_hat"
+
+[parts.open_hat]
+use = "techno.open_hat"
+
+[parts.rim]
+use = "techno.rim"

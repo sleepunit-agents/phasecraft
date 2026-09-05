@@ -30,7 +30,9 @@ Build: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID
 Windows: download phasecraft-windows-x64.zip, extract it, and open PowerShell
 in the extracted folder. Run:
 
-    .\phasecraft.exe play examples/hat.toml --dry-run --bars 4
+    .\phasecraft.exe new my-set
+    .\phasecraft.exe validate my-set
+    .\phasecraft.exe play my-set --dry-run --bars 4
 
 See the included README for MIDI routing into Ableton. No Rust installation
 is needed to run the executable. SHA256SUMS.txt contains archive checksums.

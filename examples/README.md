@@ -5,19 +5,19 @@ Phasecraft. All examples use the existing kit pads; no extra mappings or samples
 Run one at a time and stop with Ctrl-C. Set Live's tempo to match if recording.
 
 ```powershell
-.\phasecraft.exe play examples/showcase.toml --port "Phasecraft" --watch
+.\phasecraft.exe play examples/showcases/showcase.toml --port "Phasecraft" --watch
 ```
 
 ## Start here
 
 | File | BPM | Listen for |
 | --- | ---: | --- |
-| `techno.toml` / `techno-reuse.toml` | 132 | The same validated groove, explicit versus reusable authoring. No audible difference is intended. |
-| `dnb.toml` / `dnb-reuse.toml` | 172 | The same validated two-step DnB groove, with both authoring forms. |
-| `showcase.toml` | 132 | A steady kick/clap anchors shifting closed hats, rolling rim and sparse ride. Open hats exclude coincident closed hats; rim avoids admitted kicks. |
-| `hat.toml` | 132 | Original XOR trigger with 16/5-step cycles and a seven-step accent. |
+| `quickstart/techno.toml` / `quickstart/techno-reuse.toml` | 132 | The same validated groove, explicit versus reusable authoring. No audible difference is intended. |
+| `quickstart/dnb.toml` / `quickstart/dnb-reuse.toml` | 172 | The same validated two-step DnB groove, with both authoring forms. |
+| `showcases/showcase.toml` | 132 | A steady kick/clap anchors shifting closed hats, rolling rim and sparse ride. Open hats exclude coincident closed hats; rim avoids admitted kicks. |
+| `quickstart/hat.toml` | 132 | Original XOR trigger with 16/5-step cycles and a seven-step accent. |
 
-`showcase.toml` imports `library/personal.toml`. Keep the examples directory intact
+`showcases/showcase.toml` imports `showcases/library/personal.toml`. Keep the examples directory intact
 when copying it. Change the personal library while playing with `--watch`: the
 resolved change applies at the next phrase planning boundary, just like a song edit.
 An invalid or missing library keeps the complete previous composition running.
@@ -31,34 +31,34 @@ an arrangement or automatic transitions between examples.
 
 | Files | What differs | What stays fixed |
 | --- | --- | --- |
-| `phase-continue.toml` / `phase-reset.toml` | Five-step hat and seven-step accent either carry on across the phrase boundary or restart there. | Kick, seed, pulses, rotations, and all admission probabilities (1). |
-| `probability-locked.toml` / `probability-continuous.toml` | Trigger and accent rolls either repeat every four bars or evolve with absolute position. | Seed, IDs, rhythmic eligibility, probabilities, and profiles. |
-| `probability-locked.toml` / `probability-new-seed.toml` | Seed changes from 909 to 910. | IDs, rhythms, probabilities, and profiles. The deterministic kick remains unchanged. |
-| `probability-locked.toml` / `probability-accent-only.toml` | Accent admission falls from 0.75 to 0.20. | Every trigger roll and hit position. |
-| `emphasis-subtle.toml` / `emphasis-punch.toml` | Named velocity profile changes normal/accented intensity. | Every musical event, its semantic accent, and its duration. |
-| `interlock-hits.toml` / `interlock-structural.toml` | Rim avoids admitted kick hits versus every potential kick position. | Kick probability (0.5), its seed/ID/pattern, rim candidate pattern. |
+| `studies/phase-continue.toml` / `studies/phase-reset.toml` | Five-step hat and seven-step accent either carry on across the phrase boundary or restart there. | Kick, seed, pulses, rotations, and all admission probabilities (1). |
+| `studies/probability-locked.toml` / `studies/probability-continuous.toml` | Trigger and accent rolls either repeat every four bars or evolve with absolute position. | Seed, IDs, rhythmic eligibility, probabilities, and profiles. |
+| `studies/probability-locked.toml` / `studies/probability-new-seed.toml` | Seed changes from 909 to 910. | IDs, rhythms, probabilities, and profiles. The deterministic kick remains unchanged. |
+| `studies/probability-locked.toml` / `studies/probability-accent-only.toml` | Accent admission falls from 0.75 to 0.20. | Every trigger roll and hit position. |
+| `studies/emphasis-subtle.toml` / `studies/emphasis-punch.toml` | Named velocity profile changes normal/accented intensity. | Every musical event, its semantic accent, and its duration. |
+| `studies/interlock-hits.toml` / `studies/interlock-structural.toml` | Rim avoids admitted kick hits versus every potential kick position. | Kick probability (0.5), its seed/ID/pattern, rim candidate pattern. |
 
 In the interlock pair, the kick deliberately drops some eligible notes. `hits`
 allows rim material into those gaps; `structural` reserves those spaces even when
 no kick fires. References concern the engine's musical admission, not whether a
 MIDI driver delivered a late packet or a sample was audible.
 
-`algebra.toml` is the operator gallery. Kick stays on the quarters. Rim uses OR,
+`studies/algebra.toml` is the operator gallery. Kick stays on the quarters. Rim uses OR,
 snare AND, clap a nested XOR/AND, closed hat A_NOT_B, and ride B_NOT_A. The source
 cycles are 16 and 7 steps, with negative rotation on the second source. It is a
-busy listening exercise; the complete musical showcase is `showcase.toml`.
+busy listening exercise; the complete musical showcase is `showcases/showcase.toml`.
 
 ## Understand or change an example
 
 ```powershell
 # See defaults, imported definitions and overrides resolved into ordinary TOML.
-.\phasecraft.exe expand examples/showcase.toml
+.\phasecraft.exe expand examples/showcases/showcase.toml
 
 # Read a bar of Part decisions and resulting note/velocity/gate values.
-.\phasecraft.exe inspect examples/showcase.toml --steps 16 --human
+.\phasecraft.exe inspect examples/showcases/showcase.toml --steps 16 --human
 
 # Full recursive decision provenance (JSONL), including references and rests.
-.\phasecraft.exe inspect examples/showcase.toml --steps 64
+.\phasecraft.exe inspect examples/showcases/showcase.toml --steps 64
 ```
 
 A subtle/punch profile is still a **velocity-only** response. These examples do

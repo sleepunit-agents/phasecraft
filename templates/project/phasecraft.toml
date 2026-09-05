@@ -1,0 +1,6 @@
+# A workspace for songs, an album, or a live set. This is not an arrangement.
+name = "My set"
+default = "compositions/techno.toml"
+compositions = ["compositions/techno.toml", "compositions/dnb.toml"]
+libraries = ["patterns/drums.toml", "patterns/accents.toml", "kits/909.toml"]
+midi = "config/midi.toml"

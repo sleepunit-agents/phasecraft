@@ -1,0 +1,10 @@
+# Accent timing and its response are separate, reusable musical definitions.
+[library.behaviors."my.shifting_accent".accent]
+rhythm = { steps = 7, pulses = 3 }
+probability = 0.75
+amount = 0.8
+
+[library.profiles."my.punch"]
+use = "accent.punch"
+# Change how emphasis is rendered, without changing trigger decisions.
+boost = 40

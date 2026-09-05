@@ -3,22 +3,17 @@ tempo = 172
 seed = 172909
 phrase_bars = 4
 
-[[parts]]
-id = "kick"
+[parts.kick]
 use = "dnb.kick"
 
-[[parts]]
-id = "snare"
+[parts.snare]
 use = "dnb.snare"
 
-[[parts]]
-id = "closed_hat"
+[parts.closed_hat]
 use = "dnb.closed_hat"
 
-[[parts]]
-id = "open_hat"
+[parts.open_hat]
 use = "dnb.open_hat"
 
-[[parts]]
-id = "rim"
+[parts.rim]
 use = "dnb.rim"

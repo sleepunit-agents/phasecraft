@@ -1,0 +1,4 @@
+[behaviors."std.no_accent".accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0 }
+[behaviors."std.backbeat".trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 4 }

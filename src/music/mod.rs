@@ -1,4 +1,6 @@
-use crate::engine::Expression;
+pub mod resolve;
+pub mod rhythm;
+use rhythm::Expression;
 use serde::{Deserialize, Serialize};
 
 pub const MAX_PARTS: usize = 32;
@@ -34,7 +36,7 @@ impl TryFrom<CompositionFile> for Composition {
             (None, Some(parts)) => parts,
             _ => {
                 return Err(
-                    "Use either [part] or [[parts]], not both; at least one Part is required"
+                    "Use either [part] or parts ([parts.NAME] / [[parts]]), not both; at least one Part is required"
                         .into(),
                 );
             }
@@ -138,11 +140,7 @@ impl Composition {
             .map_err(|e: toml::de::Error| e.to_string())
     }
     pub fn read(path: &std::path::Path) -> Result<Self, String> {
-        let source =
-            std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        crate::library::expand(&source, path.parent())?
-            .try_into()
-            .map_err(|e: toml::de::Error| e.to_string())
+        crate::authoring::project::load(path).map(|loaded| loaded.composition)
     }
     pub fn phrase_steps(&self) -> u64 {
         u64::from(self.phrase_bars) * 16
@@ -236,8 +234,14 @@ impl Part {
                 return Err(format!("{name} must be finite and within 0..1"));
             }
         }
-        self.trigger.rhythm.validate(0)?;
-        self.accent.rhythm.validate(0)?;
+        self.trigger
+            .rhythm
+            .validate(0)
+            .map_err(|e| format!("trigger.rhythm: {e}"))?;
+        self.accent
+            .rhythm
+            .validate(0)
+            .map_err(|e| format!("accent.rhythm: {e}"))?;
         let o = &self.output;
         if !(1..=16).contains(&o.channel) || o.note > 127 {
             return Err("MIDI channel must be 1..16 and note 0..127".into());

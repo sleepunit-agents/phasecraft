@@ -18,6 +18,53 @@ It replaces the same downloads in place and includes the source commit and SHA-2
 checksums. Pull requests do not publish releases. Maintainers can also rerun the
 build using Actions → Test and package → Run workflow on `main`.
 
+## Start a project
+
+The project directory can hold a track, an album, or a live set. It is a collection
+of playable compositions and shared musical definitions; it does not arrange them.
+
+From the extracted Windows package:
+
+```powershell
+.\phasecraft.exe new my-set
+.\phasecraft.exe validate my-set
+.\phasecraft.exe play my-set --dry-run --bars 4
+.\phasecraft.exe ports
+# Set the destination name in my-set/config/midi.toml.
+.\phasecraft.exe play my-set --watch
+.\phasecraft.exe play my-set/compositions/dnb.toml --watch
+```
+
+`new` seeds the validated **132 BPM techno** and **172 BPM DnB** beats, both for
+Ableton's **909 Core Kit**. It refuses existing destinations. Templates and built-in
+behaviors are embedded in the executable; no source checkout or template download
+is required.
+
+```text
+my-set/
+  phasecraft.toml          # default composition and explicit shared library list
+  compositions/           # techno.toml, dnb.toml; add more pieces here
+  patterns/
+    drums.toml            # reusable drum behaviors and trigger patterns
+    accents.toml          # emphasis timing and response profiles
+  kits/909.toml           # musical MIDI pad mappings
+  config/midi.toml        # this machine's connection and lookahead
+  README.md               # local editing and playback guide
+```
+
+With Phasecraft on PATH, `phasecraft play` inside that folder plays its default.
+An explicit composition inside a project also receives the project's libraries
+and MIDI settings. `--port`, `--virtual-port`, and `--dry-run` override the configured
+destination; `--lookahead-ms` overrides configured lookahead. MIDI settings take
+effect when playback starts. Musical changes—including shared libraries—apply at
+phrase boundaries with `--watch`.
+
+`phasecraft validate my-set --json` checks every listed composition without opening
+MIDI and returns file paths, errors, and a `valid` boolean (nonzero exit on failure).
+`expand my-set` and `inspect my-set --human` use its default composition. Standalone
+TOML files still work. See [authoring conventions](docs/authoring.md) for path and
+merge rules, and [source layout](docs/architecture.md) for the internal boundaries.
+
 ## Run
 
 From a native package, use `./phasecraft` (Windows: `.\phasecraft.exe`). No Rust
@@ -28,23 +75,23 @@ Linux source builds need `pkg-config` and ALSA development headers
 
 ```sh
 # Inspect one four-bar phrase, including rests, as JSONL.
-phasecraft inspect examples/hat.toml --steps 64
+phasecraft inspect examples/quickstart/hat.toml --steps 64
 
 # Exercise realtime scheduling for 35 bars without opening a MIDI device.
-phasecraft play examples/hat.toml --dry-run --bars 35
+phasecraft play examples/quickstart/hat.toml --dry-run --bars 35
 
 # Find and connect to an existing MIDI destination.
 phasecraft ports
-phasecraft play examples/hat.toml --port "Your MIDI Port" --watch
+phasecraft play examples/quickstart/hat.toml --port "Your MIDI Port" --watch
 
 # macOS/Linux: publish a virtual MIDI source for the host to receive.
-phasecraft play examples/hat.toml --virtual-port --watch
+phasecraft play examples/quickstart/hat.toml --virtual-port --watch
 ```
 
 Ctrl-C stops and releases active notes. `--trace` prints the same decision records
 as `inspect`, at planning time (normally 100ms ahead). Normal playback prints only
 startup, reload, and shutdown messages. Redirect inspection to a file to compare
-runs: `phasecraft inspect examples/hat.toml --steps 560 > cycle.jsonl`.
+runs: `phasecraft inspect examples/quickstart/hat.toml --steps 560 > cycle.jsonl`.
 
 ## Hear the hat
 
@@ -71,8 +118,8 @@ adding that file does not mean its remote builds have run.
 Load **909 Core Kit** on a single monitored MIDI track and run either example:
 
 ```powershell
-.\phasecraft.exe play examples/techno.toml --port "Phasecraft" --watch
-.\phasecraft.exe play examples/dnb.toml --port "Phasecraft" --watch
+.\phasecraft.exe play examples/quickstart/techno.toml --port "Phasecraft" --watch
+.\phasecraft.exe play examples/quickstart/dnb.toml --port "Phasecraft" --watch
 ```
 
 Run one at a time; Ctrl-C stops. Set Live to the matching tempo if you want its
@@ -102,10 +149,10 @@ Assignments were cross-checked against the 909 Core Kit rack in
 The examples avoid simultaneous closed/open hat triggers; the kit retains
 ownership of its hat choke behavior and audio envelopes.
 
-New compositions use `[[parts]]`, with `[parts.trigger]`, `[parts.accent]`,
-`[parts.profile]`, and `[parts.output]` beneath each entry. The original `[part]`
-syntax remains supported; do not mix the two forms. Each Part needs a unique
-`id` and MIDI channel/note pair. Up to 32 Parts share the selected output port.
+New compositions can use `[parts.kick]`, with `[parts.kick.trigger]` and similar
+sections beneath it. The table name supplies the stable ID. The original `[part]`
+and `[[parts]]` forms remain supported with explicit `id`; do not mix forms. Each
+Part needs a unique ID and MIDI channel/note pair. Up to 32 Parts share the selected output port.
 Keeping the same ID preserves random decisions when Parts are reordered or added.
 Use one Part per drum voice; combining multiple Parts on the same MIDI route is
 rejected to prevent conflicting note-offs.
@@ -119,26 +166,25 @@ before new routing takes effect.
 ## Reusable authoring
 
 The [909 listening guide](examples/README.md) covers the focused examples and
-`showcase.toml`. The original hat/techno/DnB files remain unchanged; their compact
+`showcase.toml`. The example directories are now `quickstart/`, `studies/`, and `showcases/`.
+The original hat/techno/DnB musical definitions remain unchanged; their compact
 `techno-reuse.toml` and `dnb-reuse.toml` counterparts produce identical events.
 
 ```toml
 tempo = 132
 seed = 91827
 
-[[parts]]
-id = "kick"
+[parts.kick]
 use = "techno.kick"
 
-[[parts]]
-id = "closed_hat"
+[parts.closed_hat]
 use = "techno.closed_hat"
-[parts.trigger]
+[parts.closed_hat.trigger]
 probability = 0.8
-[parts.accent.rhythm]
+[parts.closed_hat.accent.rhythm]
 steps = 11
 pulses = 4
-[parts.profile]
+[parts.closed_hat.profile]
 use = "accent.subtle"
 ```
 
@@ -153,7 +199,7 @@ Velocity profiles are `accent.velocity_only` (80 + 35 × amount), `accent.subtle
 the result. Do not specify both `use` and `compose` on one table. Overrides merge
 nested fields; changing a rhythm's `type` replaces that expression, and selecting
 a different profile with `use` replaces the previous profile's settings. Arrays
-replace rather than append. Every Part instance supplies its own stable `id`.
+replace rather than append. Every Part instance supplies its own stable identity, through its table name or `id`.
 
 Define personal behaviors under `[library.behaviors."my.name"]` and profiles
 under `[library.profiles."my.name"]`, either in the composition or in a file loaded
@@ -176,7 +222,7 @@ if the new composition cannot be resolved or validated.
 An expression can reference another Part's trigger lane:
 
 ```toml
-rhythm = { type = "binary", op = "a_not_b", a = { type = "euclidean", steps = 16, pulses = 7 }, b = { type = "part", id = "kick", mode = "hits" } }
+rhythm = { op = "a_not_b", a = { steps = 16, pulses = 7 }, b = { part = "kick", mode = "hits" } }
 ```
 
 `mode = "hits"` uses that Part's admitted trigger after probability. `mode =
@@ -189,7 +235,7 @@ configuration before any of it is applied.
 
 ## Tune the system
 
-The smallest starting composition is in `examples/hat.toml`. It uses one stable
+The smallest starting composition is in `examples/quickstart/hat.toml`. It uses one stable
 Part ID, two trigger generators, and one accent generator. Supported Boolean
 operators are `or`, `and`, `xor`, `a_not_b`, and `b_not_a`. Binary nodes can nest;
 the engine does not special-case a two-Euclidean composite.

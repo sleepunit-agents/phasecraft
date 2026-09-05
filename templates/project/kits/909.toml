@@ -1,0 +1,5 @@
+# Ableton 909 Core Kit pad mapping. Add other kit components as needed.
+# Connections/ports belong in config/midi.toml; musical pad mappings live here.
+[library.behaviors."my.kit.kick".output]
+channel = 10
+note = 36

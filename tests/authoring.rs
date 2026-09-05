@@ -4,12 +4,13 @@ use phasecraft::{
 };
 use std::path::PathBuf;
 fn example(name: &str) -> Composition {
-    Composition::read(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("examples")
-            .join(format!("{name}.toml")),
-    )
-    .unwrap()
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples");
+    let path = ["quickstart", "studies", "showcases"]
+        .iter()
+        .map(|dir| root.join(dir).join(format!("{name}.toml")))
+        .find(|path| path.is_file())
+        .expect("example exists");
+    Composition::read(&path).unwrap()
 }
 fn trace(c: &Composition, step: u64, id: &str) -> String {
     serde_json::to_string(
@@ -316,8 +317,16 @@ fn imports_are_relative_and_detect_cycles_missing_files_and_duplicates() {
 }
 #[test]
 fn all_packaged_examples_have_ordered_complete_midi_pairs() {
-    for file in
-        std::fs::read_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples")).unwrap()
+    for file in ["quickstart", "studies", "showcases"]
+        .into_iter()
+        .flat_map(|dir| {
+            std::fs::read_dir(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("examples")
+                    .join(dir),
+            )
+            .unwrap()
+        })
     {
         let path = file.unwrap().path();
         if path.extension().is_none_or(|e| e != "toml") {
