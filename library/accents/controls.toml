@@ -1,0 +1,10 @@
+# Musical responses only; CC numbers belong to output.controls in the composition/kit.
+[profiles."accent.filter_punch"]
+base = 72
+boost = 30
+[profiles."accent.filter_punch".controls.filter]
+base = 0.20
+boost = 0.65
+[profiles."accent.filter_punch".controls.envelope]
+base = 0.15
+boost = 0.55

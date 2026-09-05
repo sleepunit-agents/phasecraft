@@ -27,15 +27,7 @@ async function boot(page) {
               throw new Error("Signature verification failed");
             return new Promise(() => {}); // successful install exits the process
           }
-          if (command === "setup_windows_midi") {
-            window.nativeMidi = true;
-            return "Phasecraft Send";
-          }
-          if (command === "get_midi_tools") return;
-          if (command === "destinations")
-            return window.nativeMidi
-              ? ["Phasecraft", "Phasecraft Send", "Phasecraft Receive"]
-              : ["Phasecraft"];
+          if (command === "destinations") return ["Phasecraft"];
           if (command === "plugin:dialog|open") return "/music/night-maps";
           if (command === "plugin:dialog|save") return "/music/new-set";
           if (command === "open_project" || command === "new_project") {
@@ -77,6 +69,16 @@ async function boot(page) {
                             tick: 2280,
                             duration_ticks: 100,
                             accent: { active: false, amount: 0 },
+                            controls: [
+                              {
+                                name: "filter",
+                                amount: 0.2,
+                                channel: 16,
+                                cc: 20,
+                                value: 25,
+                                reset: 25,
+                              },
+                            ],
                             groove: {
                               offset_ticks: 120,
                               requested_gate_ticks: 120,
@@ -222,25 +224,20 @@ test("offline checks and failed installs are recoverable", async ({ page }) => {
   await expect(page.locator("#update-chip")).toContainText("ccccccc");
 });
 
-test("native MIDI setup selects sender and sync is explicit at playback", async ({
+test("existing MIDI output supports explicit tempo and transport sync", async ({
   page,
 }) => {
   await boot(page);
   await page.locator("#open").click();
-  await page.locator("#setup-midi").click();
-  await expect(page.locator("#destination")).toHaveValue("Phasecraft Send");
-  await expect(page.locator("#midi-setup-info")).toContainText(
-    "Phasecraft Receive",
-  );
+  await expect(page.locator("#destination")).toHaveValue("Phasecraft");
   await page.locator("#send-clock").check();
   await page.locator("#play").click();
   await expect(page.locator("#send-clock")).toBeDisabled();
-  await expect(page.locator("#setup-midi")).toBeDisabled();
   expect(
     await page.evaluate(
       () => window.calls.findLast((c) => c.command === "start").args,
     ),
-  ).toMatchObject({ port: "Phasecraft Send", sendClock: true });
+  ).toMatchObject({ port: "Phasecraft", sendClock: true });
 });
 
 test("groove inspection exposes timing and the hit flash waits for the onset", async ({
@@ -257,6 +254,12 @@ test("groove inspection exposes timing and the hit flash waits for the onset", a
   await hat.click();
   await expect(page.locator("#detail-body")).toContainText("Timing +120 ticks");
   await expect(page.locator("#detail-body")).toContainText("ghost hit");
+  await expect(page.locator("#detail-body")).toContainText(
+    "channel 16 CC 20: 25",
+  );
+  await expect(page.locator("#detail-body")).toContainText(
+    "reset 25 at note-off / Stop",
+  );
   await expect(hat).not.toHaveClass(/fired/);
   await page.evaluate(() => (window.testProgress = 0.55));
   await expect(hat).toHaveClass(/fired/);

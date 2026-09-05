@@ -44,3 +44,10 @@ Explicit `type` tags and the original `[[parts]]` format also work.
 
 `--watch` applies valid musical changes at phrase boundaries. Invalid edits keep
 the last good system playing. Change MIDI configuration while stopped.
+
+## Accents beyond velocity
+
+`accent-punch` plays a 909 percussion system whose rim emphasis also drives two
+controls. Follow [ACCENTS.md](ACCENTS.md) to map filter and envelope in Ableton;
+`learn-filter` and `learn-envelope` are short helper compositions for MIDI learning.
+Without mappings, the notes still play normally.

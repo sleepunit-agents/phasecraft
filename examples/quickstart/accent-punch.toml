@@ -1,0 +1,26 @@
+# 909 percussion with a semantic accent driving velocity + filter + envelope.
+# Notes work immediately. Extra controls require the mappings in docs/accents.md.
+tempo = 132
+seed = 303909
+phrase_bars = 4
+
+[parts.kick]
+use = "techno.kick"
+
+[parts.clap]
+use = "techno.clap"
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "groove.ramp_up"]
+trigger.rhythm = { steps = 16, pulses = 11 }
+
+[parts.rim]
+use = "techno.rim"
+trigger.rhythm = { op = "a_not_b", a = { steps = 16, pulses = 9 }, b = { part = "kick", mode = "hits" } }
+accent.rhythm = { steps = 7, pulses = 3 }
+accent.probability = 0.8
+accent.amount = 0.8
+profile.use = "accent.filter_punch"
+# Channel 16 keeps these remote mappings apart from the channel-10 drum notes.
+output.controls.filter = { cc = 20, channel = 16 }
+output.controls.envelope = { cc = 21, channel = 16 }

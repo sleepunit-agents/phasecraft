@@ -1,3 +1,4 @@
+pub mod accent;
 pub mod groove;
 pub mod resolve;
 pub mod rhythm;
@@ -82,7 +83,7 @@ pub struct Part {
     pub accent: AccentLane,
     pub output: Output,
     #[serde(default)]
-    pub profile: VelocityProfile,
+    pub profile: AccentProfile,
     #[serde(default, skip_serializing_if = "groove::Groove::is_default")]
     pub groove: groove::Groove,
 }
@@ -121,18 +122,25 @@ pub struct Output {
     pub note: u8,
     #[serde(default = "gate")]
     pub gate_ticks: u64,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub controls: std::collections::BTreeMap<String, accent::ControlOutput>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct VelocityProfile {
+pub struct AccentProfile {
     pub base: u8,
     pub boost: u8,
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub controls: std::collections::BTreeMap<String, accent::ControlResponse>,
 }
-impl Default for VelocityProfile {
+/// Compatibility name for callers using velocity-only profiles.
+pub type VelocityProfile = AccentProfile;
+impl Default for AccentProfile {
     fn default() -> Self {
         Self {
             base: velocity(),
             boost: boost(),
+            controls: Default::default(),
         }
     }
 }
@@ -206,9 +214,19 @@ impl Composition {
         }
         let mut ids = std::collections::HashSet::new();
         let mut routes = std::collections::HashSet::new();
+        let mut control_routes = std::collections::HashSet::new();
         for part in &self.parts {
             part.validate()
                 .map_err(|e| format!("Part {:?}: {e}", part.id))?;
+            for output in part.output.controls.values() {
+                let channel = output.channel.unwrap_or(part.output.channel);
+                if !control_routes.insert((channel, output.cc)) {
+                    return Err(format!(
+                        "duplicate control route: channel {channel} CC {}; each CC needs one owner",
+                        output.cc
+                    ));
+                }
+            }
             if !ids.insert(&part.id) {
                 return Err(format!("duplicate Part ID {:?}", part.id));
             }
@@ -246,6 +264,7 @@ impl Part {
             .validate(0)
             .map_err(|e| format!("accent.rhythm: {e}"))?;
         self.groove.validate()?;
+        accent::validate(&self.profile.controls, &self.output.controls)?;
         let o = &self.output;
         if !(1..=16).contains(&o.channel) || o.note > 127 {
             return Err("MIDI channel must be 1..16 and note 0..127".into());

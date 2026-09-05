@@ -599,17 +599,3 @@ select:disabled {
   width: auto;
   accent-color: #93d5c6;
 }
-
-.windows-midi {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin: 0 0 14px;
-  font-size: 11px;
-  color: #8d999c;
-}
-.windows-midi button {
-  font-size: 11px;
-  padding: 7px 10px;
-}

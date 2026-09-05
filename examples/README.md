@@ -85,3 +85,10 @@ one groove.
 
 Compare `studies/groove-straight.toml` with `studies/groove-swung.toml`, then try
 `quickstart/garage.toml` with the 909 Core Kit. See [the groove guide](../docs/groove.md).
+
+### Accent controls
+
+`quickstart/accent-punch.toml` demonstrates velocity plus filter/envelope emphasis
+on 909 percussion. `studies/learn-filter.toml` and `learn-envelope.toml` isolate its
+CCs for MIDI learning. See [the accent guide](../docs/accents.md) for host mapping
+and reset semantics.

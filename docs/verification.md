@@ -133,3 +133,17 @@ are checked, and the existing musical golden traces remain in the suite.
   checked at 900 pixels. UI screenshots are test artifacts, not musical fixtures.
 - MIDI tests in this environment use silent/fake sinks because no ALSA sequencer
   device is available. Actual Ableton playback remains a check on the music machine.
+
+## Multi-control accent verification (2026-09-05)
+
+- 70 Rust tests pass, including response scaling/clamping, CC-before-note ordering,
+  gate and Stop/error resets, late control handling, 32-Part/eight-control load,
+  routing validation, and unchanged original 35-bar provenance.
+- Seven browser interaction tests pass, including existing-port MIDI sync and
+  visible control values/reset information. Native Tauri/WebKit smoke passes
+  repeated playback, reload rejection/recovery, garage and accent-punch playback.
+- Four bars of accent-punch at 132 BPM through the silent realtime sink sent
+  156 note messages, 40 CC messages and 384 clock pulses; zero late notes dropped,
+  maximum observed lateness 1.283 ms on this Linux machine.
+- Physical Windows MIDI and Ableton parameter response remain user-side listening
+  checks. Automated recording sinks verify the bytes; they do not prove sound.

@@ -36,6 +36,8 @@ pub struct MusicalEvent {
     pub tick: u64,
     pub duration_ticks: u64,
     pub accent: Accent,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub controls: Vec<super::accent::ResolvedControl>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub groove: Option<super::groove::GrooveTrace>,
 }
@@ -114,6 +116,27 @@ fn resolve_part(
         tick: step * STEP_TICKS,
         duration_ticks: part.output.gate_ticks,
         groove: None,
+        controls: part
+            .profile
+            .controls
+            .iter()
+            .map(|(name, response)| {
+                let output = &part.output.controls[name];
+                let amount = response.value(if accent.admitted {
+                    part.accent.amount
+                } else {
+                    0.0
+                });
+                super::accent::ResolvedControl {
+                    name: name.clone(),
+                    amount,
+                    channel: output.channel.unwrap_or(part.output.channel),
+                    cc: output.cc,
+                    value: super::accent::midi_value(amount),
+                    reset: super::accent::midi_value(response.base),
+                }
+            })
+            .collect(),
         accent: Accent {
             active: accent.admitted,
             amount: if accent.admitted {
@@ -146,8 +169,10 @@ pub fn realize(c: &Composition, part: &Part, start_step: u64, steps: u64) -> Rhy
 pub struct MidiEvent {
     pub tick: u64,
     pub bytes: [u8; 3],
+    /// CC onset registers a resting value for stop/error cleanup.
+    pub reset_value: Option<u8>,
 }
-pub fn to_midi(part: &Part, event: &MusicalEvent) -> [MidiEvent; 2] {
+pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
     let output = &part.output;
     let velocity = (f64::from(part.profile.base)
         * event.groove.as_ref().map_or(1.0, |g| g.velocity_factor)
@@ -158,16 +183,31 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> [MidiEvent; 2] {
         })
     .round()
     .clamp(1.0, 127.0) as u8;
-    [
+    let mut events = vec![
         MidiEvent {
             tick: event.tick,
             bytes: [0x90 | (output.channel - 1), output.note, velocity],
+            reset_value: None,
         },
         MidiEvent {
             tick: event.tick + event.duration_ticks,
             bytes: [0x80 | (output.channel - 1), output.note, 0],
+            reset_value: None,
         },
-    ]
+    ];
+    for control in &event.controls {
+        events.push(MidiEvent {
+            tick: event.tick,
+            bytes: [0xb0 | (control.channel - 1), control.cc, control.value],
+            reset_value: Some(control.reset),
+        });
+        events.push(MidiEvent {
+            tick: event.tick + event.duration_ticks,
+            bytes: [0xb0 | (control.channel - 1), control.cc, control.reset],
+            reset_value: None,
+        });
+    }
+    events
 }
 
 /// Merge one grid position before dispatch. Sending each Part's on/off pair
@@ -268,7 +308,14 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
             midi.extend(to_midi(part, event));
         }
     }
-    midi.sort_by_key(|event| (event.tick, event.bytes));
+    midi.sort_by_key(|event| {
+        let priority = match event.bytes[0] & 0xf0 {
+            0x80 => 0, // release the previous note first
+            0xb0 => 1, // establish controls before the next attack
+            _ => 2,
+        };
+        (event.tick, priority, event.bytes)
+    });
     (traces, midi)
 }
 

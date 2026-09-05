@@ -1,0 +1,15 @@
+# MIDI-learn helper: only one changing CC, plus a quiet 909 rim hit.
+# In Ableton MIDI Map mode, select the parameter, play briefly, then stop.
+tempo = 60
+seed = 1
+phrase_bars = 1
+[parts.learn]
+use = "techno.rim"
+trigger.rhythm = { steps = 4, pulses = 1 }
+accent.rhythm = { steps = 4, pulses = 1 }
+accent.probability = 1.0
+accent.amount = 1.0
+profile.base = 1
+profile.boost = 0
+profile.controls.filter = { base = 0.2, boost = 0.6 }
+output.controls.filter = { cc = 20, channel = 16 }

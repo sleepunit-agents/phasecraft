@@ -143,27 +143,9 @@ pulse behind, playback stops rather than emitting a burst of stale clock message
 
 See [Ableton's external MIDI sync instructions](https://help.ableton.com/hc/en-us/articles/209071149-Synchronizing-Live-via-MIDI).
 
-## Windows without loopMIDI (experimental setup)
+## Windows MIDI routing
 
-On fully updated Windows 11 25H2, Microsoft's MIDI service provides native
-loopback endpoints. **Get MIDI tools** opens Microsoft's official download page;
-install the recommended x64 SDK Runtime and Tools package once. Then click
-**Set up Windows MIDI** while stopped. It creates the Phasecraft Send/Receive
-pair and selects **Phasecraft Send** as our destination. In Ableton use the
-**Phasecraft Receive** input, enabling Track and optionally Sync.
-
-The setup uses the installed Microsoft console (`midi loopback create`) outside
-playback. Phasecraft's engine still sends directly through the MIDI API. There is
-no loopMIDI driver to bundle and no MIDI console process in the playback path.
-The recommended RC4 tools create transient endpoints that last until the MIDI
-service restarts; repeat setup after restarting Windows if the pair is missing.
-Existing pairs are reused. The CLI equivalent is `phasecraft setup-midi`.
-
-This path depends on the Windows MIDI service and installed SDK version and still
-needs testing with a real Windows/Ableton installation. If the ports are not
-exposed to MIDI 1.0 apps, inspect Windows MIDI Settings; the player reports this
-instead of silently selecting an unrelated output. Existing loopMIDI destinations
-remain usable. Phasecraft does not install or restart system MIDI services.
-
-Sources: [Microsoft MIDI Services](https://microsoft.github.io/MIDI/),
-[console setup implementation at RC4](https://github.com/microsoft/MIDI/blob/rc-4/src/user-tools/midi-console/Midi/Commands/Loopback/CreateLoopbackCommand.cs).
+Use your existing loopMIDI port: select it in Phasecraft and enable the same input
+in Ableton. The experimental Microsoft MIDI Tools setup has been removed; no SDK
+or MIDI service setup is required by Phasecraft. Previously created ports are left
+alone and can still be selected if available. macOS/Linux retain virtual MIDI output.

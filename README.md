@@ -15,7 +15,7 @@ The repository and downloads are public; no GitHub login is needed.
 It installs for your account and adds a Start menu shortcut. Launch **Phasecraft
 Player**, choose **Open project**, and point it at your project folder. Select a
 composition and MIDI destination, then press **Play**. **New project** seeds the
-909 techno and DnB examples. **Silent preview** runs the same transport without MIDI.
+909 techno, DnB, garage and accent-control examples. **Silent preview** runs the same transport without MIDI.
 Mac builds ship as DMGs; Linux x64 ships as an AppImage and Debian package. See the
 [desktop guide](docs/player.md) for installation, playback and visualization details.
 
@@ -27,8 +27,7 @@ It replaces the same downloads in place and includes the source commit and SHA-2
 checksums. Pull requests do not publish releases. Maintainers can also rerun the
 build using Actions → Test and package → Run workflow on `main`.
 
-The player can send MIDI tempo/transport sync and offers experimental native
-Windows MIDI setup. See [routing and sync](docs/player.md#let-ableton-follow-tempo-and-transport).
+The player can send MIDI tempo/transport sync through your MIDI connection. See [routing and sync](docs/player.md#let-ableton-follow-tempo-and-transport).
 
 ## Update in place
 
@@ -67,7 +66,7 @@ From the extracted Windows package:
 .\phasecraft.exe play my-set/compositions/dnb.toml --watch
 ```
 
-`new` seeds the validated **132 BPM techno** and **172 BPM DnB** beats, both for
+`new` seeds **132 BPM techno and garage**, **172 BPM DnB**, and an accent-control study for
 Ableton's **909 Core Kit**. It refuses existing destinations. Templates and built-in
 behaviors are embedded in the executable; no source checkout or template download
 is required.
@@ -338,3 +337,7 @@ No harmony, arranger, E16 integration, AI/MCP, or DSP is included.
 Reusable swing, laid-back timing, run contours and ghost articulation are available;
 see [groove and the 909 garage example](docs/groove.md).
 The first design contracts are recorded in `docs/vertical-slice.md`.
+
+Reusable [multi-control accent profiles](docs/accents.md) can drive velocity plus
+named MIDI controls. New projects include a 909 `accent-punch` example and MIDI-learn
+helpers for its two Ableton mappings.

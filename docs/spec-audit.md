@@ -152,3 +152,16 @@ articulation are implemented as reusable behavior components. The 909 garage
 example and controlled straight/grooved pair are shipped. See `groove.md` for
 precise semantics and timing bounds. Multi-control/stateful and shared accents,
 phrase variants and arrangement remain future work.
+
+## Multi-control accents and MIDI setup simplification (2026-09-05)
+
+Accent profiles now support named normalized control responses alongside velocity,
+with separate output CC/channel assignments, independent groove timing, bounded
+queue capacity, onset ordering, and gate/Stop/error restoration to configured base.
+Trace/GUI inspection expose the response and MIDI values. A 909 accent-punch
+composition and two mapping helpers ship in new projects. Stateful accumulation,
+group/global accents and pitched articulation remain open.
+
+Per Jonathan's preference, removed experimental Windows MIDI Tools setup UI/CLI
+and launcher code. Existing loopMIDI/output selection and tempo/transport sync stay;
+macOS/Linux virtual MIDI remains available. No existing system endpoints are deleted.

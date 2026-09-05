@@ -337,9 +337,18 @@ fn all_packaged_examples_have_ordered_complete_midi_pairs() {
             let (_, events) = resolve_step(&c, step);
             assert!(events.windows(2).all(|e| e[0].tick <= e[1].tick));
             let mut active = std::collections::HashMap::new();
+            let mut controls = std::collections::HashMap::new();
             for e in events {
                 let key = (e.bytes[0] & 15, e.bytes[1]);
-                if e.bytes[0] & 0xf0 == 0x90 {
+                if e.bytes[0] & 0xf0 == 0xb0 {
+                    if let Some(reset) = e.reset_value {
+                        assert!(controls.insert(key, (e.tick, reset)).is_none());
+                    } else {
+                        let (on, reset) = controls.remove(&key).expect("CC reset follows onset");
+                        assert!(e.tick > on && e.tick < on + 240);
+                        assert_eq!(e.bytes[2], reset);
+                    }
+                } else if e.bytes[0] & 0xf0 == 0x90 {
                     assert!(active.insert(key, e.tick).is_none());
                 } else {
                     let on = active
@@ -349,6 +358,7 @@ fn all_packaged_examples_have_ordered_complete_midi_pairs() {
                 }
             }
             assert!(active.is_empty());
+            assert!(controls.is_empty());
         }
     }
 }

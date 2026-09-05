@@ -15,6 +15,7 @@ MIDI. Musical definitions are grouped by what a musician wants to find.
 | `src/playback/mod.rs` | Clock conversion, MIDI sinks, deadline dispatch and cleanup |
 | `src/playback/transport.rs` | Lookahead producer, looping and phrase-boundary reload |
 | `src/cli.rs` | Commands, output selection and terminal presentation |
+| `src/music/accent.rs` | Named emphasis responses, MIDI control bindings and validation |
 | `library/drums/` | Common, techno and DnB behaviors |
 | `library/accents/` | Reusable emphasis responses |
 | `library/kits/` | Output pad components |

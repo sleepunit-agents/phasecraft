@@ -186,6 +186,7 @@ pub(super) fn expand_with_libraries(
         include_str!("../../library/drums/techno.toml"),
         include_str!("../../library/drums/dnb.toml"),
         include_str!("../../library/accents/velocity.toml"),
+        include_str!("../../library/accents/controls.toml"),
         include_str!("../../library/kits/909.toml"),
         include_str!("../../library/grooves/drums.toml"),
     ] {

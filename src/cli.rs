@@ -44,8 +44,6 @@ enum Command {
     },
     /// Print available MIDI output destinations.
     Ports,
-    /// Create Phasecraft ports using installed Windows MIDI Services tools.
-    SetupMidi,
     /// Resolve steps as JSONL, including rests and their decision provenance.
     Inspect {
         file: PathBuf,
@@ -134,11 +132,6 @@ pub fn run() -> Result<(), String> {
                 Err("validation failed".into())
             }
         }
-        Command::SetupMidi => {
-            let port = phasecraft::playback::windows_setup::setup()?;
-            println!("Send to {port}; in your host receive from Phasecraft Receive.");
-            Ok(())
-        }
         Command::Ports => {
             let midi = midir::MidiOutput::new("Phasecraft").map_err(|e| e.to_string())?;
             for (i, p) in midi.ports().iter().enumerate() {
@@ -177,13 +170,14 @@ pub fn run() -> Result<(), String> {
                             .map(|event| {
                                 let midi = phasecraft::music::resolve::to_midi(part, event);
                                 format!(
-                                    "note={} channel={} velocity={} gate={} ticks accent={:.2} onset_tick={}",
+                                    "note={} channel={} velocity={} gate={} ticks accent={:.2} onset_tick={} controls={}",
                                     part.output.note,
                                     part.output.channel,
                                     midi[0].bytes[2],
                                     event.duration_ticks,
                                     event.accent.amount,
-                                    event.tick
+                                    event.tick,
+                                    serde_json::to_string(&event.controls).unwrap()
                                 )
                             })
                             .unwrap_or_else(|| "rest".into());

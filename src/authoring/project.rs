@@ -191,6 +191,18 @@ const FILES: &[(&str, &str)] = &[
         include_str!("../../templates/project/compositions/garage.toml"),
     ),
     (
+        "compositions/accent-punch.toml",
+        include_str!("../../templates/project/compositions/accent-punch.toml"),
+    ),
+    (
+        "compositions/learn-filter.toml",
+        include_str!("../../templates/project/compositions/learn-filter.toml"),
+    ),
+    (
+        "compositions/learn-envelope.toml",
+        include_str!("../../templates/project/compositions/learn-envelope.toml"),
+    ),
+    (
         "patterns/drums.toml",
         include_str!("../../templates/project/patterns/drums.toml"),
     ),
@@ -206,6 +218,7 @@ const FILES: &[(&str, &str)] = &[
         "kits/909.toml",
         include_str!("../../templates/project/kits/909.toml"),
     ),
+    ("ACCENTS.md", include_str!("../../docs/accents.md")),
     (
         "README.md",
         include_str!("../../templates/project/README.md"),

@@ -1,10 +1,9 @@
 pub mod ports;
 pub mod sync;
 pub mod transport;
-pub mod windows_setup;
 use crate::music::{PPQN, resolve::MidiEvent};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -40,6 +39,7 @@ impl MusicalClock {
 #[derive(Default, Debug)]
 pub struct DispatchStats {
     pub sent: u64,
+    pub controls_sent: u64,
     pub clock_pulses: u64,
     pub dropped_late_notes: u64,
     pub max_lateness: Duration,
@@ -48,6 +48,7 @@ pub struct DispatchStats {
 pub struct EventDispatcher<S: MidiOutput> {
     pub sink: S,
     active: BTreeSet<(u8, u8)>,
+    controls: BTreeMap<(u8, u8), u8>,
     pub stats: DispatchStats,
 }
 impl<S: MidiOutput> EventDispatcher<S> {
@@ -55,6 +56,7 @@ impl<S: MidiOutput> EventDispatcher<S> {
         Self {
             sink,
             active: BTreeSet::new(),
+            controls: BTreeMap::new(),
             stats: DispatchStats::default(),
         }
     }
@@ -68,6 +70,20 @@ impl<S: MidiOutput> EventDispatcher<S> {
         let key = (status & 15, note);
         let is_on = status & 0xf0 == 0x90 && velocity > 0;
         self.stats.max_lateness = self.stats.max_lateness.max(lateness);
+        if status & 0xf0 == 0xb0 {
+            if let Some(reset) = event.reset_value {
+                if lateness > late_limit {
+                    return Ok(());
+                }
+                self.controls.insert(key, reset);
+            }
+            self.sink.send(&event.bytes)?;
+            if event.reset_value.is_none() {
+                self.controls.remove(&key);
+            }
+            self.stats.controls_sent += 1;
+            return Ok(());
+        }
         if is_on && lateness > late_limit {
             self.stats.dropped_late_notes += 1;
             return Ok(());
@@ -94,6 +110,12 @@ impl<S: MidiOutput> EventDispatcher<S> {
             }
         }
         self.active.clear();
+        for (&(channel, cc), &reset) in &self.controls {
+            if let Err(e) = self.sink.send(&[0xb0 | channel, cc, reset]) {
+                error = Some(e);
+            }
+        }
+        self.controls.clear();
         error.map_or(Ok(()), Err)
     }
 }
