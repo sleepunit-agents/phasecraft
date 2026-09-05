@@ -51,6 +51,7 @@ export function setupUpdates(invoke, chip, version, action) {
   version.onkeydown = (e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
+      e.stopPropagation();
       check();
     }
   };

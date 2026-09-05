@@ -76,10 +76,10 @@ jobs:
             bundles: nsis
           - os: macos-15
             name: macos-arm64
-            bundles: dmg
+            bundles: app,dmg
           - os: macos-15-intel
             name: macos-x64
-            bundles: dmg
+            bundles: app,dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

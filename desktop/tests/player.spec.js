@@ -140,6 +140,12 @@ test("update chip checks quietly, compares builds and installs only on click", a
 }) => {
   await boot(page);
   await expect(page.locator("#update-chip")).toBeHidden();
+  await page.locator("#open").click();
+  await page.locator("#version").focus();
+  await page.keyboard.press("Space");
+  expect(
+    await page.evaluate(() => window.calls.some((c) => c.command === "start")),
+  ).toBe(false);
   await page.evaluate(() => (window.remoteCommit = "b".repeat(40)));
   await page.locator("#version").click();
   await expect(page.locator("#update-chip")).toContainText("bbbbbbb");
