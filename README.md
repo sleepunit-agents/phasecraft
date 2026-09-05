@@ -1,8 +1,9 @@
 # Phasecraft
 
 A tiny deterministic realtime MIDI sequencer. Describe a rhythmic system in TOML,
-loop it, and inspect every decision. This first slice plays one hat Part:
-`XOR(E(7,16), E(2,5))` triggers with an independent `E(3,7)` accent lane.
+loop it, and inspect every decision. Parts share a musical clock and MIDI port while keeping independent rhythms,
+accents, profiles, and stable random identities. Start with one polymetric hat,
+a 132 BPM techno beat, or a 172 BPM drum-and-bass beat.
 Ableton (or any MIDI host) supplies the sound.
 
 ## Download
@@ -65,9 +66,59 @@ static C runtime; macOS uses system frameworks. Packages are native CLI builds,
 not signed installers. Cross-platform CI is defined in `.github/workflows/build.yml`;
 adding that file does not mean its remote builds have run.
 
+## Play a full kit
+
+Load **909 Core Kit** on a single monitored MIDI track and run either example:
+
+```powershell
+.\phasecraft.exe play examples/techno.toml --port "Phasecraft" --watch
+.\phasecraft.exe play examples/dnb.toml --port "Phasecraft" --watch
+```
+
+Run one at a time; Ctrl-C stops. Set Live to the matching tempo if you want its
+recording grid to line up (Phasecraft still owns its clock).
+
+- `techno.toml`: 132 BPM, quarter-note kick, claps on 2 and 4, alternating closed
+  and open eighth-note hats, plus quiet probabilistic rim clicks. A seven-step
+  closed-hat accent and fifteen-step rim cycle add movement around fixed anchors.
+- `dnb.toml`: 172 BPM, kick on 1 and the & of 3, snare on 2 and 4, alternating
+  emphasis on sixteenth hats, an open hat on the & of 4, and quiet optional rim
+  clicks. A simple two-step drum groove; the 909 supplies all sounds.
+- `hat.toml`: the original one-Part polymetric experiment, unchanged.
+
+Both kit examples use channel 10 and the following rack pads:
+
+| Role | MIDI note | Live note name |
+| --- | ---: | --- |
+| Kick | 36 | C1 |
+| Rim shot | 37 | C#1 |
+| Snare | 38 | D1 |
+| Clap | 39 | D#1 |
+| Closed hat | 42 | F#1 |
+| Open hat | 46 | A#1 |
+
+Assignments were cross-checked against the 909 Core Kit rack in
+[Ableton's published DJ Gigola Live Set](https://www.ableton.com/en/blog/download-the-live-set-of-dj-gigolas-new-track-unfolding-practice-ii/).
+The examples avoid simultaneous closed/open hat triggers; the kit retains
+ownership of its hat choke behavior and audio envelopes.
+
+New compositions use `[[parts]]`, with `[parts.trigger]`, `[parts.accent]`,
+`[parts.profile]`, and `[parts.output]` beneath each entry. The original `[part]`
+syntax remains supported; do not mix the two forms. Each Part needs a unique
+`id` and MIDI channel/note pair. Up to 32 Parts share the selected output port.
+Keeping the same ID preserves random decisions when Parts are reordered or added.
+Use one Part per drum voice; combining multiple Parts on the same MIDI route is
+rejected to prevent conflicting note-offs.
+
+Inspection emits one JSONL record per Part per step, ordered by stable Part ID.
+Playback merges all Parts' events by musical tick before dispatching them.
+Configuration reloads apply the entire composition at a phrase boundary, including
+added/removed Parts. Gates end before that boundary, so outgoing notes are released
+before new routing takes effect.
+
 ## Tune the system
 
-The complete starting composition is in `examples/hat.toml`. It uses one stable
+The smallest starting composition is in `examples/hat.toml`. It uses one stable
 Part ID, two trigger generators, and one accent generator. Supported Boolean
 operators are `or`, `and`, `xor`, `a_not_b`, and `b_not_a`. Binary nodes can nest;
 the engine does not special-case a two-Euclidean composite.
@@ -124,7 +175,8 @@ after a stall. Active note-offs still run. Shutdown reports dispatch lateness an
 late drops; those measurements do not include driver or audio-host latency.
 
 `cargo test --locked` checks balanced Euclidean rhythms, all Boolean operations,
-560-step phase behavior, independent reset/probability semantics, deterministic
+560-step phase behavior, multi-Part ordering and isolation, example backbeats,
+independent reset/probability semantics, deterministic
 replay and RNG isolation, semantic accent, MIDI translation, and dispatch cleanup
 including output failure. `cargo clippy --locked --all-targets -- -D warnings`
 checks the implementation. A dry run validates transport execution, not actual

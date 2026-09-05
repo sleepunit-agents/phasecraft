@@ -33,3 +33,25 @@ compatibility baseline.
 5. Edit seed: hear the change at the next unplanned phrase boundary.
 6. Stop during a note and confirm note-off delivery. Check driver/audio timing
    separately from the CLI's dispatch-lateness measurements.
+
+## Multi-Part extension — 2026-09-05
+
+- 24 tests pass, including conventional example anchors, distinct kit routes,
+  Part identity isolation, stable output under reordering, simultaneous note
+  ordering with unequal gates, legacy TOML equivalence, and multi-note cleanup.
+- Clippy and release build pass. The old hat's 4,480-step inspection output is
+  byte-for-byte identical to the output captured before the refactor.
+- Four-bar realtime silent runs: techno 132 BPM, 124 messages, zero late drops;
+  DnB 172 BPM, 170 messages, zero late drops.
+- Live reload smoke: removed the rim Part at bar 2, re-added under a new ID at
+  bar 3; exactly 224 expected provenance records, with correct Part membership.
+- Capacity smoke: 32 Parts firing every sixteenth at 400 BPM with maximum 1s
+  lookahead, 1,024 messages over one bar, zero late drops or queue overflow.
+- Kit notes were checked against the 909 Core Kit in Ableton's published
+  [DJ Gigola Live Set](https://www.ableton.com/en/blog/download-the-live-set-of-dj-gigolas-new-track-unfolding-practice-ii/).
+  Its stored ReceivingNote values use the inverse mapping (128 minus MIDI note),
+  consistent with [Paketti's documented rack-format findings](https://esaruoho.github.io/paketti/CHANGESLOG.html).
+  Only note-assignment facts were used; no Live Set, samples, or musical content
+  from that project is included here.
+
+The new full-kit grooves still need listening/recording in the user's Ableton.

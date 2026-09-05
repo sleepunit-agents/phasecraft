@@ -1,0 +1,81 @@
+# 909 Core Kit: straightforward four-on-the-floor, backbeat clap,
+# eighth-note hats and a quiet, independently cycling rim.
+# Fixed kick/clap anchors; hat emphasis cycles over seven sixteenths.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 4, rotation = 0 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 110
+boost = 0
+[parts.output]
+channel = 10
+note = 36
+
+[[parts]]
+id = "clap"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 4 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 100
+boost = 0
+[parts.output]
+channel = 10
+note = 39
+
+[[parts]]
+id = "closed_hat"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 4, rotation = 0 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 3, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 66
+boost = 16
+[parts.output]
+channel = 10
+note = 42
+
+[[parts]]
+id = "open_hat"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 4, rotation = 2 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 6 }
+amount = 1.0
+[parts.profile]
+base = 78
+boost = 8
+[parts.output]
+channel = 10
+note = 46
+
+[[parts]]
+id = "rim"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 15, pulses = 2, rotation = 3 }
+probability = 0.55
+[parts.accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 2, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 52
+boost = 12
+[parts.output]
+channel = 10
+note = 37

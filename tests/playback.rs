@@ -164,3 +164,25 @@ fn cancellation_interrupts_waiting_for_a_future_note() {
     worker.join().unwrap().unwrap();
     assert!(messages.lock().unwrap().is_empty());
 }
+
+#[test]
+fn stopping_releases_all_simultaneous_drum_voices() {
+    let mut d = EventDispatcher::new(Recording::default());
+    for note in [36, 38, 42, 46] {
+        d.dispatch(
+            &MidiEvent {
+                tick: 0,
+                bytes: [0x99, note, 100],
+            },
+            Duration::ZERO,
+            Duration::ZERO,
+        )
+        .unwrap();
+    }
+    d.cleanup().unwrap();
+    let messages = d.sink.messages.lock().unwrap();
+    assert_eq!(messages.len(), 8);
+    for note in [36, 38, 42, 46] {
+        assert!(messages.contains(&vec![0x89, note, 0]));
+    }
+}

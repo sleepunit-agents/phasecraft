@@ -1,0 +1,82 @@
+# 909 Core Kit: a plain two-step drum-and-bass skeleton.
+# Kick on beat 1 and the & of 3, snare on 2 and 4.
+# Sixteenth hats, with an open hat replacing the closed hat on the & of 4.
+# Quiet rim clicks add optional movement without weakening the backbeat.
+tempo = 172
+seed = 172909
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+[parts.trigger]
+rhythm = { type = "binary", op = "or", a = { type = "euclidean", steps = 16, pulses = 1, rotation = 0 }, b = { type = "euclidean", steps = 16, pulses = 1, rotation = 10 } }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 16, pulses = 1, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 108
+boost = 8
+[parts.output]
+channel = 10
+note = 36
+
+[[parts]]
+id = "snare"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 4 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 110
+boost = 0
+[parts.output]
+channel = 10
+note = 38
+
+[[parts]]
+id = "closed_hat"
+[parts.trigger]
+rhythm = { type = "binary", op = "a_not_b", a = { type = "euclidean", steps = 1, pulses = 1, rotation = 0 }, b = { type = "euclidean", steps = 16, pulses = 1, rotation = 14 } }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 16, pulses = 8, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 48
+boost = 24
+[parts.output]
+channel = 10
+note = 42
+
+[[parts]]
+id = "open_hat"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 1, rotation = 14 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 76
+boost = 0
+[parts.output]
+channel = 10
+note = 46
+
+[[parts]]
+id = "rim"
+[parts.trigger]
+rhythm = { type = "binary", op = "or", a = { type = "euclidean", steps = 16, pulses = 1, rotation = 7 }, b = { type = "euclidean", steps = 16, pulses = 1, rotation = 15 } }
+probability = 0.65
+[parts.accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 2, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 42
+boost = 10
+[parts.output]
+channel = 10
+note = 37

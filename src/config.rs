@@ -1,17 +1,53 @@
 use crate::engine::Expression;
 use serde::{Deserialize, Serialize};
 
+pub const MAX_PARTS: usize = 32;
+
 pub const PPQN: u64 = 960;
 pub const STEP_TICKS: u64 = PPQN / 4;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "CompositionFile")]
 pub struct Composition {
     pub tempo: f64,
     pub seed: u64,
     #[serde(default = "four")]
     pub phrase_bars: u32,
-    pub part: Part,
+    pub parts: Vec<Part>,
+}
+// Accept the original single-Part file without changing its musical identity.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CompositionFile {
+    tempo: f64,
+    seed: u64,
+    #[serde(default = "four")]
+    phrase_bars: u32,
+    part: Option<Part>,
+    parts: Option<Vec<Part>>,
+}
+impl TryFrom<CompositionFile> for Composition {
+    type Error = String;
+    fn try_from(file: CompositionFile) -> Result<Self, String> {
+        let parts = match (file.part, file.parts) {
+            (Some(part), None) => vec![part],
+            (None, Some(parts)) => parts,
+            _ => {
+                return Err(
+                    "Use either [part] or [[parts]], not both; at least one Part is required"
+                        .into(),
+                );
+            }
+        };
+        let c = Self {
+            tempo: file.tempo,
+            seed: file.seed,
+            phrase_bars: file.phrase_bars,
+            parts,
+        };
+        c.validate()?;
+        Ok(c)
+    }
 }
 fn four() -> u32 {
     4
@@ -114,28 +150,51 @@ impl Composition {
         if !(1..=1024).contains(&self.phrase_bars) {
             return Err("phrase_bars must be 1..1024 (4/4)".into());
         }
-        if self.part.id.trim().is_empty() {
+        if self.parts.is_empty() || self.parts.len() > MAX_PARTS {
+            return Err(format!("composition requires 1..{MAX_PARTS} Parts"));
+        }
+        let mut ids = std::collections::HashSet::new();
+        let mut routes = std::collections::HashSet::new();
+        for part in &self.parts {
+            part.validate()
+                .map_err(|e| format!("Part {:?}: {e}", part.id))?;
+            if !ids.insert(&part.id) {
+                return Err(format!("duplicate Part ID {:?}", part.id));
+            }
+            if !routes.insert((part.output.channel, part.output.note)) {
+                return Err(format!(
+                    "Parts must use distinct MIDI channel/note pairs; duplicate route on {:?}",
+                    part.id
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+impl Part {
+    fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
             return Err("part.id cannot be empty".into());
         }
         for (name, value) in [
-            ("trigger.probability", self.part.trigger.probability),
-            ("accent.probability", self.part.accent.probability),
-            ("accent.amount", self.part.accent.amount),
+            ("trigger.probability", self.trigger.probability),
+            ("accent.probability", self.accent.probability),
+            ("accent.amount", self.accent.amount),
         ] {
             if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                 return Err(format!("{name} must be finite and within 0..1"));
             }
         }
-        self.part.trigger.rhythm.validate(0)?;
-        self.part.accent.rhythm.validate(0)?;
-        let o = &self.part.output;
+        self.trigger.rhythm.validate(0)?;
+        self.accent.rhythm.validate(0)?;
+        let o = &self.output;
         if !(1..=16).contains(&o.channel) || o.note > 127 {
             return Err("MIDI channel must be 1..16 and note 0..127".into());
         }
         if o.gate_ticks == 0 || o.gate_ticks >= STEP_TICKS {
             return Err("gate_ticks must be 1..239 for this drum slice".into());
         }
-        if !(1..=127).contains(&self.part.profile.base) || self.part.profile.boost > 127 {
+        if !(1..=127).contains(&self.profile.base) || self.profile.boost > 127 {
             return Err("velocity base must be 1..127 and boost 0..127".into());
         }
         Ok(())

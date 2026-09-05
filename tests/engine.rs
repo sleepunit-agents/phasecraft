@@ -100,21 +100,21 @@ fn reset_policy_is_per_leaf_and_separate_from_probability_identity() {
     assert!(!continuing.evaluate(64, 64).active());
     assert!(resetting.evaluate(64, 64).active());
     let mut c = config();
-    c.part.trigger.rhythm = continuing;
+    c.parts[0].trigger.rhythm = continuing;
     assert_eq!(resolve(&c, 0).trigger.roll, resolve(&c, 64).trigger.roll);
     assert_ne!(
         resolve(&c, 0).trigger.rhythm.active(),
         resolve(&c, 64).trigger.rhythm.active()
     );
-    c.part.trigger.probability_mode = ProbabilityMode::Continuous;
+    c.parts[0].trigger.probability_mode = ProbabilityMode::Continuous;
     assert_ne!(resolve(&c, 0).trigger.roll, resolve(&c, 64).trigger.roll);
 }
 #[test]
 fn deterministic_replay_and_accent_changes_leave_trigger_intact() {
     let c = config();
     let mut other = c.clone();
-    other.part.accent.probability = 0.1;
-    other.part.accent.rhythm = euclid(11, 9, 3, true);
+    other.parts[0].accent.probability = 0.1;
+    other.parts[0].accent.rhythm = euclid(11, 9, 3, true);
     for step in 0..5600 {
         let a = resolve(&c, step);
         assert_eq!(
@@ -148,20 +148,20 @@ fn decision_addresses_are_isolated_and_unambiguous() {
 #[test]
 fn accent_never_creates_notes_and_probability_endpoints_are_exact() {
     let mut c = config();
-    c.part.trigger.rhythm = euclid(1, 1, 0, false);
-    c.part.accent.rhythm = euclid(1, 1, 0, false);
-    c.part.accent.probability = 1.0;
-    c.part.trigger.probability = 0.0;
+    c.parts[0].trigger.rhythm = euclid(1, 1, 0, false);
+    c.parts[0].accent.rhythm = euclid(1, 1, 0, false);
+    c.parts[0].accent.probability = 1.0;
+    c.parts[0].trigger.probability = 0.0;
     for step in 0..128 {
         let trace = resolve(&c, step);
         assert!(trace.accent.admitted);
         assert!(trace.event.is_none());
     }
-    c.part.trigger.probability = 1.0;
+    c.parts[0].trigger.probability = 1.0;
     for step in 0..128 {
         assert!(resolve(&c, step).event.unwrap().accent.active);
     }
-    c.part.accent.probability = 0.0;
+    c.parts[0].accent.probability = 0.0;
     for step in 0..128 {
         assert!(!resolve(&c, step).event.unwrap().accent.active);
     }
@@ -169,15 +169,15 @@ fn accent_never_creates_notes_and_probability_endpoints_are_exact() {
 #[test]
 fn realization_and_midi_preserve_musical_times_and_emphasis() {
     let mut c = config();
-    c.part.trigger.rhythm = euclid(1, 1, 0, false);
-    c.part.trigger.probability = 1.0;
-    c.part.accent.rhythm = euclid(1, 1, 0, false);
-    c.part.accent.probability = 1.0;
-    let p = realize(&c, 4, 2);
+    c.parts[0].trigger.rhythm = euclid(1, 1, 0, false);
+    c.parts[0].trigger.probability = 1.0;
+    c.parts[0].accent.rhythm = euclid(1, 1, 0, false);
+    c.parts[0].accent.probability = 1.0;
+    let p = realize(&c, &c.parts[0], 4, 2);
     assert_eq!((p.start_tick, p.end_tick, p.events.len()), (960, 1440, 2));
     assert_eq!(p.events[0].accent.amount, 0.8);
     assert_eq!(
-        to_midi(&c, &p.events[0]),
+        to_midi(&c.parts[0], &p.events[0]),
         [
             MidiEvent {
                 tick: 960,
@@ -214,4 +214,9 @@ fn decision_v1_golden_value_survives_build_and_platform_changes() {
         decision_roll(1, "hat", "trigger", 3, "admission"),
         0.5363229830181838
     );
+}
+
+// Existing one-Part invariants continue to exercise the same resolver.
+fn resolve(c: &Composition, step: u64) -> StepTrace {
+    phasecraft::engine::resolve(c, &c.parts[0], step)
 }

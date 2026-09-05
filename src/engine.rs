@@ -1,4 +1,4 @@
-use crate::config::{Composition, ProbabilityMode, STEP_TICKS};
+use crate::config::{Composition, Part, ProbabilityMode, STEP_TICKS};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -176,6 +176,7 @@ pub struct StepTrace {
 }
 fn admission(
     c: &Composition,
+    part_id: &str,
     step: u64,
     name: &str,
     expression: &Expression,
@@ -187,7 +188,7 @@ fn admission(
         ProbabilityMode::Continuous => step,
     };
     let rhythm = expression.evaluate(step, c.phrase_steps());
-    let roll = decision_roll(c.seed, &c.part.id, name, event_identity, "admission");
+    let roll = decision_roll(c.seed, part_id, name, event_identity, "admission");
     let admitted = rhythm.active() && roll < probability;
     DecisionTrace {
         rhythm,
@@ -197,30 +198,32 @@ fn admission(
         admitted,
     }
 }
-pub fn resolve(c: &Composition, step: u64) -> StepTrace {
+pub fn resolve(c: &Composition, part: &Part, step: u64) -> StepTrace {
     let trigger = admission(
         c,
+        &part.id,
         step,
         "trigger",
-        &c.part.trigger.rhythm,
-        c.part.trigger.probability,
-        c.part.trigger.probability_mode,
+        &part.trigger.rhythm,
+        part.trigger.probability,
+        part.trigger.probability_mode,
     );
     let accent = admission(
         c,
+        &part.id,
         step,
         "accent",
-        &c.part.accent.rhythm,
-        c.part.accent.probability,
-        c.part.accent.probability_mode,
+        &part.accent.rhythm,
+        part.accent.probability,
+        part.accent.probability_mode,
     );
     let event = trigger.admitted.then(|| MusicalEvent {
         tick: step * STEP_TICKS,
-        duration_ticks: c.part.output.gate_ticks,
+        duration_ticks: part.output.gate_ticks,
         accent: Accent {
             active: accent.admitted,
             amount: if accent.admitted {
-                c.part.accent.amount
+                part.accent.amount
             } else {
                 0.0
             },
@@ -230,18 +233,18 @@ pub fn resolve(c: &Composition, step: u64) -> StepTrace {
         step,
         tick: step * STEP_TICKS,
         position: format!("{}.{}.{}", step / 16 + 1, step / 4 % 4 + 1, step % 4 + 1),
-        part: c.part.id.clone(),
+        part: part.id.clone(),
         trigger,
         accent,
         event,
     }
 }
-pub fn realize(c: &Composition, start_step: u64, steps: u64) -> RhythmPattern {
+pub fn realize(c: &Composition, part: &Part, start_step: u64, steps: u64) -> RhythmPattern {
     RhythmPattern {
         start_tick: start_step * STEP_TICKS,
         end_tick: (start_step + steps) * STEP_TICKS,
         events: (start_step..start_step + steps)
-            .filter_map(|s| resolve(c, s).event)
+            .filter_map(|s| resolve(c, part, s).event)
             .collect(),
     }
 }
@@ -250,11 +253,11 @@ pub struct MidiEvent {
     pub tick: u64,
     pub bytes: [u8; 3],
 }
-pub fn to_midi(c: &Composition, event: &MusicalEvent) -> [MidiEvent; 2] {
-    let output = &c.part.output;
-    let velocity = (f64::from(c.part.profile.base)
+pub fn to_midi(part: &Part, event: &MusicalEvent) -> [MidiEvent; 2] {
+    let output = &part.output;
+    let velocity = (f64::from(part.profile.base)
         + if event.accent.active {
-            event.accent.amount * f64::from(c.part.profile.boost)
+            event.accent.amount * f64::from(part.profile.boost)
         } else {
             0.0
         })
@@ -270,4 +273,24 @@ pub fn to_midi(c: &Composition, event: &MusicalEvent) -> [MidiEvent; 2] {
             bytes: [0x80 | (output.channel - 1), output.note, 0],
         },
     ]
+}
+
+/// Merge one grid position before dispatch. Sending each Part's on/off pair
+/// immediately would delay simultaneous hits behind the first Part's note-off.
+pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEvent>) {
+    let mut parts: Vec<_> = c.parts.iter().collect();
+    parts.sort_by(|a, b| a.id.cmp(&b.id));
+    let mut traces = Vec::with_capacity(parts.len());
+    let mut midi = Vec::with_capacity(parts.len() * 2);
+    for part in parts {
+        let trace = resolve(c, part, step);
+        if let Some(event) = &trace.event {
+            midi.extend(to_midi(part, event));
+        }
+        traces.push(trace);
+    }
+    // Gates are shorter than a step, so successive step batches cannot overlap.
+    // Equal deadlines are ordered by MIDI bytes (off before on, then route).
+    midi.sort_by_key(|event| (event.tick, event.bytes));
+    (traces, midi)
 }

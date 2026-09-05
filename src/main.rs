@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use phasecraft::{
-    config::{Composition, STEP_TICKS},
-    engine::{resolve, to_midi},
+    config::{Composition, MAX_PARTS, STEP_TICKS},
+    engine::resolve_step,
     playback::{MidiOutput, MusicalClock, SilentOutput, dispatch_loop},
 };
 use std::{
@@ -33,7 +33,7 @@ enum Command {
         #[arg(long, default_value_t = 0)]
         start: u64,
     },
-    /// Loop one hat Part until Ctrl-C; optionally reload at phrase boundaries.
+    /// Loop all Parts until Ctrl-C; optionally reload at phrase boundaries.
     Play {
         file: PathBuf,
         /// Exact destination name, or its index from `ports`.
@@ -110,8 +110,10 @@ fn run() -> Result<(), String> {
                 .ok_or("step range overflows musical time")?;
             let mut out = io::BufWriter::new(io::stdout().lock());
             for step in start..end {
-                serde_json::to_writer(&mut out, &resolve(&c, step)).map_err(|e| e.to_string())?;
-                writeln!(out).map_err(|e| e.to_string())?;
+                for trace in resolve_step(&c, step).0 {
+                    serde_json::to_writer(&mut out, &trace).map_err(|e| e.to_string())?;
+                    writeln!(out).map_err(|e| e.to_string())?;
+                }
             }
             out.flush().map_err(|e| e.to_string())
         }
@@ -165,7 +167,10 @@ fn play<S: MidiOutput + 'static>(
     ctrlc::set_handler(move || stop.store(false, Ordering::Relaxed)).map_err(|e| e.to_string())?;
     let clock = MusicalClock { tempo: c.tempo };
     let origin = Instant::now() + options.lookahead;
-    let (tx, rx) = mpsc::sync_channel(256);
+    let ahead_steps = (options.lookahead.as_secs_f64()
+        / clock.time_at_tick(STEP_TICKS).as_secs_f64())
+    .ceil() as usize;
+    let (tx, rx) = mpsc::sync_channel(2 * MAX_PARTS * (ahead_steps + 2));
     let dispatch_running = running.clone();
     // Late threshold is shorter than one sixteenth even at the maximum BPM.
     let worker = std::thread::spawn(move || {
@@ -179,8 +184,8 @@ fn play<S: MidiOutput + 'static>(
         )
     });
     eprintln!(
-        "Playing {} at {} BPM; seed {}; Ctrl-C stops.{}",
-        c.part.id,
+        "Playing {} Parts at {} BPM; seed {}; Ctrl-C stops.{}",
+        c.parts.len(),
         c.tempo,
         c.seed,
         if options.watch {
@@ -235,20 +240,20 @@ fn play<S: MidiOutput + 'static>(
                 step += 1;
                 continue;
             }
-            let resolved = resolve(&c, step);
-            if let Some(event) = &resolved.event {
-                for midi in to_midi(&c, event) {
-                    tx.try_send(midi)
-                        .map_err(|e| format!("MIDI dispatch queue: {e}"))?;
-                }
+            let (traces, events) = resolve_step(&c, step);
+            for midi in events {
+                tx.try_send(midi)
+                    .map_err(|e| format!("MIDI dispatch queue: {e}"))?;
             }
             if options.trace {
-                writeln!(
-                    io::stdout().lock(),
-                    "{}",
-                    serde_json::to_string(&resolved).map_err(|e| e.to_string())?
-                )
-                .map_err(|e| e.to_string())?;
+                for trace in traces {
+                    writeln!(
+                        io::stdout().lock(),
+                        "{}",
+                        serde_json::to_string(&trace).map_err(|e| e.to_string())?
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
             }
             step += 1;
         }
