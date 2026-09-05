@@ -236,3 +236,36 @@ pub fn create(path: &Path) -> Result<(), String> {
     })();
     result.map_err(|e: String| format!("project creation incomplete at {}: {e}", path.display()))
 }
+
+#[derive(Clone, Serialize)]
+pub struct ProjectInfo {
+    pub path: PathBuf,
+    pub name: String,
+    pub compositions: Vec<PathBuf>,
+    pub default: PathBuf,
+}
+/// Describe a project without flattening its list into an arrangement.
+pub fn describe(path: &Path) -> Result<ProjectInfo, String> {
+    let (selected, project) = locate(path)?;
+    if let Some(project) = project {
+        let m = manifest(&project)?;
+        let root = project.parent().unwrap();
+        Ok(ProjectInfo {
+            path: root.to_owned(),
+            name: m.name,
+            default: root.join(m.default),
+            compositions: m.compositions.iter().map(|p| root.join(p)).collect(),
+        })
+    } else {
+        Ok(ProjectInfo {
+            name: selected
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into(),
+            path: selected.clone(),
+            default: selected.clone(),
+            compositions: vec![selected],
+        })
+    }
+}

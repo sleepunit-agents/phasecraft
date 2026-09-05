@@ -1,3 +1,12 @@
 /target/
 *.jsonl
 /dist/
+/desktop/target/
+/desktop/node_modules/
+/desktop/dist/
+/desktop/test-results/
+/desktop/playwright-report/
+
+/desktop/gen/
+
+/player-assets/

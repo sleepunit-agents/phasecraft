@@ -23,6 +23,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cli-${{ matrix.name }}
       - name: Linux build dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y pkg-config libasound2-dev
@@ -59,9 +62,75 @@ jobs:
             phasecraft-update-*.exe
           if-no-files-found: error
 
+  desktop:
+    name: Player (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: linux-x64
+            bundles: deb
+          - os: windows-latest
+            name: windows-x64
+            bundles: nsis
+          - os: macos-15
+            name: macos-arm64
+            bundles: dmg
+          - os: macos-15-intel
+            name: macos-x64
+            bundles: dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop -> target
+          key: player-${{ matrix.name }}
+      - name: Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libasound2-dev libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb
+      - run: npm ci
+        working-directory: desktop
+      - run: npm test
+        working-directory: desktop
+      - run: npm run build
+        working-directory: desktop
+      - run: cargo fmt --check
+        working-directory: desktop
+      - run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: desktop
+      - name: Browser interaction tests
+        if: runner.os == 'Linux'
+        working-directory: desktop
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: Build native installer
+        working-directory: desktop
+        run: npm run tauri -- build --bundles ${{ matrix.bundles }} --ci
+      - name: Native player smoke test
+        if: runner.os == 'Linux'
+        run: |
+          cargo install tauri-driver --locked
+          python3 -m pip install selenium
+          xvfb-run -a python3 desktop/tests/native.py desktop/target/release/phasecraft-player
+      - name: Collect installer
+        run: python .github/scripts/player-package.py ${{ matrix.name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phasecraft-player-${{ matrix.name }}
+          path: player-assets/*
+          if-no-files-found: error
+
   dev-release:
     name: Update rolling dev release
-    needs: native
+    needs: [native, desktop]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:

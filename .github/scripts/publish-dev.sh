@@ -17,6 +17,10 @@ assets=(
   release-assets/phasecraft-update-windows-x64.exe
   release-assets/phasecraft-update-macos-arm64.bin
   release-assets/phasecraft-update-macos-x64.bin
+  release-assets/phasecraft-player-windows-x64-setup.exe
+  release-assets/phasecraft-player-linux-x64.deb
+  release-assets/phasecraft-player-macos-arm64.dmg
+  release-assets/phasecraft-player-macos-x64.dmg
 )
 for asset in "${assets[@]}"; do
   test -s "$asset"
@@ -33,7 +37,11 @@ native builds and tests pass. Expect unfinished features and changing behavior.
 Commit: $GITHUB_SHA
 Build: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID
 
-Windows: download phasecraft-windows-x64.zip, extract it, and open PowerShell
+Desktop player: download the phasecraft-player installer for your platform.
+Windows uses a per-user setup executable with a Start menu shortcut; open a
+project folder from the player. CLI packages remain available separately.
+
+CLI on Windows: download phasecraft-windows-x64.zip, extract it, and open PowerShell
 in the extracted folder. Run:
 
     .\phasecraft.exe new my-set
@@ -41,8 +49,8 @@ in the extracted folder. Run:
     .\phasecraft.exe play my-set --dry-run --bars 4
 
 After this first manual download, use .\phasecraft.exe update to install future
-builds in place (update --check compares commits). Private-repo access uses
-GitHub CLI login or GH_TOKEN/GITHUB_TOKEN; see the README.
+builds in place (update --check compares commits). Public downloads need no GitHub login. The CLI updater updates the CLI;
+install the latest player package to update the desktop application.
 
 See the included README for MIDI routing into Ableton. No Rust installation
 is needed to run the executable. SHA256SUMS.txt contains archive checksums.

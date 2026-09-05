@@ -129,13 +129,11 @@ A different commit means a different build; this follows `dev`, not semantic-ver
 ordering or Git ancestry. A locally built executable reports its checkout HEAD
 (or `unknown` without Git); uncommitted edits are not a separate release identity.
 
-The private repository requires access. Use an existing GitHub CLI login
-(`gh auth login`), or supply `GH_TOKEN` / `GITHUB_TOKEN` in the environment. A
-fine-grained token needs repository **Contents: read** access and any organization
-approval required by your account. Tokens are neither saved by Phasecraft nor
-accepted in TOML. They are sent to GitHub over HTTPS and stripped from cross-host
-download redirects. Expired/insufficient credentials produce an actionable error.
-See [GitHub CLI authentication](https://cli.github.com/manual/gh_auth_login).
+The repository is public; updates work without authentication. An existing GitHub
+CLI login or `GH_TOKEN` / `GITHUB_TOKEN` can optionally authenticate requests.
+Tokens are neither saved by Phasecraft nor accepted in TOML; HTTPS requests strip
+authentication on cross-host redirects. See [GitHub CLI authentication](https://cli.github.com/manual/gh_auth_login).
+This updater manages the CLI. Install the latest desktop package to update the player.
 
 Stop playback before updating. Updating touches only the executable; projects,
 config, edited examples and adjacent files are preserved. Embedded starter

@@ -9,9 +9,18 @@ Ableton (or any MIDI host) supplies the sound.
 ## Download
 
 Grab a native package from the [rolling dev release](https://github.com/sleepunit-agents/phasecraft/releases/tag/dev).
-On Windows, download `phasecraft-windows-x64.zip` and extract it. Open PowerShell
-in the extracted folder; no Rust installation is needed. Sign into GitHub with
-repository access while this project is private.
+The repository and downloads are public; no GitHub login is needed.
+
+**Desktop player:** on Windows, run `phasecraft-player-windows-x64-setup.exe`.
+It installs for your account and adds a Start menu shortcut. Launch **Phasecraft
+Player**, choose **Open project**, and point it at your project folder. Select a
+composition and MIDI destination, then press **Play**. **New project** seeds the
+909 techno and DnB examples. **Silent preview** runs the same transport without MIDI.
+Mac builds ship as DMGs; Linux x64 ships as a Debian package. See the
+[desktop guide](docs/player.md) for installation, playback and visualization details.
+
+**CLI:** on Windows, download `phasecraft-windows-x64.zip` and extract it. Open
+PowerShell in that folder. No Rust installation is required to run either package.
 
 The `dev` prerelease follows `main` after all four native builds and tests pass.
 It replaces the same downloads in place and includes the source commit and SHA-256
@@ -33,9 +42,10 @@ and replace only the executable. Stop playback first; your next command uses the
 new build. Your projects and configuration stay intact. `play` makes no update
 requests. Use `update --force` to reinstall the same commit.
 
-While the repo is private, Phasecraft uses your existing `gh auth login` credentials
-or a `GH_TOKEN` / `GITHUB_TOKEN` environment variable with repository Contents: read
-access. No token belongs in your TOML. See [update details](docs/authoring.md#updating-phasecraft).
+Public updates require no credentials. If you supply a GitHub CLI login or
+`GH_TOKEN` / `GITHUB_TOKEN`, it is used for authenticated requests. No token belongs
+in your TOML. This updater manages the CLI executable; update the desktop player
+by installing its latest package. See [update details](docs/authoring.md#updating-phasecraft).
 
 ## Start a project
 
@@ -319,5 +329,6 @@ checks the implementation. A dry run validates transport execution, not actual
 MIDI/audio timing. Listening and recording the real MIDI output remain the final
 acceptance test on each music machine.
 
-No harmony, arranger, groove engine, E16 integration, AI/MCP, DSP, or GUI is included.
+The desktop GUI is a player and visualizer; TOML remains the authoring surface.
+No harmony, arranger, groove engine, E16 integration, AI/MCP, or DSP is included.
 The first design contracts are recorded in `docs/vertical-slice.md`.

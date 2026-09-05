@@ -1,0 +1,6 @@
+{
+  "identifier": "player",
+  "description": "Local project folder dialogs and player window",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
+}

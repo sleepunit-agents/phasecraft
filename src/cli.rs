@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use phasecraft::playback::ports::open_output;
 use phasecraft::playback::transport::{PlayOptions, play};
 use phasecraft::{
     music::{Composition, STEP_TICKS, resolve::resolve_step},
@@ -80,36 +81,6 @@ enum Command {
         #[arg(long, value_parser = clap::value_parser!(u64).range(10..=1000))]
         lookahead_ms: Option<u64>,
     },
-}
-fn open_output(
-    port: Option<String>,
-    virtual_port: bool,
-) -> Result<midir::MidiOutputConnection, String> {
-    let midi = midir::MidiOutput::new("Phasecraft").map_err(|e| e.to_string())?;
-    if virtual_port {
-        #[cfg(unix)]
-        {
-            use midir::os::unix::VirtualOutput;
-            return midi.create_virtual("Phasecraft").map_err(|e| e.to_string());
-        }
-        #[cfg(not(unix))]
-        {
-            return Err("Virtual source creation is unavailable on this platform; use --port with an existing MIDI loopback destination".into());
-        }
-    }
-    let name = port.ok_or("Choose --port NAME, --virtual-port, or --dry-run; use `phasecraft ports` to list destinations")?;
-    let ports = midi.ports();
-    let selected = if let Ok(index) = name.parse::<usize>() {
-        ports.get(index)
-    } else {
-        ports
-            .iter()
-            .find(|p| midi.port_name(p).ok().as_deref() == Some(name.as_str()))
-    };
-    let selected = selected
-        .ok_or_else(|| format!("MIDI output {name:?} not found; run `phasecraft ports`"))?;
-    midi.connect(selected, "Phasecraft")
-        .map_err(|e| e.to_string())
 }
 pub fn run() -> Result<(), String> {
     match Cli::parse().command {

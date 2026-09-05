@@ -30,3 +30,17 @@ validates a complete composition before applying it to the transport.
 This split deliberately keeps related code together. Add groove definitions when
 there is working groove behavior to put in them. No plugin discovery, arrangement
 engine, schema code generation, or controller abstraction is introduced here.
+
+## Desktop player
+
+`src/player.rs` owns project selection and a stoppable session independent of any
+window toolkit. `run_controlled` in transport accepts cancellation and an optional
+bounded snapshot sender; Ctrl-C registration is confined to the CLI wrapper.
+Telemetry is best-effort and never blocks the producer. Frames carry their musical
+deadlines and the composition revision that produced them; Player exposes only
+frames due at the current monotonic time. MIDI dispatch remains unchanged.
+
+`desktop/src/main.rs` is a Tauri command adapter and local recent-project storage.
+`desktop/ui/` renders the project browser, transport, Canvas rings and detail view.
+No JavaScript code schedules MIDI or writes composition parameters. The desktop
+crate has its own lockfile and platform dependencies; the CLI builds separately.

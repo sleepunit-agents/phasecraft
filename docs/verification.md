@@ -115,3 +115,21 @@ subprocess replaces a temporary copy of its own test executable with Phasecraft,
 then runs the replacement and checks adjacent project files remain unchanged.
 This test runs on all four release platforms. `--version` and JSON version output
 are checked, and the existing musical golden traces remain in the suite.
+
+## Desktop player milestone
+
+- The root suite has 57 tests, adding deadline-gated visual state, repeated
+  stoppable sessions with note cleanup, and an unread/full telemetry channel
+  that cannot block transport completion. Existing musical provenance hashes
+  and CLI/import-watch tests remain unchanged.
+- Two JavaScript tests check the ring projection and independent reference/cycle
+  identities. Three browser tests cover open/new/recent projects, output selection,
+  play/stop, inspection, watched-error display/recovery, and minimum window width.
+  The UI fixture is recorded from the actual showcase composition and traces.
+- Native Linux Tauri/WebKit automation opens a generated project, starts/stops
+  repeatedly, observes playback progress, rejects and recovers from a broken
+  imported library, switches to DnB and closes the window while playing.
+- Native screenshots were inspected at 1440 pixels; minimum-width overflow is
+  checked at 900 pixels. UI screenshots are test artifacts, not musical fixtures.
+- MIDI tests in this environment use silent/fake sinks because no ALSA sequencer
+  device is available. Actual Ableton playback remains a check on the music machine.

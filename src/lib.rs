@@ -11,3 +11,5 @@ pub mod engine {
 }
 
 pub mod update;
+
+pub mod player;

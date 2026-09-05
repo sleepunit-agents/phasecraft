@@ -1,0 +1,681 @@
+{
+  "playing": false,
+  "step": null,
+  "progress": 0.25,
+  "composition": {
+    "tempo": 132.0,
+    "seed": 91827,
+    "phrase_bars": 4,
+    "parts": [
+      {
+        "id": "kick",
+        "trigger": {
+          "probability": 1.0,
+          "probability_mode": "phrase_locked",
+          "rhythm": {
+            "type": "euclidean",
+            "steps": 16,
+            "pulses": 4,
+            "rotation": 0,
+            "reset_on_phrase": false
+          }
+        },
+        "accent": {
+          "probability": 1.0,
+          "probability_mode": "phrase_locked",
+          "amount": 1.0,
+          "rhythm": {
+            "type": "euclidean",
+            "steps": 1,
+            "pulses": 0,
+            "rotation": 0,
+            "reset_on_phrase": false
+          }
+        },
+        "output": { "channel": 10, "note": 36, "gate_ticks": 120 },
+        "profile": { "base": 110, "boost": 0 }
+      },
+      {
+        "id": "clap",
+        "trigger": {
+          "probability": 1.0,
+          "probability_mode": "phrase_locked",
+          "rhythm": {
+            "type": "euclidean",
+            "steps": 16,
+            "pulses": 2,
+            "rotation": 4,
+            "reset_on_phrase": false
+          }
+        },
+        "accent": {
+          "probability": 1.0,
+          "probability_mode": "phrase_locked",
+          "amount": 0.8,
+          "rhythm": {
+            "type": "euclidean",
+            "steps": 1,
+            "pulses": 0,
+            "rotation": 0,
+            "reset_on_phrase": false
+          }
+        },
+        "output": { "channel": 10, "note": 39, "gate_ticks": 120 },
+        "profile": { "base": 100, "boost": 0 }
+      },
+      {
+        "id": "open_hat",
+        "trigger": {
+          "probability": 1.0,
+          "probability_mode": "phrase_locked",
+          "rhythm": {
+            "type": "euclidean",
+            "steps": 16,
+            "pulses": 4,
+            "rotation": 2,
+            "reset_on_phrase": false
+          }
+        },
+        "accent": {
+          "probability": 1.0,
+          "probability_mode": "phrase_locked",
+          "amount": 1.0,
+          "rhythm": {
+            "type": "euclidean",
+            "steps": 16,
+            "pulses": 2,
+            "rotation": 6,
+            "reset_on_phrase": false
+          }
+        },
+        "output": { "channel": 10, "note": 46, "gate_ticks": 120 },
+        "profile": { "base": 78, "boost": 8 }
+      },
+      {
+        "id": "closed_hat",
+        "trigger": {
+          "probability": 0.9,
+          "probability_mode": "phrase_locked",
+          "rhythm": {
+            "type": "binary",
+            "op": "a_not_b",
+            "a": {
+              "type": "binary",
+              "op": "or",
+              "a": {
+                "type": "euclidean",
+                "steps": 16,
+                "pulses": 4,
+                "rotation": 0,
+                "reset_on_phrase": false
+              },
+              "b": {
+                "type": "euclidean",
+                "steps": 11,
+                "pulses": 3,
+                "rotation": -1,
+                "reset_on_phrase": false
+              }
+            },
+            "b": { "type": "part", "id": "open_hat", "mode": "hits" }
+          }
+        },
+        "accent": {
+          "probability": 0.65,
+          "probability_mode": "phrase_locked",
+          "amount": 1.0,
+          "rhythm": {
+            "type": "euclidean",
+            "steps": 7,
+            "pulses": 3,
+            "rotation": 0,
+            "reset_on_phrase": false
+          }
+        },
+        "output": { "channel": 10, "note": 42, "gate_ticks": 120 },
+        "profile": { "base": 70, "boost": 12 }
+      },
+      {
+        "id": "rim",
+        "trigger": {
+          "probability": 0.7,
+          "probability_mode": "continuous",
+          "rhythm": {
+            "type": "binary",
+            "op": "a_not_b",
+            "a": {
+              "type": "euclidean",
+              "steps": 15,
+              "pulses": 5,
+              "rotation": -2,
+              "reset_on_phrase": false
+            },
+            "b": { "type": "part", "id": "kick", "mode": "hits" }
+          }
+        },
+        "accent": {
+          "probability": 0.8,
+          "probability_mode": "phrase_locked",
+          "amount": 0.8,
+          "rhythm": {
+            "type": "euclidean",
+            "steps": 7,
+            "pulses": 3,
+            "rotation": 0,
+            "reset_on_phrase": false
+          }
+        },
+        "output": { "channel": 10, "note": 37, "gate_ticks": 120 },
+        "profile": { "base": 48, "boost": 26 }
+      },
+      {
+        "id": "ride",
+        "trigger": {
+          "probability": 0.55,
+          "probability_mode": "continuous",
+          "rhythm": {
+            "type": "binary",
+            "op": "and",
+            "a": {
+              "type": "euclidean",
+              "steps": 16,
+              "pulses": 8,
+              "rotation": 1,
+              "reset_on_phrase": false
+            },
+            "b": {
+              "type": "euclidean",
+              "steps": 5,
+              "pulses": 2,
+              "rotation": 0,
+              "reset_on_phrase": true
+            }
+          }
+        },
+        "accent": {
+          "probability": 1.0,
+          "probability_mode": "phrase_locked",
+          "amount": 0.8,
+          "rhythm": {
+            "type": "euclidean",
+            "steps": 1,
+            "pulses": 0,
+            "rotation": 0,
+            "reset_on_phrase": false
+          }
+        },
+        "output": { "channel": 10, "note": 51, "gate_ticks": 120 },
+        "profile": { "base": 48, "boost": 0 }
+      }
+    ]
+  },
+  "traces": [
+    {
+      "step": 9,
+      "tick": 2160,
+      "position": "1.3.2",
+      "part": "clap",
+      "trigger": {
+        "rhythm": {
+          "type": "euclidean",
+          "steps": 16,
+          "pulses": 2,
+          "rotation": 4,
+          "phase": 9,
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 1.0,
+        "roll": 0.03525485463047484,
+        "admitted": false
+      },
+      "accent": {
+        "rhythm": {
+          "type": "euclidean",
+          "steps": 1,
+          "pulses": 0,
+          "rotation": 0,
+          "phase": 0,
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 1.0,
+        "roll": 0.44120712090598857,
+        "admitted": false
+      },
+      "event": null
+    },
+    {
+      "step": 9,
+      "tick": 2160,
+      "position": "1.3.2",
+      "part": "closed_hat",
+      "trigger": {
+        "rhythm": {
+          "type": "binary",
+          "op": "a_not_b",
+          "a": {
+            "type": "binary",
+            "op": "or",
+            "a": {
+              "type": "euclidean",
+              "steps": 16,
+              "pulses": 4,
+              "rotation": 0,
+              "phase": 9,
+              "active": false
+            },
+            "b": {
+              "type": "euclidean",
+              "steps": 11,
+              "pulses": 3,
+              "rotation": -1,
+              "phase": 9,
+              "active": false
+            },
+            "active": false
+          },
+          "b": {
+            "type": "part",
+            "id": "open_hat",
+            "mode": "hits",
+            "active": false
+          },
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 0.9,
+        "roll": 0.7179986933700128,
+        "admitted": false
+      },
+      "accent": {
+        "rhythm": {
+          "type": "euclidean",
+          "steps": 7,
+          "pulses": 3,
+          "rotation": 0,
+          "phase": 2,
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 0.65,
+        "roll": 0.5646833115392067,
+        "admitted": false
+      },
+      "event": null
+    },
+    {
+      "step": 9,
+      "tick": 2160,
+      "position": "1.3.2",
+      "part": "kick",
+      "trigger": {
+        "rhythm": {
+          "type": "euclidean",
+          "steps": 16,
+          "pulses": 4,
+          "rotation": 0,
+          "phase": 9,
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 1.0,
+        "roll": 0.7741597511149632,
+        "admitted": false
+      },
+      "accent": {
+        "rhythm": {
+          "type": "euclidean",
+          "steps": 1,
+          "pulses": 0,
+          "rotation": 0,
+          "phase": 0,
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 1.0,
+        "roll": 0.015162984096927845,
+        "admitted": false
+      },
+      "event": null
+    },
+    {
+      "step": 9,
+      "tick": 2160,
+      "position": "1.3.2",
+      "part": "open_hat",
+      "trigger": {
+        "rhythm": {
+          "type": "euclidean",
+          "steps": 16,
+          "pulses": 4,
+          "rotation": 2,
+          "phase": 9,
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 1.0,
+        "roll": 0.380537105446594,
+        "admitted": false
+      },
+      "accent": {
+        "rhythm": {
+          "type": "euclidean",
+          "steps": 16,
+          "pulses": 2,
+          "rotation": 6,
+          "phase": 9,
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 1.0,
+        "roll": 0.5599360012264305,
+        "admitted": false
+      },
+      "event": null
+    },
+    {
+      "step": 9,
+      "tick": 2160,
+      "position": "1.3.2",
+      "part": "ride",
+      "trigger": {
+        "rhythm": {
+          "type": "binary",
+          "op": "and",
+          "a": {
+            "type": "euclidean",
+            "steps": 16,
+            "pulses": 8,
+            "rotation": 1,
+            "phase": 9,
+            "active": true
+          },
+          "b": {
+            "type": "euclidean",
+            "steps": 5,
+            "pulses": 2,
+            "rotation": 0,
+            "phase": 4,
+            "active": false
+          },
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 0.55,
+        "roll": 0.9738473189506123,
+        "admitted": false
+      },
+      "accent": {
+        "rhythm": {
+          "type": "euclidean",
+          "steps": 1,
+          "pulses": 0,
+          "rotation": 0,
+          "phase": 0,
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 1.0,
+        "roll": 0.5772210040066726,
+        "admitted": false
+      },
+      "event": null
+    },
+    {
+      "step": 9,
+      "tick": 2160,
+      "position": "1.3.2",
+      "part": "rim",
+      "trigger": {
+        "rhythm": {
+          "type": "binary",
+          "op": "a_not_b",
+          "a": {
+            "type": "euclidean",
+            "steps": 15,
+            "pulses": 5,
+            "rotation": -2,
+            "phase": 9,
+            "active": false
+          },
+          "b": {
+            "type": "part",
+            "id": "kick",
+            "mode": "hits",
+            "active": false
+          },
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 0.7,
+        "roll": 0.5755866736583701,
+        "admitted": false
+      },
+      "accent": {
+        "rhythm": {
+          "type": "euclidean",
+          "steps": 7,
+          "pulses": 3,
+          "rotation": 0,
+          "phase": 2,
+          "active": false
+        },
+        "event_identity": 9,
+        "probability": 0.8,
+        "roll": 0.9604614786556603,
+        "admitted": false
+      },
+      "event": null
+    }
+  ],
+  "history": [
+    {
+      "step": 0,
+      "parts": [
+        { "id": "clap", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": true,
+          "fired": true,
+          "accented": false
+        },
+        { "id": "kick", "eligible": true, "fired": true, "accented": false },
+        {
+          "id": "open_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "ride", "eligible": false, "fired": false, "accented": false },
+        { "id": "rim", "eligible": false, "fired": false, "accented": false }
+      ]
+    },
+    {
+      "step": 1,
+      "parts": [
+        { "id": "clap", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "kick", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "open_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "ride", "eligible": false, "fired": false, "accented": false },
+        { "id": "rim", "eligible": true, "fired": true, "accented": false }
+      ]
+    },
+    {
+      "step": 2,
+      "parts": [
+        { "id": "clap", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "kick", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "open_hat",
+          "eligible": true,
+          "fired": true,
+          "accented": false
+        },
+        { "id": "ride", "eligible": false, "fired": false, "accented": false },
+        { "id": "rim", "eligible": false, "fired": false, "accented": false }
+      ]
+    },
+    {
+      "step": 3,
+      "parts": [
+        { "id": "clap", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": true,
+          "fired": true,
+          "accented": true
+        },
+        { "id": "kick", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "open_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "ride", "eligible": true, "fired": true, "accented": false },
+        { "id": "rim", "eligible": false, "fired": false, "accented": false }
+      ]
+    },
+    {
+      "step": 4,
+      "parts": [
+        { "id": "clap", "eligible": true, "fired": true, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": true,
+          "fired": true,
+          "accented": false
+        },
+        { "id": "kick", "eligible": true, "fired": true, "accented": false },
+        {
+          "id": "open_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "ride", "eligible": false, "fired": false, "accented": false },
+        { "id": "rim", "eligible": false, "fired": false, "accented": false }
+      ]
+    },
+    {
+      "step": 5,
+      "parts": [
+        { "id": "clap", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "kick", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "open_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "ride", "eligible": true, "fired": false, "accented": false },
+        { "id": "rim", "eligible": false, "fired": false, "accented": false }
+      ]
+    },
+    {
+      "step": 6,
+      "parts": [
+        { "id": "clap", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "kick", "eligible": false, "fired": false, "accented": false },
+        { "id": "open_hat", "eligible": true, "fired": true, "accented": true },
+        { "id": "ride", "eligible": false, "fired": false, "accented": false },
+        { "id": "rim", "eligible": false, "fired": false, "accented": false }
+      ]
+    },
+    {
+      "step": 7,
+      "parts": [
+        { "id": "clap", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": true,
+          "fired": true,
+          "accented": false
+        },
+        { "id": "kick", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "open_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "ride", "eligible": false, "fired": false, "accented": false },
+        { "id": "rim", "eligible": true, "fired": true, "accented": true }
+      ]
+    },
+    {
+      "step": 8,
+      "parts": [
+        { "id": "clap", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": true,
+          "fired": true,
+          "accented": false
+        },
+        { "id": "kick", "eligible": true, "fired": true, "accented": false },
+        {
+          "id": "open_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "ride", "eligible": false, "fired": false, "accented": false },
+        { "id": "rim", "eligible": false, "fired": false, "accented": false }
+      ]
+    },
+    {
+      "step": 9,
+      "parts": [
+        { "id": "clap", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "closed_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "kick", "eligible": false, "fired": false, "accented": false },
+        {
+          "id": "open_hat",
+          "eligible": false,
+          "fired": false,
+          "accented": false
+        },
+        { "id": "ride", "eligible": false, "fired": false, "accented": false },
+        { "id": "rim", "eligible": false, "fired": false, "accented": false }
+      ]
+    }
+  ],
+  "error": null,
+  "reload_error": null
+}

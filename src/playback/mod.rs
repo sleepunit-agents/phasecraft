@@ -1,3 +1,4 @@
+pub mod ports;
 pub mod transport;
 use crate::music::{PPQN, resolve::MidiEvent};
 use std::{
@@ -140,4 +141,10 @@ pub fn dispatch_loop<S: MidiOutput>(
     let cleanup = dispatcher.cleanup();
     result.and(cleanup)?;
     Ok(std::mem::take(&mut dispatcher.stats))
+}
+
+impl MidiOutput for Box<dyn MidiOutput> {
+    fn send(&mut self, bytes: &[u8]) -> Result<(), String> {
+        (**self).send(bytes)
+    }
 }

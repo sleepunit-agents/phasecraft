@@ -20,13 +20,33 @@ pub struct PlayOptions {
     pub lookahead: Duration,
 }
 pub fn play<S: MidiOutput + 'static>(
-    mut c: Composition,
+    c: Composition,
     sink: S,
     options: PlayOptions,
 ) -> Result<(), String> {
     let running = Arc::new(AtomicBool::new(true));
     let stop = running.clone();
     ctrlc::set_handler(move || stop.store(false, Ordering::Relaxed)).map_err(|e| e.to_string())?;
+    run_controlled(c, sink, options, running, None)
+}
+
+/// Planned snapshots carry their audible deadlines; consumers must not display them early.
+/// Dropping telemetry under load never blocks MIDI planning or dispatch.
+pub struct PlaybackFrame {
+    pub deadline: Instant,
+    pub step: u64,
+    pub composition: Arc<Composition>,
+    pub traces: Vec<crate::music::resolve::StepTrace>,
+    pub reload_error: Option<String>,
+}
+
+pub fn run_controlled<S: MidiOutput + 'static>(
+    mut c: Composition,
+    sink: S,
+    options: PlayOptions,
+    running: Arc<AtomicBool>,
+    feedback: Option<mpsc::SyncSender<PlaybackFrame>>,
+) -> Result<(), String> {
     let clock = MusicalClock { tempo: c.tempo };
     let origin = Instant::now() + options.lookahead;
     let ahead_steps = (options.lookahead.as_secs_f64()
@@ -58,6 +78,7 @@ pub fn play<S: MidiOutput + 'static>(
     );
     let mut last_source = serde_json::to_string(&c).map_err(|e| e.to_string())?;
     let mut last_error = String::new();
+    let mut visual_composition = Arc::new(c.clone());
     let mut skipped_steps = 0u64;
     let planned = (|| {
         let mut step = 0;
@@ -81,6 +102,7 @@ pub fn play<S: MidiOutput + 'static>(
                         if source != last_source {
                             last_source = source;
                             c = next;
+                            visual_composition = Arc::new(c.clone());
                             eprintln!(
                                 "Applied configuration at bar {} (seed {}).",
                                 step / 16 + 1,
@@ -108,7 +130,7 @@ pub fn play<S: MidiOutput + 'static>(
                     .map_err(|e| format!("MIDI dispatch queue: {e}"))?;
             }
             if options.trace {
-                for trace in traces {
+                for trace in &traces {
                     writeln!(
                         io::stdout().lock(),
                         "{}",
@@ -116,6 +138,15 @@ pub fn play<S: MidiOutput + 'static>(
                     )
                     .map_err(|e| e.to_string())?;
                 }
+            }
+            if let Some(feedback) = &feedback {
+                let _ = feedback.try_send(PlaybackFrame {
+                    deadline,
+                    step,
+                    composition: visual_composition.clone(),
+                    traces,
+                    reload_error: (!last_error.is_empty()).then(|| last_error.clone()),
+                });
             }
             step += 1;
         }

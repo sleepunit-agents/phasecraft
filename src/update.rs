@@ -14,7 +14,7 @@ pub const COMMIT: &str = env!("PHASECRAFT_COMMIT");
 pub const PLATFORM: &str = env!("PHASECRAFT_PLATFORM");
 const REPO: &str = "sleepunit-agents/phasecraft";
 const MAX_BINARY: u64 = 100 * 1024 * 1024;
-const AUTH_HELP: &str = "For this private repo, run `gh auth login` with an account that has repository access, or set GH_TOKEN (or GITHUB_TOKEN) to a token with Contents: read access.";
+const AUTH_HELP: &str = "If authenticated access is needed, run `gh auth login` with an account that has repository access, or set GH_TOKEN (or GITHUB_TOKEN) to a token with Contents: read access.";
 
 #[derive(Serialize, Deserialize)]
 pub struct Version {
