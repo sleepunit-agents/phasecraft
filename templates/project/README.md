@@ -67,3 +67,6 @@ and other voices' release/tail control. See PARAMETERS.md for reset semantics.
 
 `breathing` demonstrates sixteen-bar curved, held and repeating cutoff motion.
 It uses the same prepared Set; no additional mappings are needed.
+
+`garage-touch` preserves garage admissions while adding offbeat emphasis,
+gap response and independently seeded timing/velocity touch.

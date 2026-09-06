@@ -255,21 +255,21 @@ fn resolve_raw(c: &Composition, step: u64) -> Vec<StepTrace> {
 pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEvent>) {
     use super::groove::{GrooveTrace, RunContour};
     let mut traces = resolve_raw(c, step);
-    let needs_context = c.parts.iter().any(|p| p.groove.run != RunContour::None);
+    let run_context = c.parts.iter().any(|p| p.groove.run != RunContour::None);
+    let lookbehind = c
+        .parts
+        .iter()
+        .filter_map(|p| p.groove.after_gap.as_ref().map(|g| u64::from(g.steps)))
+        .max()
+        .unwrap_or(0)
+        .max(if run_context { 2 } else { 0 });
     let mut neighbors = std::collections::BTreeMap::new();
-    if needs_context {
-        for s in [
-            step.checked_sub(2),
-            step.checked_sub(1),
-            step.checked_add(1),
-            step.checked_add(2),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            if s < u64::MAX / STEP_TICKS {
-                neighbors.insert(s, resolve_raw(c, s));
-            }
+    let positions = (1..=lookbehind)
+        .filter_map(|n| step.checked_sub(n))
+        .chain((1..=if run_context { 2 } else { 0 }).filter_map(|n| step.checked_add(n)));
+    for s in positions {
+        if s < u64::MAX / STEP_TICKS {
+            neighbors.insert(s, resolve_raw(c, s));
         }
     }
     let mut midi = Vec::with_capacity(c.parts.len() * 2);
@@ -309,7 +309,43 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
                 };
                 let roll = decision_roll(c.seed, &part.id, "groove", identity, "ghost");
                 let ghost = !event.accent.active && roll < g.ghost_probability;
-                let offset = g.offset(step);
+                let touch = (g.offbeat_gain != 1.0
+                    || g.after_gap.is_some()
+                    || g.humanize.is_some())
+                .then(|| {
+                    let offbeat = step % 4 == 2;
+                    let after_gap = g.after_gap.as_ref().is_some_and(|gap| {
+                        step >= u64::from(gap.steps)
+                            && (1..=u64::from(gap.steps)).all(|n| !fired(step.checked_sub(n)))
+                    });
+                    let h = g.humanize.clone().unwrap_or_default();
+                    let identity = match h.mode {
+                        ProbabilityMode::PhraseLocked => step % c.phrase_steps(),
+                        ProbabilityMode::Continuous => step,
+                    };
+                    let timing_roll =
+                        decision_roll(c.seed, &part.id, "groove", identity, "humanize_timing");
+                    let velocity_roll =
+                        decision_roll(c.seed, &part.id, "groove", identity, "humanize_velocity");
+                    super::groove::TouchTrace {
+                        offbeat,
+                        offbeat_factor: if offbeat { g.offbeat_gain } else { 1.0 },
+                        after_gap,
+                        gap_factor: if after_gap {
+                            g.after_gap.as_ref().unwrap().gain
+                        } else {
+                            1.0
+                        },
+                        timing_roll,
+                        velocity_roll,
+                        requested_jitter_ticks: ((timing_roll * 2.0 - 1.0) * h.timing_ticks as f64)
+                            .round() as i64,
+                        velocity_jitter_factor: 1.0 + (velocity_roll * 2.0 - 1.0) * h.velocity,
+                    }
+                });
+                let offset = (g.offset(step) as i64
+                    + touch.as_ref().map_or(0, |t| t.requested_jitter_ticks))
+                .clamp(0, STEP_TICKS as i64 - 2) as u64;
                 event.tick += offset;
                 event.duration_ticks = event.duration_ticks.min(STEP_TICKS - offset - 1);
                 event.groove = Some(GrooveTrace {
@@ -320,7 +356,11 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
                     run_before: before,
                     run_after: after,
                     velocity_factor: g.contour(before, after)
-                        * if ghost { g.ghost_gain } else { 1.0 },
+                        * if ghost { g.ghost_gain } else { 1.0 }
+                        * touch.as_ref().map_or(1.0, |t| {
+                            t.offbeat_factor * t.gap_factor * t.velocity_jitter_factor
+                        }),
+                    touch,
                 });
             }
             midi.extend(to_midi(part, event));

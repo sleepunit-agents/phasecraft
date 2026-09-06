@@ -21,6 +21,39 @@ pub struct Groove {
     pub ghost_probability: f64,
     pub ghost_gain: f64,
     pub ghost_mode: ProbabilityMode,
+    #[serde(skip_serializing_if = "is_one")]
+    pub offbeat_gain: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after_gap: Option<GapResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub humanize: Option<Humanize>,
+}
+fn is_one(v: &f64) -> bool {
+    *v == 1.0
+}
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct GapResponse {
+    pub steps: u32,
+    pub gain: f64,
+}
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Humanize {
+    pub timing_ticks: u64,
+    pub velocity: f64,
+    pub mode: ProbabilityMode,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct TouchTrace {
+    pub offbeat: bool,
+    pub offbeat_factor: f64,
+    pub after_gap: bool,
+    pub gap_factor: f64,
+    pub timing_roll: f64,
+    pub velocity_roll: f64,
+    pub requested_jitter_ticks: i64,
+    pub velocity_jitter_factor: f64,
 }
 impl Default for Groove {
     fn default() -> Self {
@@ -31,6 +64,9 @@ impl Default for Groove {
             ghost_probability: 0.0,
             ghost_gain: 0.45,
             ghost_mode: ProbabilityMode::PhraseLocked,
+            offbeat_gain: 1.0,
+            after_gap: None,
+            humanize: None,
         }
     }
 }
@@ -52,6 +88,19 @@ impl Groove {
             if !value.is_finite() || !(0.0..=1.0).contains(&value) {
                 return Err(format!("groove.{name} must be within 0..1"));
             }
+        }
+        if !self.offbeat_gain.is_finite() || !(0.0..=2.0).contains(&self.offbeat_gain) {
+            return Err("groove.offbeat_gain must be finite within 0..2".into());
+        }
+        if self.after_gap.as_ref().is_some_and(|g| {
+            !(1..=32).contains(&g.steps) || !g.gain.is_finite() || !(0.0..=2.0).contains(&g.gain)
+        }) {
+            return Err("groove.after_gap requires steps 1..32 and gain 0..2".into());
+        }
+        if self.humanize.as_ref().is_some_and(|h| {
+            h.timing_ticks > 30 || !h.velocity.is_finite() || !(0.0..=0.5).contains(&h.velocity)
+        }) {
+            return Err("groove.humanize requires timing_ticks 0..30 and velocity 0..0.5".into());
         }
         Ok(())
     }
@@ -85,4 +134,6 @@ pub struct GrooveTrace {
     pub run_before: usize,
     pub run_after: usize,
     pub velocity_factor: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub touch: Option<TouchTrace>,
 }

@@ -26,7 +26,7 @@ metadata and example coverage need an updated audit, not an LCM-sized event buff
   durations, linear/smooth/hold curves, optional finite-length cycle. Preserve
   existing single ramps and neutral Stop behavior. Add a prepared-909 breathing
   example, validation, endpoint/reset/tempo/determinism tests and readable traces.
-- [ ] **2. Procedural groove:** meter/offbeat emphasis, first-note-after-gap response,
+- [x] **2. Procedural groove:** meter/offbeat emphasis, first-note-after-gap response,
   independently keyed timing/velocity variation, reusable profiles and a garage
   comparison. Preserve note admission and bounded scheduling; explain each effect.
 - [ ] **3. Shared and stateful emphasis:** named shared accent lanes with explicit

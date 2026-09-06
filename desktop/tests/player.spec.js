@@ -88,6 +88,7 @@ async function boot(page) {
                                 run_before: 1,
                                 run_after: 1,
                                 velocity_factor: 0.4,
+                                touch: { offbeat_factor: 1.15, gap_factor: 1.25, velocity_jitter_factor: 0.95, requested_jitter_ticks: -4 },
                               },
                             },
                           }

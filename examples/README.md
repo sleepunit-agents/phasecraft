@@ -105,3 +105,6 @@ The original `intro` still works with the compact cutoff Set.
 
 `quickstart/breathing.toml`: smooth six-bar opening, two-bar hold, six-bar closing,
 two-bar hold, repeating independently of the four-bar rhythm. Prepared 909 Set.
+
+`quickstart/garage-touch.toml`: compare with garage for identical source hits and
+accents, interpreted with offbeat/gap emphasis and bounded timing/velocity touch.

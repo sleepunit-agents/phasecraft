@@ -142,3 +142,175 @@ fn groove_does_not_change_cross_part_references_or_depend_on_part_order() {
         }
     }
 }
+
+#[test]
+fn meter_and_gap_rules_use_actual_admitted_context() {
+    use phasecraft::music::groove::GapResponse;
+    let mut c = song();
+    c.parts[0].groove.offbeat_gain = 1.2;
+    c.parts[0].groove.after_gap = Some(GapResponse {
+        steps: 4,
+        gain: 1.3,
+    });
+    let trace = resolve_step(&c, 2).0;
+    let g = trace[0].event.as_ref().unwrap().groove.as_ref().unwrap();
+    assert_eq!(g.velocity_factor, 1.2);
+    assert!(!g.touch.as_ref().unwrap().after_gap);
+    c.parts[0].trigger.rhythm = phasecraft::music::rhythm::Expression::Euclidean {
+        steps: 8,
+        pulses: 1,
+        rotation: 0,
+        reset_on_phrase: false,
+    };
+    let factor = |s| {
+        resolve_step(&c, s).0[0]
+            .event
+            .as_ref()
+            .unwrap()
+            .groove
+            .as_ref()
+            .unwrap()
+            .velocity_factor
+    };
+    assert_eq!(factor(0), 1.0); // no invented pre-roll gap
+    assert_eq!(factor(8), 1.3);
+    assert_eq!(factor(64), 1.3); // phrase boundary does not erase the gap
+}
+
+#[test]
+fn humanization_has_separate_addresses_and_preserves_admissions_and_timing_bounds() {
+    use phasecraft::music::groove::Humanize;
+    let mut c = song();
+    c.parts[0].groove.humanize = Some(Humanize {
+        timing_ticks: 30,
+        velocity: 0.2,
+        ..Default::default()
+    });
+    c.parts[0].groove.swing = 0.75;
+    c.parts[0].groove.delay_ticks = 60;
+    c.parts[0].output.gate_ticks = 239;
+    let mut edited = c.clone();
+    edited.parts[0].groove.humanize.as_mut().unwrap().velocity = 0.4;
+    edited.parts[0].groove.ghost_probability = 0.7;
+    for step in 0..130 {
+        let (a, midi) = resolve_step(&c, step);
+        let b = resolve_step(&edited, step).0;
+        assert_eq!(
+            serde_json::to_value(&a[0].trigger).unwrap(),
+            serde_json::to_value(&b[0].trigger).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&a[0].accent).unwrap(),
+            serde_json::to_value(&b[0].accent).unwrap()
+        );
+        let event = a[0].event.as_ref().unwrap();
+        let changed = b[0].event.as_ref().unwrap();
+        assert_eq!(event.tick, changed.tick);
+        assert_eq!(
+            event
+                .groove
+                .as_ref()
+                .unwrap()
+                .touch
+                .as_ref()
+                .unwrap()
+                .timing_roll,
+            changed
+                .groove
+                .as_ref()
+                .unwrap()
+                .touch
+                .as_ref()
+                .unwrap()
+                .timing_roll
+        );
+        assert!(
+            midi.iter()
+                .all(|m| m.tick >= step * STEP_TICKS && m.tick < (step + 1) * STEP_TICKS)
+        );
+        assert_eq!(midi, resolve_step(&c, step).1);
+    }
+    let a = resolve_step(&c, 1).0;
+    let b = resolve_step(&c, 65).0;
+    assert_eq!(
+        a[0].event
+            .as_ref()
+            .unwrap()
+            .groove
+            .as_ref()
+            .unwrap()
+            .touch
+            .as_ref()
+            .unwrap()
+            .timing_roll,
+        b[0].event
+            .as_ref()
+            .unwrap()
+            .groove
+            .as_ref()
+            .unwrap()
+            .touch
+            .as_ref()
+            .unwrap()
+            .timing_roll
+    );
+    c.parts[0].groove.humanize.as_mut().unwrap().mode =
+        phasecraft::music::ProbabilityMode::Continuous;
+    let b = resolve_step(&c, 65).0;
+    assert_ne!(
+        a[0].event
+            .as_ref()
+            .unwrap()
+            .groove
+            .as_ref()
+            .unwrap()
+            .touch
+            .as_ref()
+            .unwrap()
+            .timing_roll,
+        b[0].event
+            .as_ref()
+            .unwrap()
+            .groove
+            .as_ref()
+            .unwrap()
+            .touch
+            .as_ref()
+            .unwrap()
+            .timing_roll
+    );
+}
+
+#[test]
+fn touch_parameters_reject_invalid_ranges_and_garage_comparison_preserves_notes() {
+    for extra in [
+        "offbeat_gain=nan",
+        "after_gap={steps=0,gain=1.0}",
+        "after_gap={steps=33,gain=1.0}",
+        "humanize={timing_ticks=31}",
+        "humanize={velocity=0.6}",
+    ] {
+        let source = format!(
+            "tempo=132\nseed=1\n[parts.hat]\nuse='techno.closed_hat'\n[parts.hat.groove]\n{extra}"
+        );
+        assert!(Composition::parse(&source).is_err());
+    }
+    let plain = Composition::parse(include_str!("../examples/quickstart/garage.toml")).unwrap();
+    let touch =
+        Composition::parse(include_str!("../examples/quickstart/garage-touch.toml")).unwrap();
+    for step in 0..80 {
+        let a = resolve_step(&plain, step).0;
+        let b = resolve_step(&touch, step).0;
+        for (a, b) in a.iter().zip(b.iter()) {
+            assert_eq!(a.part, b.part);
+            assert_eq!(
+                serde_json::to_value(&a.trigger).unwrap(),
+                serde_json::to_value(&b.trigger).unwrap()
+            );
+            assert_eq!(
+                serde_json::to_value(&a.accent).unwrap(),
+                serde_json::to_value(&b.accent).unwrap()
+            );
+        }
+    }
+}

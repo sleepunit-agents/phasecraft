@@ -64,3 +64,41 @@ JSON inspection includes onset, gate, ghost roll, run context and velocity facto
 on each grooved event. Human inspection includes actual onset ticks and resolved
 velocity. The player's Groove detail panel exposes these decisions, and its hit
 flash waits until the delayed onset. Rings continue to show the source cycles.
+
+## Meter, space and human touch
+
+The optional next layer adds three composable interpretations:
+
+```toml
+[parts.rim.groove]
+offbeat_gain = 1.15
+after_gap = { steps = 4, gain = 1.25 }
+delay_ticks = 12
+humanize = { timing_ticks = 8, velocity = 0.08, mode = "phrase_locked" }
+```
+
+`offbeat_gain` (0–2, default 1) applies to the eighth-note offbeat, sixteenth
+positions 2, 6, 10 and 14 in each 4/4 bar. `after_gap` applies its gain (0–2) when
+all of the preceding `steps` (1–32) have no admitted hit in this Part. It crosses
+phrase boundaries and does not invent silence before transport zero. Both multiply
+the base-velocity contour before the semantic accent boost. Gap context, like run
+context, is recomputed under the current configuration after watched edits.
+
+`humanize.timing_ticks` requests symmetric jitter up to 30 ticks around the grooved
+onset. `humanize.velocity` requests symmetric base-velocity variation up to 0.5
+(0.08 means ±8%). Their keyed rolls are independent of one another, ghosting,
+trigger probability and accents. `mode` selects phrase-locked or continuous
+occurrences. Changing unrelated Parts does not scramble the rolls.
+
+Timing remains inside the source step. A negative offset is clipped to zero;
+choose a small `delay_ticks` if you want room on both sides of a straight onset.
+The existing swing/delay bounds plus jitter leave a positive gate, which may be
+shortened to end before the next step. These are musical ticks, not fixed ms.
+The inspector reports the requested jitter, actual offset, meter/gap factors and
+velocity-touch factor. Setting a velocity factor to zero still keeps the admitted
+note at MIDI velocity 1; probability controls omission.
+
+Reusable components: `groove.offbeats`, `groove.after_space`, and
+`groove.human_touch`. **garage-touch** has exactly the original garage's source
+hits/accents with additional interpretation. Compare the two using the same 909
+Set. No new mappings are needed.

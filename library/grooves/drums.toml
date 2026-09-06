@@ -14,3 +14,13 @@ run = "low_high_low"
 
 [behaviors."groove.laid_back".groove]
 delay_ticks = 12
+
+[behaviors."groove.offbeats".groove]
+offbeat_gain = 1.15
+
+[behaviors."groove.after_space".groove]
+after_gap = { steps = 4, gain = 1.2 }
+
+[behaviors."groove.human_touch".groove]
+delay_ticks = 12
+humanize = { timing_ticks = 8, velocity = 0.08 }

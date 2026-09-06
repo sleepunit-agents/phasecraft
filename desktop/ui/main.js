@@ -405,6 +405,9 @@ function renderDetail() {
     heading.textContent = "Groove";
     const detail = document.createElement("p");
     detail.textContent = `Timing +${g.offset_ticks} ticks · base velocity ×${g.velocity_factor.toFixed(3)} · ${g.ghost ? "ghost hit" : "normal hit"} · ghost roll ${g.ghost_roll.toFixed(3)}`;
+    if (g.touch) {
+      detail.textContent += ` · offbeat ×${g.touch.offbeat_factor.toFixed(2)} · gap ×${g.touch.gap_factor.toFixed(2)} · touch ×${g.touch.velocity_jitter_factor.toFixed(3)} · requested jitter ${g.touch.requested_jitter_ticks} ticks`;
+    }
     const context = document.createElement("p");
     context.textContent = `Run context: ${g.run_before} before / ${g.run_after} after (up to 2 each) · gate ${trace.event.duration_ticks}/${g.requested_gate_ticks} ticks`;
     block.append(heading, detail, context);
