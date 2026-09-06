@@ -124,12 +124,14 @@ Verify its musical behavior with long open hats and interleaved closed hats.
 Choking, note-off response and overlapping tails are host behavior, not implicit
 promises of Phasecraft's current note scheduler.
 
-### Choose the sample player after confirming Live version
+### Sample player: Live 12.4 Suite target
 
-Prefer a stock instrument with a real trigger-mode amplitude decay. Ableton's
-current Drum Sampler documents trigger-mode Hold/Decay and sample-only hot swap.
-It is a candidate, **not an assumed dependency** until Jonathan's version/edition
-is confirmed. A Simpler adapter must document its playback mode: One-Shot Fade Out
+Jonathan confirmed **Live 12.4 Suite**. Target that environment for the first kit;
+compatibility with older releases or other editions is not yet promised. Specify
+**Drum Sampler in Trigger mode** for the first voice prototype, with Hold at its
+minimum and Decay mapped to the named tail control. Ableton documents its
+trigger-mode Hold/Decay and sample-only hot swap. A future Simpler adapter must
+document its playback mode: One-Shot Fade Out
 is anchored to the sample end and is not equivalent to amplitude decay from onset.
 Do not label it a universal Decay implementation without a listening check.
 [Instrument reference](https://www.ableton.com/en/manual/live-instrument-reference/).

@@ -81,5 +81,5 @@ This proves multi-control emphasis. Stateful accent accumulation/decay, shared
 accents and pitched 303 articulation remain separate future work. Host smoothing
 and parameter response determine the audible shape; Phasecraft performs no DSP.
 
-The proposed [prepared-kit control contract](kit-control-spec.md) separates
+The proposed [prepared-kit control contract](https://github.com/sleepunit-agents/phasecraft/blob/main/docs/kit-control-spec.md) separates
 velocity, held mix level and temporary accent gain, and plans stable per-voice mappings.
