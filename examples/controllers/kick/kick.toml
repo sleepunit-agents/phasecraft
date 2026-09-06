@@ -1,0 +1,24 @@
+# Existing Phasecraft 909 Prepared.als: no new Ableton mapping needed.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[parts.kick.trigger]
+rhythm = { op = "or", a = { steps = 16, pulses = 4 }, b = { steps = 5, pulses = 0 } }
+probability = 1.0
+
+[parts.kick.accent]
+rhythm = { steps = 7, pulses = 3 }
+probability = 1.0
+amount = 0.8
+
+[parts.kick.profile]
+base = 96
+boost = 16
+
+[parts.kick.output]
+channel = 10
+note = 36
+controls.cutoff = { cc = 20, channel = 15, default = 1.0 }
+controls.level = { cc = 22, channel = 15, default = 1.0 }
+controls.decay = { cc = 21, channel = 15, default = 0.5590551181102362 }

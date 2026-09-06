@@ -32,6 +32,11 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+      - name: E16 Lua adapter simulation
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m pip install lupa==2.5
+          python3 tools/controllers/test_script.py
       - run: cargo build --locked --release
       - name: Package Unix executable
         if: runner.os != 'Windows'

@@ -1,0 +1,4 @@
+name = "Kick laboratory"
+default = "kick.toml"
+compositions = ["kick.toml"]
+midi = "config/midi.toml"

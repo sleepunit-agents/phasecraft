@@ -189,3 +189,11 @@ in an overlaid title bar. Custom close follows the same MIDI cleanup as OS Close
 The implementation follows [Tauri's window customization support](https://v2.tauri.app/learn/window-customization/).
 Physical Windows resizing/window-management behavior still warrants a user pass;
 CI builds Windows, while native interaction automation currently runs on Linux.
+
+## E16 kick preview
+
+Settings now includes separate controller input/feedback ports and **Reset live edits**.
+These connections are chosen per app launch and do not change the Ableton destination.
+The [setup guide](../tools/controllers/README.md) provides the script, encoder assignments,
+one-kick project and limits. Temporary edits apply at the next bar and are not saved to
+TOML; Stop, composition switch or a changed valid file reload clears them.

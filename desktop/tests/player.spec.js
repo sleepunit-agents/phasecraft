@@ -27,6 +27,27 @@ async function boot(page) {
               throw new Error("Signature verification failed");
             return new Promise(() => {}); // successful install exits the process
           }
+          if (command === "controller_inputs") return ["E16 input"];
+          if (command === "controller_connect") {
+            window.controllerConnected = true;
+            return;
+          }
+          if (command === "controller_disconnect") {
+            window.controllerConnected = false;
+            return;
+          }
+          if (command === "controller_reset") {
+            window.controllerEdited = false;
+            return;
+          }
+          if (command === "controller_status")
+            return {
+              connected: !!window.controllerConnected,
+              received: 3,
+              dropped: 0,
+              error: null,
+              view: { edited: !!window.controllerEdited, values: [] },
+            };
           if (command === "destinations") return ["Phasecraft"];
           if (command === "plugin:dialog|open") return "/music/night-maps";
           if (command === "plugin:dialog|save") return "/music/new-set";
@@ -455,4 +476,31 @@ test("settings dismissal cancels edits and only compositions scroll", async ({
     path: "test-results/player-minimum.png",
     fullPage: true,
   });
+});
+
+test("controller connection is separate and temporary edits can be reset", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.locator("#welcome-open").click();
+  await page.locator("#settings-open").click();
+  await page.locator("#controller-refresh").click();
+  await expect(page.locator("#controller-input option")).toHaveCount(2);
+  await page.locator("#controller-input").selectOption("E16 input");
+  await page.locator("#controller-output").selectOption("Phasecraft");
+  await page.locator("#controller-connect").click();
+  await expect(page.locator("#controller-status")).toContainText("Connected");
+  await expect(page.locator("#destination")).toHaveValue("Phasecraft");
+  await page.evaluate(() => {
+    window.controllerEdited = true;
+  });
+  await expect(
+    page.getByText("Live kick edits", { exact: false }),
+  ).toBeVisible();
+  await page.locator("#controller-reset").click();
+  await expect(
+    page.getByText("Live kick edits", { exact: false }),
+  ).toBeHidden();
+  await page.locator("#controller-disconnect").click();
+  await expect(page.locator("#controller-status")).toHaveText("Not connected.");
 });

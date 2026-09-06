@@ -1,6 +1,6 @@
 # Controller research: OXI E16 and Neuzeit Drop
 
-Research date: 2026-09-06. Recommendation and implementation proposal, not implemented controller support. Both devices are already available to the user; price is not the deciding factor.
+Research date: 2026-09-06. **Update:** the [one-kick E16 preview](../tools/controllers/README.md) now implements temporary bar-boundary controls and feedback; physical verification remains pending. The broader integration below remains a proposal. Both devices are already available to the user; price is not the deciding factor.
 
 **Start with the E16 as Phasecraft's musical control surface. Keep a generic MIDI adapter so Drop can use the same parameter layer, with a layout aimed at performing eight Parts at once.** Drop is also a viable first controller if simultaneous faders and track controls matter more than contextual labels.
 
@@ -31,7 +31,7 @@ Both are useful. We should choose the first implementation by workflow, not make
 
 ## Shared integration design
 
-The current code has MIDI output in `src/playback/ports.rs` and phrase-boundary file replacement in `src/playback/transport.rs`. It does not yet provide a controller input service or an authoritative live-edit parameter API. Existing parameter automation is musical output behavior, not that missing input API.
+The current code has MIDI output in `src/playback/ports.rs` and phrase-boundary file replacement in `src/playback/transport.rs`. `src/control.rs` now provides temporary one-Part edits; `src/playback/controller.rs` supplies the initial E16 adapter. Existing parameter automation is musical output behavior, not that missing input API.
 
 ```text
 Controller USB input → device adapter → typed parameter/action commands
@@ -71,4 +71,4 @@ This is a layout proposal, not a frozen protocol. The literal A/B page applies t
 4. Add the full E16 contextual page through a small Lua/SysEx adapter, including initialization/resynchronization and four-character labels. Test actual firmware API names and off-page updates before expanding it.
 5. Add Drop's eight-column CC layout through the same commands, testing fader pickup and feedback. Treat snapshot interpolation as a later explicit owner of continuous controls; discrete rhythm topology should change atomically, not sweep through intermediate operators/seeds.
 
-No controller integration code is included in this research change. Hardware tests are the next evidence needed before calling either profile supported.
+The one-kick preview implements a subset of this proposal. Hardware tests remain necessary before calling the E16 profile supported; Drop has no adapter yet.

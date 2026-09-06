@@ -46,7 +46,9 @@ an unknown alignment. Per-step traces still expose individual leaf phases.
 - Tie, slide, overlapping note ownership and synth-specific articulation.
 - DSP, synthesis, plugin hosting, audio recording and DAW project manipulation
   beyond the narrowly scoped prepared-kit adapter.
-- E16, controller input/macros, AI/MCP, in-app composition editing and a custom DSL.
+- Full controller layouts/macros, AI/MCP, in-app composition editing and a custom DSL.
+  The [E16 kick preview](../tools/controllers/README.md) now has temporary bar-boundary
+  controls and feedback; physical testing is pending.
 - Whole-expression Rotate or nested Probability nodes: leaf rotation and explicit
   lane decisions cover current examples. New algebra nodes need a concrete use case.
 - Universal density/variation knobs, automatic style generation and phrase mutation:

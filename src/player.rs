@@ -7,7 +7,7 @@ use crate::{
     },
     playback::{
         MidiOutput, SilentOutput, ports,
-        transport::{PlayOptions, PlaybackFrame, run_controlled},
+        transport::{PlayOptions, PlaybackFrame},
     },
 };
 use serde::Serialize;
@@ -54,6 +54,7 @@ struct Session {
 }
 #[derive(Default)]
 pub struct Player {
+    pub live: crate::control::Shared,
     pub project: Option<ProjectInfo>,
     pub selected: Option<PathBuf>,
     pub midi: MidiSettings,
@@ -71,6 +72,10 @@ impl Player {
         self.stop()?;
         self.project = Some(info.clone());
         self.selected = Some(info.default.clone());
+        self.live
+            .lock()
+            .map_err(|e| e.to_string())?
+            .load(Some(loaded.composition.clone()));
         self.composition = Some(Arc::new(loaded.composition));
         self.midi = loaded.midi;
         self.reset_view();
@@ -84,6 +89,10 @@ impl Player {
         let loaded = project::load(path)?;
         self.stop()?;
         self.selected = Some(path.to_owned());
+        self.live
+            .lock()
+            .map_err(|e| e.to_string())?
+            .load(Some(loaded.composition.clone()));
         self.composition = Some(Arc::new(loaded.composition));
         self.midi = loaded.midi;
         self.reset_view();
@@ -117,12 +126,21 @@ impl Player {
         sink: S,
         send_clock: Option<bool>,
     ) -> Result<(), String> {
+        // Starting should retain edits made while stopped; explicit Stop clears them.
+        let desired = self.live.lock().map_err(|e| e.to_string())?.clone();
         self.stop()?;
         let file = self.selected.clone().ok_or("open a project first")?;
         let loaded = project::load(&file)?;
         self.midi = loaded.midi;
         if let Some(send_clock) = send_clock {
             self.midi.send_clock = send_clock;
+        }
+        {
+            let mut live = self.live.lock().map_err(|e| e.to_string())?;
+            let generation = live.generation;
+            *live = desired;
+            live.generation = generation;
+            live.rebase(loaded.composition.clone());
         }
         self.composition = Some(Arc::new(loaded.composition.clone()));
         self.reset_view();
@@ -137,13 +155,15 @@ impl Player {
             send_clock: self.midi.send_clock,
             lookahead: Duration::from_millis(self.midi.lookahead_ms),
         };
+        let live = self.live.clone();
         let worker = std::thread::spawn(move || {
-            let result = run_controlled(
+            let result = crate::playback::transport::run_with_controls(
                 loaded.composition,
                 sink,
                 options,
                 control.clone(),
                 Some(sender),
+                Some(live),
             );
             control.store(false, Ordering::Relaxed);
             result
@@ -156,6 +176,7 @@ impl Player {
         Ok(())
     }
     pub fn stop(&mut self) -> Result<(), String> {
+        self.live.lock().map_err(|e| e.to_string())?.reset();
         if let Some(session) = self.session.take() {
             session.running.store(false, Ordering::Relaxed);
             let result = session
@@ -166,11 +187,24 @@ impl Player {
             if let Err(e) = &result {
                 self.error = Some(e.clone());
             }
+            self.live.lock().map_err(|e| e.to_string())?.reset();
+            self.composition = self
+                .live
+                .lock()
+                .map_err(|e| e.to_string())?
+                .composition()
+                .map(Arc::new);
             self.current = None;
             self.pending.clear();
             self.history.clear();
             return result;
         }
+        self.composition = self
+            .live
+            .lock()
+            .map_err(|e| e.to_string())?
+            .composition()
+            .map(Arc::new);
         self.current = None;
         self.pending.clear();
         self.history.clear();
@@ -181,6 +215,7 @@ impl Player {
         self.project = None;
         self.selected = None;
         self.composition = None;
+        self.live.lock().map_err(|e| e.to_string())?.load(None);
         Ok(())
     }
     pub fn poll(&mut self) -> Snapshot {
@@ -223,6 +258,12 @@ impl Player {
             .is_some_and(|s| s.worker.is_finished())
         {
             let _ = self.stop();
+        }
+        if self.session.is_none()
+            && let Ok(live) = self.live.lock()
+            && let Some(c) = live.composition()
+        {
+            self.composition = Some(Arc::new(c));
         }
         let playing = self
             .session
@@ -281,6 +322,36 @@ impl Drop for Player {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stopped_edits_survive_start_then_stop_restores_score() {
+        let mut player = Player::default();
+        player
+            .open(std::path::Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/examples/controllers/kick"
+            )))
+            .unwrap();
+        player
+            .live
+            .lock()
+            .unwrap()
+            .change("kick", crate::control::Parameter::APulses, 1)
+            .unwrap();
+        let generation = player.live.lock().unwrap().generation;
+        player.start(SilentOutput).unwrap();
+        let until = Instant::now() + Duration::from_secs(2);
+        while player.poll().step.is_none() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let snapshot = player.poll();
+        assert!(snapshot.step.is_some());
+        assert_eq!(player.live.lock().unwrap().view("kick").values[5].value, 5.);
+        assert_ne!(player.live.lock().unwrap().generation, generation);
+        player.stop().unwrap();
+        assert!(!player.live.lock().unwrap().view("kick").edited);
+        assert_eq!(player.live.lock().unwrap().view("kick").values[5].value, 4.);
+        assert!(player.poll().step.is_none());
+    }
     #[test]
     fn display_waits_for_deadline_and_retains_independent_cycle_phases() {
         let c =
@@ -418,7 +489,8 @@ mod tests {
             lookahead: Duration::from_millis(10),
         };
         let began = Instant::now();
-        run_controlled(c, SilentOutput, options, running, Some(sender)).unwrap();
+        crate::playback::transport::run_controlled(c, SilentOutput, options, running, Some(sender))
+            .unwrap();
         assert!(began.elapsed() < Duration::from_secs(2));
     }
 }

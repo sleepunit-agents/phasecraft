@@ -1,0 +1,81 @@
+-- Phasecraft E16 adapter, firmware 1.1.0 / Lua API 1.2.0.
+-- Native page 1 = Kit; page 2 = Rhythm. See README for assignments.
+--@assign id=1 abbr="ASte" name="A Steps" l=0 h=127 manual=true dis=0
+--@assign id=2 abbr="APul" name="A Pulses" l=0 h=127 manual=true dis=0
+--@assign id=3 abbr="ARot" name="A Rotation" l=0 h=127 manual=true dis=0
+--@assign id=4 abbr="Trig" name="Trigger Probability" l=0 h=127 manual=true dis=0
+--@assign id=5 abbr="BSte" name="B Steps" l=0 h=127 manual=true dis=0
+--@assign id=6 abbr="BPul" name="B Pulses" l=0 h=127 manual=true dis=0
+--@assign id=7 abbr="BRot" name="B Rotation" l=0 h=127 manual=true dis=0
+--@assign id=8 abbr="Comb" name="Combination" l=0 h=127 manual=true dis=0
+--@assign id=9 abbr="CSte" name="Accent Steps" l=0 h=127 manual=true dis=0
+--@assign id=10 abbr="CPul" name="Accent Pulses" l=0 h=127 manual=true dis=0
+--@assign id=11 abbr="CRot" name="Accent Rotation" l=0 h=127 manual=true dis=0
+--@assign id=12 abbr="Acc" name="Accent Probability" l=0 h=127 manual=true dis=0
+--@assign id=13 abbr="Kick" name="Kick Level" l=0 h=127 manual=true dis=0
+--@assign id=14 abbr="Cut" name="Cutoff" l=0 h=127 manual=true dis=0
+--@assign id=15 abbr="Amt" name="Accent Amount" l=0 h=127 manual=true dis=0
+--@assign id=16 abbr="Decy" name="Decay" l=0 h=127 manual=true dis=0
+local generation, age, timer = -1, 0, 0
+local title, pending_title
+local labels, values, numbers, enabled, holds = {}, {}, {}, {}, {}
+local function active() local p=controller.getPage(); return p==1 or p==2 end
+local function send(kind,body)
+  local b={240,125,80,67,1,kind}
+  for _,v in ipairs(body) do b[#b+1]=v end
+  b[#b+1]=247
+  midi.sendSysex(0,b)
+end
+local function hello()
+  if active() then send(1,{controller.getPage()}) end
+end
+local function clear()
+  for i=1,16 do leds.reset(i);slots.reset(i) end
+  page.resetTitle();title=nil;pending_title=nil
+end
+function page.onInit()
+  generation=-1
+  for i=1,16 do controller.set(i,"v",8192) end
+  system.setUpdateRate(40)
+  hello()
+end
+function page.onPageChange(prev,curr)
+  clear(); generation=-1; labels={}; values={}; numbers={}; enabled={}; holds={}
+  hello()
+end
+function controller.onEncoderTurn(enc)
+  if not active() or enc.page~=controller.getPage() or enc.id~=(enc.page==1 and 13 or enc.index) then return end
+  if enc.id<1 or enc.id>16 then return end
+  controller.set(enc.id,"v",8192)
+  if generation<0 or not enabled[enc.index] then return end
+  local d=math.max(-8,math.min(8,enc.increment or 0))
+  if d==0 then return end
+  send(2,{generation//128,generation%128,enc.page,enc.index-1,d+64})
+  holds[enc.index]=25
+end
+function controller.onSysex(b)
+  if #b~=22 or b[1]~=240 or b[2]~=125 or b[3]~=80 or b[4]~=67 or b[5]~=1 or b[6]~=4 or b[22]~=247 then return end
+  for i=2,21 do if b[i]<0 or b[i]>127 then return end end
+  if not active() or b[9]~=controller.getPage() or b[10]>15 then return end
+  generation=b[7]*128+b[8];age=0
+  local i=b[10]+1
+  enabled[i]=b[11]==1;values[i]=b[12]*128+b[13]
+  labels[i]=string.char(b[14],b[15],b[16],b[17])
+  numbers[i]=string.char(b[18],b[19],b[20],b[21])
+end
+function system.update()
+  if not active() then return end
+  age=age+1;timer=timer+1
+  if timer>=25 then timer=0;hello() end
+  if age>75 then generation=-1 end
+  if pending_title then page.setTitle(pending_title);pending_title=nil end
+  local next_title=generation<0 and "Connect player" or (controller.getPage()==1 and "Phasecraft Kit" or "Kick / rhythm")
+  if next_title~=title then page.resetTitle();pending_title=next_title;title=next_title end
+  local batch={}
+  for i=1,16 do
+    if holds[i] and holds[i]>0 then holds[i]=holds[i]-1 end
+    slots.update(i,generation<0 and "----" or ((holds[i] or 0)>0 and numbers[i] or labels[i]) or "----")
+    batch[i]={i,generation>=0 and (values[i] or 0) or 0,enabled[i] and 0 or 60}
+  end
+  leds.updateByIndex(batch)
+end

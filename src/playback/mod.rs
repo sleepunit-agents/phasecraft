@@ -225,3 +225,5 @@ impl MidiOutput for Box<dyn MidiOutput> {
         (**self).send(bytes)
     }
 }
+
+pub mod controller;

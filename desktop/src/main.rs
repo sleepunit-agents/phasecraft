@@ -13,6 +13,7 @@ mod updates;
 #[derive(Default)]
 struct AppState {
     player: Mutex<Player>,
+    controller: Mutex<Option<phasecraft::playback::controller::Connection>>,
     recent: Mutex<Vec<PathBuf>>,
     preferences: Mutex<Option<PathBuf>>,
     updates: updates::State,
@@ -151,6 +152,64 @@ fn start(
 fn stop(state: tauri::State<AppState>) -> Result<(), String> {
     state.player.lock().map_err(|e| e.to_string())?.stop()
 }
+#[tauri::command(async)]
+fn controller_inputs() -> Result<Vec<String>, String> {
+    phasecraft::playback::controller::inputs()
+}
+#[tauri::command(async)]
+fn controller_connect(
+    input: String,
+    output: String,
+    state: tauri::State<AppState>,
+) -> Result<(), String> {
+    let live = state.player.lock().map_err(|e| e.to_string())?.live.clone();
+    let mut connection = state.controller.lock().map_err(|e| e.to_string())?;
+    *connection = None;
+    *connection = Some(phasecraft::playback::controller::connect(
+        input, output, live,
+    )?);
+    Ok(())
+}
+#[tauri::command(async)]
+fn controller_disconnect(state: tauri::State<AppState>) -> Result<(), String> {
+    *state.controller.lock().map_err(|e| e.to_string())? = None;
+    Ok(())
+}
+#[tauri::command]
+fn controller_status(
+    state: tauri::State<AppState>,
+) -> Result<phasecraft::playback::controller::Status, String> {
+    let mut status = state
+        .controller
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .map(|c| c.status())
+        .unwrap_or_default();
+    status.view = Some(
+        state
+            .player
+            .lock()
+            .map_err(|e| e.to_string())?
+            .live
+            .lock()
+            .map_err(|e| e.to_string())?
+            .view("kick"),
+    );
+    Ok(status)
+}
+#[tauri::command]
+fn controller_reset(state: tauri::State<AppState>) -> Result<(), String> {
+    state
+        .player
+        .lock()
+        .map_err(|e| e.to_string())?
+        .live
+        .lock()
+        .map_err(|e| e.to_string())?
+        .reset();
+    Ok(())
+}
 #[tauri::command]
 fn window_control(window: tauri::WebviewWindow, action: &str) -> Result<(), String> {
     match action {
@@ -193,6 +252,11 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             initial,
+            controller_inputs,
+            controller_connect,
+            controller_disconnect,
+            controller_status,
+            controller_reset,
             window_control,
             destinations,
             open_project,
@@ -208,7 +272,9 @@ fn main() {
         ])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
-                let _ = window.state::<AppState>().player.lock().unwrap().stop();
+                let state = window.state::<AppState>();
+                *state.controller.lock().unwrap() = None;
+                let _ = state.player.lock().unwrap().stop();
             }
         })
         .build(tauri::generate_context!())
@@ -219,7 +285,9 @@ fn main() {
                 event,
                 tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
             ) {
-                let _ = app.state::<AppState>().player.lock().unwrap().stop();
+                let state = app.state::<AppState>();
+                *state.controller.lock().unwrap() = None;
+                let _ = state.player.lock().unwrap().stop();
             }
         });
 }

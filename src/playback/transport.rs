@@ -42,11 +42,22 @@ pub struct PlaybackFrame {
 }
 
 pub fn run_controlled<S: MidiOutput + 'static>(
+    c: Composition,
+    sink: S,
+    options: PlayOptions,
+    running: Arc<AtomicBool>,
+    feedback: Option<mpsc::SyncSender<PlaybackFrame>>,
+) -> Result<(), String> {
+    run_with_controls(c, sink, options, running, feedback, None)
+}
+
+pub fn run_with_controls<S: MidiOutput + 'static>(
     mut c: Composition,
     sink: S,
     options: PlayOptions,
     running: Arc<AtomicBool>,
     feedback: Option<mpsc::SyncSender<PlaybackFrame>>,
+    live: Option<crate::control::Shared>,
 ) -> Result<(), String> {
     let end_steps = match (options.steps, c.end_step()) {
         (Some(a), Some(b)) => Some(a.min(b)),
@@ -94,6 +105,7 @@ pub fn run_controlled<S: MidiOutput + 'static>(
     let mut last_error = String::new();
     let mut visual_composition = Arc::new(c.clone());
     let mut skipped_steps = 0u64;
+    let mut live_revision = None;
     let planned = (|| {
         let mut step = 0;
         let mut last_scheduled: Option<(u64, Arc<Composition>)> = None;
@@ -120,6 +132,11 @@ pub fn run_controlled<S: MidiOutput + 'static>(
                         if source != last_source {
                             last_source = source;
                             c = next;
+                            if let Some(live) = &live {
+                                live.lock()
+                                    .map_err(|e| e.to_string())?
+                                    .load(Some(c.clone()));
+                            }
                             visual_composition = Arc::new(c.clone());
                             eprintln!(
                                 "Applied configuration at bar {} (seed {}).",
@@ -133,6 +150,18 @@ pub fn run_controlled<S: MidiOutput + 'static>(
                         last_error = error;
                     }
                     Err(_) => {}
+                }
+            }
+            if step % 16 == 0
+                && let Some(live) = &live
+            {
+                let live = live.lock().map_err(|e| e.to_string())?;
+                if live_revision != Some(live.revision) {
+                    if let Some(next) = live.composition() {
+                        c = next;
+                        visual_composition = Arc::new(c.clone());
+                    }
+                    live_revision = Some(live.revision);
                 }
             }
             // After a stalled producer, jump over obsolete positions. Stateless
@@ -160,6 +189,17 @@ pub fn run_controlled<S: MidiOutput + 'static>(
                     ));
                     events.sort_by_key(crate::music::resolve::midi_order);
                 }
+            }
+            if c.arrangement.is_none()
+                && let Some((_, previous)) = &last_scheduled
+                && !Arc::ptr_eq(previous, &visual_composition)
+            {
+                events.extend(crate::control::removed_control_resets(
+                    previous,
+                    &c,
+                    step * STEP_TICKS,
+                ));
+                events.sort_by_key(crate::music::resolve::midi_order);
             }
             last_scheduled = Some((step, visual_composition.clone()));
             for midi in events {

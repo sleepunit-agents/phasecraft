@@ -9,6 +9,7 @@ import {
   visualProgress,
 } from "./rhythm.js";
 import "./style.css";
+import { setupController } from "./controllers.js";
 import { setupUpdates } from "./updates.js";
 
 const app = document.querySelector("#app");
@@ -24,7 +25,7 @@ app.innerHTML = `
 <main>
   <header><div><div class="eyebrow">PHASECRAFT / PLAYER</div><h1 id="title">Small systems.<br>Long stories.</h1><p id="subtitle">Open a folder. Find the groove. Watch it unfold.</p></div><div class="header-right"><button id="update-chip" class="update-chip" hidden></button><span id="watch-status" class="pill">TOML → LIVE MIDI</span><span id="part-count"></span></div></header>
   <p id="section-position" class="muted" hidden></p><section class="transport" aria-label="Playback controls"><button id="play" class="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button><div class="metric"><label>POSITION</label><strong id="position">1.1.1</strong></div><div class="metric"><label>BPM</label><strong id="tempo">—</strong></div><div class="metric seed"><label>SEED</label><strong id="seed">—</strong></div><button id="settings-open" aria-haspopup="dialog">⚙ Settings</button></section>
-  <dialog id="projects-dialog" aria-labelledby="projects-title"><div class="dialog-heading"><h2 id="projects-title">Projects</h2><button id="projects-dismiss" aria-label="Dismiss projects">×</button></div><div class="project-actions"><button id="open" class="primary">↗ Open project</button><button id="new">＋ New project</button><button id="close-project" disabled>Close current project</button></div><p class="muted">Compositions are read from disk; there are no unsaved composition edits.</p><p id="project-error" role="alert" hidden></p><div class="eyebrow">RECENT PROJECTS</div><nav id="recent"></nav></dialog>
+  <dialog id="projects-dialog" aria-labelledby="projects-title"><div class="dialog-heading"><h2 id="projects-title">Projects</h2><button id="projects-dismiss" aria-label="Dismiss projects">×</button></div><div class="project-actions"><button id="open" class="primary">↗ Open project</button><button id="new">＋ New project</button><button id="close-project" disabled>Close current project</button></div><p class="muted">Compositions are read from disk. Temporary controller edits are discarded on Stop or close.</p><p id="project-error" role="alert" hidden></p><div class="eyebrow">RECENT PROJECTS</div><nav id="recent"></nav></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-heading"><h2 id="settings-title">MIDI & transport</h2><button id="settings-dismiss" aria-label="Dismiss settings">×</button></div><div class="routing"><label for="destination">MIDI DESTINATION</label><div><select id="destination"><option value="">Choose an output…</option><option value="@silent">Silent preview</option></select><button id="refresh" title="Refresh MIDI outputs" aria-label="Refresh MIDI outputs">↻</button></div><label class="sync-control"><input id="send-clock" type="checkbox"> Send tempo & transport</label></div><p class="muted">Remembered for this project on this computer. Starts with config/midi.toml until you save an override.</p><p id="settings-status" role="status"></p><button id="settings-save" class="primary">Save settings</button></dialog>
   <div id="error" role="alert" hidden></div><div id="midi-error" class="notice" hidden></div><div id="reload-error" class="notice" hidden></div>
   <section id="welcome"><div class="welcome-rings" aria-hidden="true"><i></i><i></i><i></i><b>◉</b></div><div class="eyebrow">A FRONT PANEL FOR YOUR IDEAS</div><h2>Every cycle has<br>something to say.</h2><p>Independent rhythms, probability and emphasis.<br>Your musical systems, made visible.</p><button id="welcome-open" class="primary">Open a project folder ↗</button><button id="welcome-new">New project</button><div id="welcome-recent"></div><p class="welcome-hint">New here? New project includes 909 techno, DnB and garage.</p></section>
@@ -32,6 +33,7 @@ app.innerHTML = `
   <section id="detail" hidden><div class="detail-heading"><div class="eyebrow">UNDER THE SURFACE</div><h2 id="detail-title"></h2><button id="detail-close" aria-label="Close inspector">×</button></div><div id="detail-body"></div></section></section>
   <footer><span id="state">READY WHEN YOU ARE</span><span>Files are the score. This is the player.</span></footer>
 </main>`;
+setupController(invoke);
 const $ = (id) => document.getElementById(id);
 let project = null,
   snapshot = null,
