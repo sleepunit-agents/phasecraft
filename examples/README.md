@@ -98,3 +98,7 @@ and reset semantics.
 `quickstart/intro.toml` opens hats and rim over eight bars while its four-bar phrase
 repeats. It targets the generated compact-v1 cutoff Set. See
 [parameter lanes](../docs/parameters.md) for base values, ramps and accent interaction.
+
+`quickstart/movement.toml` requires **Phasecraft 909 Prepared.als**. It combines
+cutoff, level, pan and decay; Stop restores each touched parameter's kit default.
+The original `intro` still works with the compact cutoff Set.

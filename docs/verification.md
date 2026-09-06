@@ -163,3 +163,17 @@ are checked, and the existing musical golden traces remain in the suite.
   messages, 327 control messages, 864 clock pulses, zero dropped notes, maximum
   measured dispatch lateness 2.713 ms on this machine. The intro's three output
   bindings were checked against the generated compact Set's mapping report.
+
+## Stop defaults and prepared controls (2026-09-05)
+
+- 78 Rust tests pass, including mid-ramp Stop during and after an accent, the
+  transition to a composition without control lanes, explicit default validation,
+  partial-send cleanup and finite completion after watched parameter changes.
+- Eight browser checks and the native Linux player smoke pass, including selecting
+  movement and inspecting cutoff/level/pan/decay before closing during playback.
+  Root and desktop clippy pass with warnings denied.
+- Three private-fixture generator tests verify all 64 mappings, unchanged sample
+  references/internal macro links, kit-binding consistency and rejection of
+  conflicting mappings. All 64 generated isolation compositions validate.
+- New level/pan/decay response and round-trip Set opening still require Live on the
+  music machine. Existing cutoff response was confirmed by Jonathan.

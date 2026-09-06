@@ -16,7 +16,7 @@ Verified against `src/music/{mod,accent,resolve}.rs` and `src/playback/` at d7e6
 | Gate | Musical note duration, currently inside one sixteenth | Whether note-off shortens the sound depends on the host instrument |
 | Accent | Independent emphasis amount/probability | A musical annotation interpreted by a profile |
 | Named controls | Up to eight CC responses per Part, normalized base + emphasis contribution | Can address mapped gain, filter, tuning, etc.; current response is momentary |
-| CC lifetime | Send before a fired note; reset to configured base at note-off and outstanding-control cleanup on Stop/error | No independent control events on rests, no general held parameter/automation lane yet |
+| CC lifetime | Accent-only responses reset at note-off; held lanes and ramps continue through rests; Stop/error restores declared kit defaults | No host parameter readback or multi-segment automation yet |
 | Sync | MIDI Clock, Start and Stop | Optional host tempo/transport following |
 | Pitch bend | **Not implemented**: no pitch-bend lane or 0xE0 output path | Reserve native bend for later articulation; do not build the kit around it |
 | Other expression | No pressure, MPE, per-note CC or general modulation lanes | CCs affect their mapped voice chain, including any overlapping tails |
@@ -303,3 +303,12 @@ preserve; envelope controls require playback-mode-aware interpretation. Extra
 manual fixtures are needed only for genuinely new device/structure patterns, not
 one for every parameter or pad. Keep volume distinct from velocity and a later
 independent accent gain stage.
+
+## Prepared four-control kit milestone
+
+The generator now adds level, pan and stock decay/tail controls alongside cutoff,
+with 64 mappings on the existing two control channels. Stop defaults are explicit
+in the target bindings and separate from musical baseline values. The prepared
+Set preserves the stock Simpler voices and macro links; it does not implement the
+future Drum Sampler conversion described above. See [prepared kit](prepared-kit.md)
+for exact semantics, generation and the listening checklist.

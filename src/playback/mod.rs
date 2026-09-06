@@ -50,6 +50,7 @@ pub struct EventDispatcher<S: MidiOutput> {
     active: BTreeSet<(u8, u8)>,
     controls: BTreeMap<(u8, u8), u8>,
     last_controls: BTreeMap<(u8, u8), u8>,
+    stop_controls: BTreeMap<(u8, u8), u8>,
     pub stats: DispatchStats,
 }
 impl<S: MidiOutput> EventDispatcher<S> {
@@ -59,6 +60,7 @@ impl<S: MidiOutput> EventDispatcher<S> {
             active: BTreeSet::new(),
             controls: BTreeMap::new(),
             last_controls: BTreeMap::new(),
+            stop_controls: BTreeMap::new(),
             stats: DispatchStats::default(),
         }
     }
@@ -85,6 +87,9 @@ impl<S: MidiOutput> EventDispatcher<S> {
                     return Ok(());
                 }
                 self.controls.insert(key, reset);
+            }
+            if let Some(value) = event.stop_value {
+                self.stop_controls.insert(key, value);
             }
             if !event.parameter || self.last_controls.get(&key) != Some(&velocity) {
                 self.sink.send(&event.bytes)?;
@@ -122,7 +127,10 @@ impl<S: MidiOutput> EventDispatcher<S> {
             }
         }
         self.active.clear();
-        for (&(channel, cc), &reset) in &self.controls {
+        // Transport defaults take precedence over a temporary accent base.
+        let mut resets = std::mem::take(&mut self.controls);
+        resets.extend(std::mem::take(&mut self.stop_controls));
+        for (&(channel, cc), &reset) in &resets {
             if let Err(e) = self.sink.send(&[0xb0 | channel, cc, reset]) {
                 error = Some(e);
             } else {

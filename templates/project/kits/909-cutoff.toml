@@ -3,14 +3,14 @@
 [library.behaviors."my.cutoff_hat".output]
 channel = 10
 note = 42
-controls.cutoff = { cc = 75, channel = 15 }
+controls.cutoff = { cc = 75, channel = 15, default = 1.0 }
 
 [library.behaviors."my.cutoff_open_hat".output]
 channel = 10
 note = 46
-controls.cutoff = { cc = 37, channel = 16 }
+controls.cutoff = { cc = 37, channel = 16, default = 1.0 }
 
 [library.behaviors."my.cutoff_rim".output]
 channel = 10
 note = 37
-controls.cutoff = { cc = 28, channel = 15 }
+controls.cutoff = { cc = 28, channel = 15, default = 1.0 }

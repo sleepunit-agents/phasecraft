@@ -15,6 +15,7 @@ impl MidiOutput for Recording {
 }
 fn on(tick: u64) -> MidiEvent {
     MidiEvent {
+        stop_value: None,
         reset_value: None,
         parameter: false,
         tick,
@@ -23,6 +24,7 @@ fn on(tick: u64) -> MidiEvent {
 }
 fn off(tick: u64) -> MidiEvent {
     MidiEvent {
+        stop_value: None,
         reset_value: None,
         parameter: false,
         tick,
@@ -175,6 +177,7 @@ fn stopping_releases_all_simultaneous_drum_voices() {
     for note in [36, 38, 42, 46] {
         d.dispatch(
             &MidiEvent {
+                stop_value: None,
                 reset_value: None,
                 parameter: false,
                 tick: 0,

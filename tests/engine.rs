@@ -189,12 +189,14 @@ fn realization_and_midi_preserve_musical_times_and_emphasis() {
         to_midi(&c.parts[0], &p.events[0]),
         [
             MidiEvent {
+                stop_value: None,
                 reset_value: None,
                 parameter: false,
                 tick: 960,
                 bytes: [0x99, 42, 108]
             },
             MidiEvent {
+                stop_value: None,
                 reset_value: None,
                 parameter: false,
                 tick: 1080,

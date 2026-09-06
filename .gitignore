@@ -10,3 +10,5 @@
 /desktop/gen/
 
 /player-assets/
+
+__pycache__/

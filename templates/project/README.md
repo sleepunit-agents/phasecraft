@@ -58,3 +58,9 @@ Without mappings, the notes still play normally.
 while the four-bar phrase repeats. Edit `patterns/parameters.toml` to change the
 shared timeline and `kits/909-cutoff.toml` to change output bindings. See
 [PARAMETERS.md](PARAMETERS.md) for held values, accent interaction and edit semantics.
+
+`movement` uses **Phasecraft 909 Prepared.als**, adding level, pan and stock tail
+control to the cutoff opening. Bindings and neutral Stop values live in
+`kits/909-prepared.toml`. Stop restores defaults before trying another composition.
+Level is independent of note velocity. Decay is the closed hat's envelope decay
+and other voices' release/tail control. See PARAMETERS.md for reset semantics.

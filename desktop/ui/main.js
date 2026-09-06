@@ -441,7 +441,7 @@ function renderDetail() {
     const policy = document.createElement("p");
     policy.className = "muted";
     policy.textContent =
-      "Runs through rests · held base survives note-off and Stop";
+      "Runs through rests · held through notes · kit default restored on Stop";
     block.append(policy);
     $("detail-body").append(block);
   }

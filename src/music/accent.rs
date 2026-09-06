@@ -17,9 +17,12 @@ impl ControlResponse {
         (self.base + self.boost * amount).clamp(0.0, 1.0)
     }
 }
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ControlOutput {
+    /// Neutral kit value restored when transport stops; musical values are separate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<f64>,
     pub cc: u8,
     /// Defaults to the Part's note channel.
     pub channel: Option<u8>,
@@ -61,6 +64,14 @@ pub fn validate(
         }
     }
     for (name, output) in outputs {
+        if output
+            .default
+            .is_some_and(|v| !v.is_finite() || !(0.0..=1.0).contains(&v))
+        {
+            return Err(format!(
+                "control {name:?}: default must be finite within 0..1"
+            ));
+        }
         if name.trim().is_empty() {
             return Err("output control names cannot be empty".into());
         }

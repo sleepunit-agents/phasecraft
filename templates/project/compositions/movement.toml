@@ -1,0 +1,28 @@
+# Use Phasecraft 909 Prepared.als. Stop restores the kit's declared defaults.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[parts.kick]
+use = "my.techno_kick"
+
+[parts.clap]
+compose = ["techno.clap", "kit.prepared.clap"]
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "kit.prepared.closed_hat", "my.eight_bar_opening"]
+parameters.level = { value = 0.4, ramp = { to = 1.0, over_bars = 8 } }
+parameters.pan = { value = 0.25, ramp = { to = 0.75, over_bars = 8 } }
+parameters.decay = { value = 0.1, ramp = { to = 0.7, over_bars = 8 } }
+profile.controls.cutoff = { boost = 0.1 }
+
+[parts.open_hat]
+compose = ["techno.open_hat", "kit.prepared.open_hat", "my.eight_bar_opening"]
+parameters.level = { value = 0.3, ramp = { to = 0.85, over_bars = 8 } }
+parameters.pan = { value = 0.75, ramp = { to = 0.25, over_bars = 8 } }
+parameters.decay = { value = 0.1, ramp = { to = 0.85, over_bars = 8 } }
+
+[parts.rim]
+compose = ["techno.rim", "kit.prepared.rim", "my.eight_bar_opening"]
+parameters.level = { value = 0.3, ramp = { to = 1.0, over_bars = 8 } }
+profile.controls.cutoff = { boost = 0.15 }

@@ -61,7 +61,7 @@ fn eight_bar_ramp_crosses_phrases_and_holds_endpoint_in_musical_time() {
     }
 }
 #[test]
-fn held_parameter_initializes_on_rests_deduplicates_and_survives_stop() {
+fn held_parameter_initializes_on_rests_deduplicates_and_resets_on_stop() {
     let mut c = system();
     c.parts[0].trigger.probability = 0.0;
     c.parts[0].parameters.get_mut("cutoff").unwrap().ramp = None;
@@ -69,6 +69,7 @@ fn held_parameter_initializes_on_rests_deduplicates_and_survives_stop() {
     c.parts[0].output.controls.insert(
         "unused".into(),
         phasecraft::music::accent::ControlOutput {
+            default: None,
             cc: 21,
             channel: Some(16),
         },
@@ -84,12 +85,12 @@ fn held_parameter_initializes_on_rests_deduplicates_and_survives_stop() {
         }
     }
     d.cleanup().unwrap();
-    assert_eq!(d.sink.0, vec![vec![0xbf, 20, 25]]);
+    assert_eq!(d.sink.0, vec![vec![0xbf, 20, 25], vec![0xbf, 20, 25]]);
     assert_eq!(d.stats.controls_sent, 1);
     assert_eq!(d.stats.sent, 0);
 }
 #[test]
-fn emphasis_tracks_the_moving_base_and_stop_restores_latest_sample() {
+fn emphasis_tracks_the_moving_base_and_stop_restores_start_value_without_kit_default() {
     let mut c = system();
     let p = &mut c.parts[0];
     p.parameters.insert(
@@ -125,7 +126,7 @@ fn emphasis_tracks_the_moving_base_and_stop_restores_latest_sample() {
         d.dispatch(e, Duration::ZERO, Duration::ZERO).unwrap();
     }
     d.cleanup().unwrap();
-    assert_eq!(d.sink.0.last().unwrap(), &vec![0xbf, 20, 3]);
+    assert_eq!(d.sink.0.last().unwrap(), &vec![0xbf, 20, 0]);
     // Cleanup updates the dedup cache to the actual restored value.
     d.dispatch(&events[0], Duration::ZERO, Duration::ZERO)
         .unwrap();
@@ -261,6 +262,85 @@ fn watched_held_value_changes_at_phrase_boundary_even_with_no_notes() {
     worker.join().unwrap().unwrap();
     assert_eq!(
         *messages.lock().unwrap(),
-        vec![vec![0xbf, 20, 25], vec![0xbf, 20, 89]]
+        vec![vec![0xbf, 20, 25], vec![0xbf, 20, 89], vec![0xbf, 20, 89]]
     );
+}
+
+#[test]
+fn stop_restores_kit_defaults_mid_ramp_after_gate_and_before_plain_composition() {
+    let mut c = system();
+    c.parts[0]
+        .output
+        .controls
+        .get_mut("cutoff")
+        .unwrap()
+        .default = Some(1.0);
+    c.parts[0].profile.controls.insert(
+        "cutoff".into(),
+        phasecraft::music::accent::ControlResponse {
+            base: 0.0,
+            boost: 0.1,
+        },
+    );
+    for through in [80, 200] {
+        // both during emphasis and after note-off
+        let mut d = EventDispatcher::new(Recording::default());
+        let events = resolve_step(&c, 64).1;
+        for e in events.iter().filter(|e| e.tick <= 64 * 240 + through) {
+            d.dispatch(e, Duration::ZERO, Duration::ZERO).unwrap();
+        }
+        assert_ne!(d.sink.0.last().unwrap(), &vec![0xbf, 20, 127]);
+        d.cleanup().unwrap();
+        assert_eq!(d.sink.0.last().unwrap(), &vec![0xbf, 20, 127]);
+        let count = d.sink.0.len();
+        d.cleanup().unwrap();
+        assert_eq!(d.sink.0.len(), count);
+        let mut plain = c.clone();
+        plain.parts[0].parameters.clear();
+        plain.parts[0].profile.controls.clear();
+        for e in resolve_step(&plain, 0).1 {
+            d.dispatch(&e, Duration::ZERO, Duration::ZERO).unwrap();
+        }
+        assert!(d.sink.0[count..].iter().all(|e| e[0] & 0xf0 != 0xb0));
+    }
+    for invalid in [-0.1, 1.1, f64::NAN] {
+        c.parts[0]
+            .output
+            .controls
+            .get_mut("cutoff")
+            .unwrap()
+            .default = Some(invalid);
+        assert!(c.validate().is_err());
+    }
+}
+
+#[test]
+fn partial_control_send_failure_still_restores_kit_default() {
+    struct Failing {
+        calls: Vec<Vec<u8>>,
+    }
+    impl MidiOutput for Failing {
+        fn send(&mut self, bytes: &[u8]) -> Result<(), String> {
+            self.calls.push(bytes.to_vec());
+            if self.calls.len() == 1 {
+                Err("partial failure".into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+    let mut c = system();
+    c.parts[0]
+        .output
+        .controls
+        .get_mut("cutoff")
+        .unwrap()
+        .default = Some(1.0);
+    let mut d = EventDispatcher::new(Failing { calls: vec![] });
+    assert!(
+        d.dispatch(&resolve_step(&c, 0).1[0], Duration::ZERO, Duration::ZERO)
+            .is_err()
+    );
+    d.cleanup().unwrap();
+    assert_eq!(d.sink.calls.last().unwrap(), &vec![0xbf, 20, 127]);
 }

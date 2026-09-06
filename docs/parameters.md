@@ -22,6 +22,7 @@ The receiving control is declared separately, for example:
 [parts.hat.output.controls.cutoff]
 channel = 15
 cc = 75
+default = 1.0 # fully open when transport stops
 ```
 
 These particular addresses match the closed hat in our compact-v1 prepared Ableton
@@ -70,11 +71,18 @@ can affect already-sounding tails. Stateful accent envelopes remain future work.
 - Live file edits apply at the existing phrase boundary. They evaluate at the
   current absolute position; editing a ramp does not restart its clock. For a new
   eight-bar rise beginning at bar 17, set `start_bar = 17` and `over_bars = 8`.
-- Stop retains held values. If temporary emphasis is outstanding, cleanup restores
-  its most recently sampled base. A later Play reinitializes from bar 1.
-- Removing a held binding leaves the host at its last value; Phasecraft cannot read
-  and restore the host's earlier state. Configure another value before removing it
-  if that matters. Existing device settings remain authoritative outside our lanes.
+- Stop, finite completion, and playback error restore each touched control to its
+  declared `output.controls.<name>.default`. This is a normalized kit value, separate
+  from the composition's starting value. Without an explicit default, held lanes
+  restore their configured `value`. A later Play reinitializes from bar 1.
+- Note-off still restores the **current moving baseline**. Stop's kit default takes
+  precedence over any outstanding accent. Only controls actually used are reset;
+  unused declared mappings are not sent. Selecting another composition after Stop
+  therefore does not inherit the previous ramp. This is a declared default, not
+  readback of arbitrary knob positions in Live.
+- Removing a held binding during watched playback leaves the last value until Stop,
+  when its remembered default is restored. Phasecraft cannot read the host's earlier
+  state. Configure another value before removing it if an immediate change matters.
 - Finite playback remains end-exclusive. To observe a ramp's endpoint at bar 9,
   play into bar 9, rather than stopping immediately before it.
 
@@ -85,8 +93,8 @@ its rounded MIDI value changes. This is sufficient for slow builds; smoothing an
 sound response belong to the host. It is not audio-rate modulation.
 
 Stale timeline samples are skipped instead of replayed as a burst; an outstanding
-emphasis still gets a reset. A stopped emphasis restores the base from the latest
-processed sample, within the control sampling resolution during healthy playback.
+emphasis still gets a reset. At Stop the declared kit default is restored, independently of the latest ramp
+position or any active emphasis.
 The player and JSON inspection expose sampled base, emphasis and final MIDI values,
 including on rests. Human CLI inspection includes the parameter trace too.
 
@@ -104,3 +112,15 @@ It does not yet implement multiple segments, curves, cycling automation, runtime
 “ramp from here” commands, group mixing, or whole-song arrangement. The lane model
 keeps these separate from note generation so those can be added without changing
 rhythmic identity.
+
+## Prepared kit and existing projects
+
+**movement** uses the expanded `Phasecraft 909 Prepared.als` with cutoff, level,
+pan and decay mappings. Its kit defaults are in `kits/909-prepared.toml`. Level
+is separate from velocity; decay follows each stock voice's envelope mechanism.
+See [prepared kit](prepared-kit.md) for target-specific details.
+
+Updating the executable does not rewrite existing projects. For an older intro,
+add `default = 1.0` to each of the three `controls.cutoff` mappings in
+`kits/909-cutoff.toml`. Otherwise the fallback reset is its starting value (0.15),
+which is still dark. New projects include these defaults and both examples.

@@ -224,6 +224,7 @@ fn maximum_control_load_is_bounded_and_every_attack_has_a_matching_reset() {
                 part.output.controls.insert(
                     name,
                     ControlOutput {
+                        default: None,
                         cc: (1 + j + (i / 16) * MAX_CONTROLS) as u8,
                         channel: Some((1 + i % 16) as u8),
                     },
@@ -273,6 +274,7 @@ fn maximum_control_load_is_bounded_and_every_attack_has_a_matching_reset() {
     p.output.controls.insert(
         "excess".into(),
         ControlOutput {
+            default: None,
             cc: 30,
             channel: Some(16),
         },

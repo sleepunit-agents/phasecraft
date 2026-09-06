@@ -1,0 +1,128 @@
+# compact-v1: notes on channel 10; controls on 15/16. Defaults restore on Stop.
+[library.behaviors."kit.prepared.kick".output]
+note = 36
+channel = 10
+controls.cutoff = { cc = 20, channel = 15, default = 1.0 }
+controls.level = { cc = 22, channel = 15, default = 1.0 }
+controls.pan = { cc = 25, channel = 15, default = 0.5 }
+controls.decay = { cc = 21, channel = 15, default = 0.5590551181102362 }
+
+[library.behaviors."kit.prepared.rim".output]
+note = 37
+channel = 10
+controls.cutoff = { cc = 28, channel = 15, default = 1.0 }
+controls.level = { cc = 30, channel = 15, default = 1.0 }
+controls.pan = { cc = 34, channel = 15, default = 0.5 }
+controls.decay = { cc = 29, channel = 15, default = 1.0 }
+
+[library.behaviors."kit.prepared.snare".output]
+note = 38
+channel = 10
+controls.cutoff = { cc = 37, channel = 15, default = 1.0 }
+controls.level = { cc = 39, channel = 15, default = 1.0 }
+controls.pan = { cc = 42, channel = 15, default = 0.5 }
+controls.decay = { cc = 38, channel = 15, default = 1.0 }
+
+[library.behaviors."kit.prepared.clap".output]
+note = 39
+channel = 10
+controls.cutoff = { cc = 45, channel = 15, default = 1.0 }
+controls.level = { cc = 47, channel = 15, default = 1.0 }
+controls.pan = { cc = 50, channel = 15, default = 0.5 }
+controls.decay = { cc = 46, channel = 15, default = 1.0 }
+
+[library.behaviors."kit.prepared.kick_alt".output]
+note = 40
+channel = 10
+controls.cutoff = { cc = 53, channel = 15, default = 1.0 }
+controls.level = { cc = 55, channel = 15, default = 1.0 }
+controls.pan = { cc = 58, channel = 15, default = 0.5 }
+controls.decay = { cc = 54, channel = 15, default = 0.3543307086614173 }
+
+[library.behaviors."kit.prepared.snare_alt".output]
+note = 41
+channel = 10
+controls.cutoff = { cc = 61, channel = 15, default = 1.0 }
+controls.level = { cc = 63, channel = 15, default = 1.0 }
+controls.pan = { cc = 72, channel = 15, default = 0.5 }
+controls.decay = { cc = 62, channel = 15, default = 0.13385826771653545 }
+
+[library.behaviors."kit.prepared.closed_hat".output]
+note = 42
+channel = 10
+controls.cutoff = { cc = 75, channel = 15, default = 1.0 }
+controls.level = { cc = 77, channel = 15, default = 1.0 }
+controls.pan = { cc = 80, channel = 15, default = 0.5 }
+controls.decay = { cc = 76, channel = 15, default = 0.7007874015748031 }
+
+[library.behaviors."kit.prepared.snare_alt_2".output]
+note = 43
+channel = 10
+controls.cutoff = { cc = 83, channel = 15, default = 1.0 }
+controls.level = { cc = 85, channel = 15, default = 1.0 }
+controls.pan = { cc = 88, channel = 15, default = 0.5 }
+controls.decay = { cc = 84, channel = 15, default = 0.20885665748031496 }
+
+[library.behaviors."kit.prepared.low_tom".output]
+note = 44
+channel = 10
+controls.cutoff = { cc = 20, channel = 16, default = 1.0 }
+controls.level = { cc = 22, channel = 16, default = 1.0 }
+controls.pan = { cc = 25, channel = 16, default = 0.5 }
+controls.decay = { cc = 21, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.mid_tom".output]
+note = 45
+channel = 10
+controls.cutoff = { cc = 28, channel = 16, default = 1.0 }
+controls.level = { cc = 30, channel = 16, default = 1.0 }
+controls.pan = { cc = 34, channel = 16, default = 0.5 }
+controls.decay = { cc = 29, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.open_hat".output]
+note = 46
+channel = 10
+controls.cutoff = { cc = 37, channel = 16, default = 1.0 }
+controls.level = { cc = 39, channel = 16, default = 1.0 }
+controls.pan = { cc = 42, channel = 16, default = 0.5 }
+controls.decay = { cc = 38, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.high_tom".output]
+note = 47
+channel = 10
+controls.cutoff = { cc = 45, channel = 16, default = 1.0 }
+controls.level = { cc = 47, channel = 16, default = 1.0 }
+controls.pan = { cc = 50, channel = 16, default = 0.5 }
+controls.decay = { cc = 46, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.crash".output]
+note = 48
+channel = 10
+controls.cutoff = { cc = 53, channel = 16, default = 1.0 }
+controls.level = { cc = 55, channel = 16, default = 1.0 }
+controls.pan = { cc = 58, channel = 16, default = 0.5 }
+controls.decay = { cc = 54, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.crash_alt".output]
+note = 49
+channel = 10
+controls.cutoff = { cc = 61, channel = 16, default = 1.0 }
+controls.level = { cc = 63, channel = 16, default = 1.0 }
+controls.pan = { cc = 72, channel = 16, default = 0.5 }
+controls.decay = { cc = 62, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.ride_alt".output]
+note = 50
+channel = 10
+controls.cutoff = { cc = 75, channel = 16, default = 1.0 }
+controls.level = { cc = 77, channel = 16, default = 1.0 }
+controls.pan = { cc = 80, channel = 16, default = 0.5 }
+controls.decay = { cc = 76, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.ride".output]
+note = 51
+channel = 10
+controls.cutoff = { cc = 83, channel = 16, default = 1.0 }
+controls.level = { cc = 85, channel = 16, default = 1.0 }
+controls.pan = { cc = 88, channel = 16, default = 0.5 }
+controls.decay = { cc = 84, channel = 16, default = 1.0 }

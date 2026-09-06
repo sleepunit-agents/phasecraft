@@ -175,6 +175,8 @@ pub struct MidiEvent {
     pub bytes: [u8; 3],
     /// CC onset registers a resting value for stop/error cleanup.
     pub reset_value: Option<u8>,
+    /// Neutral target restored on Stop, independently of per-note emphasis resets.
+    pub stop_value: Option<u8>,
     /// Timeline sample: deduplicate values and skip obsolete samples on dispatch.
     pub parameter: bool,
 }
@@ -193,12 +195,14 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
         MidiEvent {
             tick: event.tick,
             bytes: [0x90 | (output.channel - 1), output.note, velocity],
+            stop_value: None,
             reset_value: None,
             parameter: false,
         },
         MidiEvent {
             tick: event.tick + event.duration_ticks,
             bytes: [0x80 | (output.channel - 1), output.note, 0],
+            stop_value: None,
             reset_value: None,
             parameter: false,
         },
@@ -207,12 +211,16 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
         events.push(MidiEvent {
             tick: event.tick,
             bytes: [0xb0 | (control.channel - 1), control.cc, control.value],
+            stop_value: output.controls[&control.name]
+                .default
+                .map(super::accent::midi_value),
             reset_value: Some(control.reset),
             parameter: false,
         });
         events.push(MidiEvent {
             tick: event.tick + event.duration_ticks,
             bytes: [0xb0 | (control.channel - 1), control.cc, control.reset],
+            stop_value: None,
             reset_value: None,
             parameter: false,
         });

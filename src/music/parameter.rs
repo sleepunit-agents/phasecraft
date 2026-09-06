@@ -113,6 +113,7 @@ pub fn resolve(
                     bytes: [0xb0 | (channel - 1), output.cc, value],
                     reset_value: (emphasis != 0.0).then(|| midi_value(base)),
                     parameter: true,
+                    stop_value: Some(midi_value(output.default.unwrap_or(lane.value))),
                 });
                 ParameterSample {
                     tick,

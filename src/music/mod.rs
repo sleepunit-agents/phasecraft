@@ -117,7 +117,7 @@ pub struct AccentLane {
     #[serde(default = "amount")]
     pub amount: f64,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Output {
     #[serde(default = "channel")]
