@@ -41,3 +41,16 @@ onset timing, query-order independence, RNG locality and maximum bounded load.
 Accent-memory validation: 88 Rust tests, eight browser checks, root/desktop clippy,
 and native Linux player smoke passed. Four bars: 124 note messages, 202 CCs,
 384 clock pulses, zero dropped notes; maximum measured lateness 2.092 ms locally.
+
+Shared-accent release `e8c38d9`: all platform jobs passed after retrying Intel Mac
+DMG packaging. Published commit, four signed targets and Windows checksum verified.
+
+## 4. Procedural sections
+
+**sections** plays A → A2 → A2 → B over sixteen bars. A2 inherits A, including its
+opening cutoff; B removes kick/clap. Section changes restore outgoing control
+defaults before initializing the next phrase. The Player shows the audible section.
+See `arrangement.md` for finite endings, repeats and explicit restart/continue clocks.
+The sixteen-bar dry run sent 436 note messages, 965 controls and 1,536 clocks with
+zero drops, maximum measured lateness 1.022 ms. These are local scheduling checks;
+listening on Windows/Live is still yours.

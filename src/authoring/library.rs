@@ -28,8 +28,11 @@ fn names(value: Value, field: &str) -> Result<Vec<String>, String> {
         })
         .collect()
 }
-fn merge(base: &mut Value, overlay: Value) {
+pub(super) fn merge(base: &mut Value, overlay: Value) {
     if let (Value::Table(a), Value::Table(b)) = (&mut *base, &overlay) {
+        if b.contains_key("compose") && !b.contains_key("use") {
+            a.remove("use");
+        }
         // Replacing a trajectory through an override must not retain its old kind.
         if b.contains_key("automation") && !b.contains_key("ramp") {
             a.remove("ramp");
@@ -205,6 +208,12 @@ pub(super) fn expand_with_libraries(
         load_library(path, &mut registry, &mut vec![], &mut loaded)?;
     }
     imports(&mut root, base, &mut registry, &mut vec![], &mut loaded)?;
+    if let Some(library) = root.remove("library") {
+        registry.add(library)?;
+    }
+    super::phrases::expand(root, &|root| expand_flat(&registry, root))
+}
+fn expand_flat(registry: &Registry, mut root: Table) -> Result<Value, String> {
     super::syntax::keyed_parts(&mut root)?;
     if let Some(accents) = root.get_mut("accents") {
         let lanes = accents
@@ -216,9 +225,6 @@ pub(super) fn expand_with_libraries(
                 super::syntax::rhythm(rhythm).map_err(|e| format!("accents.{name}: {e}"))?;
             }
         }
-    }
-    if let Some(library) = root.remove("library") {
-        registry.add(library)?;
     }
     fn part(registry: &Registry, value: &Value) -> Result<Value, String> {
         let mut expanded = registry.expand(value, false, &mut vec![])?;
@@ -242,7 +248,7 @@ pub(super) fn expand_with_libraries(
         value.get("id").and_then(Value::as_str).unwrap_or("?")
     }
     if let Some(value) = root.get_mut("part") {
-        *value = part(&registry, value).map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
+        *value = part(registry, value).map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
     }
     if let Some(value) = root.get_mut("parts") {
         let parts = value
@@ -250,7 +256,7 @@ pub(super) fn expand_with_libraries(
             .ok_or("parts must be an array of tables")?;
         for value in parts {
             *value =
-                part(&registry, value).map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
+                part(registry, value).map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
         }
     }
     Ok(Value::Table(root))

@@ -1,4 +1,5 @@
 pub mod accent;
+pub mod arrangement;
 pub mod groove;
 pub mod parameter;
 pub mod resolve;
@@ -21,6 +22,8 @@ pub struct Composition {
     pub parts: Vec<Part>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub accents: std::collections::BTreeMap<String, AccentLane>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arrangement: Option<arrangement::Arrangement>,
 }
 // Accept the original single-Part file without changing its musical identity.
 #[derive(Deserialize)]
@@ -34,6 +37,8 @@ struct CompositionFile {
     parts: Option<Vec<Part>>,
     #[serde(default)]
     accents: std::collections::BTreeMap<String, AccentLane>,
+    #[serde(default)]
+    arrangement: Option<arrangement::Arrangement>,
 }
 impl TryFrom<CompositionFile> for Composition {
     type Error = String;
@@ -54,6 +59,7 @@ impl TryFrom<CompositionFile> for Composition {
             phrase_bars: file.phrase_bars,
             parts,
             accents: file.accents,
+            arrangement: file.arrangement,
         };
         c.validate()?;
         Ok(c)
@@ -277,6 +283,9 @@ impl Composition {
             }
         }
         self.evaluation_order()?;
+        if let Some(arrangement) = &self.arrangement {
+            arrangement.validate(self.tempo)?;
+        }
         Ok(())
     }
 }

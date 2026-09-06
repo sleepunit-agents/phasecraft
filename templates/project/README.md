@@ -73,3 +73,7 @@ gap response and independently seeded timing/velocity touch.
 
 `accent-memory` shares one polymetric accent lane across hat and rim, with
 accumulating cutoff responses that decay through rests. See ACCENTS.md.
+
+`sections` plays a procedural A → A2 → A2 → B cycle, with clean parameter
+transitions. See [ARRANGEMENT.md](ARRANGEMENT.md) for inheritance, section lengths,
+finite playback and explicit restart/continue phase behavior.

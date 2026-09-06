@@ -191,6 +191,7 @@ fn realization_and_midi_preserve_musical_times_and_emphasis() {
             MidiEvent {
                 stop_value: None,
                 reset_value: None,
+                boundary_reset: false,
                 parameter: false,
                 tick: 960,
                 bytes: [0x99, 42, 108]
@@ -198,6 +199,7 @@ fn realization_and_midi_preserve_musical_times_and_emphasis() {
             MidiEvent {
                 stop_value: None,
                 reset_value: None,
+                boundary_reset: false,
                 parameter: false,
                 tick: 1080,
                 bytes: [0x89, 42, 0]

@@ -251,6 +251,11 @@ const FILES: &[(&str, &str)] = &[
         include_str!("../../templates/project/compositions/accent-memory.toml"),
     ),
     ("PARAMETERS.md", include_str!("../../docs/parameters.md")),
+    (
+        "compositions/sections.toml",
+        include_str!("../../templates/project/compositions/sections.toml"),
+    ),
+    ("ARRANGEMENT.md", include_str!("../../docs/arrangement.md")),
     ("ACCENTS.md", include_str!("../../docs/accents.md")),
     (
         "README.md",

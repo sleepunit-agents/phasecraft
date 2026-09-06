@@ -15,7 +15,7 @@ app.innerHTML = `
 </aside>
 <main>
   <header><div><div class="eyebrow">PHASECRAFT / PLAYER</div><h1 id="title">Small systems.<br>Long stories.</h1><p id="subtitle">Open a folder. Find the groove. Watch it unfold.</p></div><div class="header-right"><button id="update-chip" class="update-chip" hidden></button><span id="watch-status" class="pill">TOML → LIVE MIDI</span><span id="part-count"></span></div></header>
-  <section class="transport" aria-label="Playback controls"><button id="play" class="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button><div class="metric"><label>POSITION</label><strong id="position">1.1.1</strong></div><div class="metric"><label>BPM</label><strong id="tempo">—</strong></div><div class="metric seed"><label>SEED</label><strong id="seed">—</strong></div><div class="routing"><label for="destination">MIDI DESTINATION</label><div><select id="destination"><option value="">Choose an output…</option><option value="@silent">Silent preview</option></select><button id="refresh" title="Refresh MIDI outputs" aria-label="Refresh MIDI outputs">↻</button></div><label class="sync-control"><input id="send-clock" type="checkbox"> Send tempo & transport</label></div></section>
+  <p id="section-position" class="muted" hidden></p><section class="transport" aria-label="Playback controls"><button id="play" class="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button><div class="metric"><label>POSITION</label><strong id="position">1.1.1</strong></div><div class="metric"><label>BPM</label><strong id="tempo">—</strong></div><div class="metric seed"><label>SEED</label><strong id="seed">—</strong></div><div class="routing"><label for="destination">MIDI DESTINATION</label><div><select id="destination"><option value="">Choose an output…</option><option value="@silent">Silent preview</option></select><button id="refresh" title="Refresh MIDI outputs" aria-label="Refresh MIDI outputs">↻</button></div><label class="sync-control"><input id="send-clock" type="checkbox"> Send tempo & transport</label></div></section>
   <div id="error" role="alert" hidden></div><div id="midi-error" class="notice" hidden></div><div id="reload-error" class="notice" hidden></div>
   <section id="welcome"><div class="welcome-rings" aria-hidden="true"><i></i><i></i><i></i><b>◉</b></div><div class="eyebrow">A FRONT PANEL FOR YOUR IDEAS</div><h2>Every cycle has<br>something to say.</h2><p>Independent rhythms, probability and emphasis.<br>Your musical systems, made visible.</p><button id="welcome-open" class="primary">Open a project folder ↗</button><p class="welcome-hint">New here? New project includes 909 techno, DnB and garage.</p></section>
   <section id="system" hidden><div class="section-heading"><div><span class="eyebrow">THE SYSTEM</span><h2>Independent cycles. Shared time.</h2></div><div class="legend"><span><i class="hit"></i>Hit</span><span><i class="accent"></i>Accent</span><span><i class="rejected"></i>Omitted</span></div></div><div id="cards"></div>
@@ -473,6 +473,9 @@ function render() {
   $("tempo").textContent = c.tempo;
   $("seed").textContent = snapshot.seed_label || c.seed;
   $("position").textContent = position(snapshot.step);
+  const section = snapshot.traces[0]?.section;
+  $("section-position").hidden = !section;
+  $("section-position").textContent = section ? `${section.phrase} · section ${section.index}/${section.count} · bar ${section.bar}/${section.bars} · cycle ${section.cycle + 1} · ${section.phase} phase` : "";
   $("part-count").textContent =
     `${c.parts.length} PARTS / ${c.phrase_bars}-BAR PHRASE`;
   $("state").textContent = snapshot.playing

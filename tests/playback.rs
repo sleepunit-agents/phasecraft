@@ -17,6 +17,7 @@ fn on(tick: u64) -> MidiEvent {
     MidiEvent {
         stop_value: None,
         reset_value: None,
+        boundary_reset: false,
         parameter: false,
         tick,
         bytes: [0x99, 42, 100],
@@ -26,6 +27,7 @@ fn off(tick: u64) -> MidiEvent {
     MidiEvent {
         stop_value: None,
         reset_value: None,
+        boundary_reset: false,
         parameter: false,
         tick,
         bytes: [0x89, 42, 0],
@@ -179,6 +181,7 @@ fn stopping_releases_all_simultaneous_drum_voices() {
             &MidiEvent {
                 stop_value: None,
                 reset_value: None,
+                boundary_reset: false,
                 parameter: false,
                 tick: 0,
                 bytes: [0x99, note, 100],

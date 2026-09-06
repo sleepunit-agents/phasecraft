@@ -64,6 +64,8 @@ pub struct StepTrace {
     pub accent: DecisionTrace,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub shared_accents: Vec<SharedAccentTrace>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub section: Option<super::arrangement::SectionPosition>,
     pub event: Option<MusicalEvent>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<super::parameter::ParameterTrace>,
@@ -199,6 +201,7 @@ fn resolve_part(
         part: part.id.clone(),
         parameters: Vec::new(),
         shared_accents,
+        section: None,
         trigger,
         accent,
         event,
@@ -209,7 +212,13 @@ pub fn realize(c: &Composition, part: &Part, start_step: u64, steps: u64) -> Rhy
         start_tick: start_step * STEP_TICKS,
         end_tick: (start_step + steps) * STEP_TICKS,
         events: (start_step..start_step + steps)
-            .filter_map(|s| resolve(c, part, s).event)
+            .filter_map(|s| {
+                resolve_step(c, s)
+                    .0
+                    .into_iter()
+                    .find(|t| t.part == part.id)
+                    .and_then(|t| t.event)
+            })
             .collect(),
     }
 }
@@ -223,6 +232,8 @@ pub struct MidiEvent {
     pub stop_value: Option<u8>,
     /// Timeline sample: deduplicate values and skip obsolete samples on dispatch.
     pub parameter: bool,
+    /// Section transition: reset before the incoming section initializes controls.
+    pub boundary_reset: bool,
 }
 pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
     let output = &part.output;
@@ -241,6 +252,7 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
             bytes: [0x90 | (output.channel - 1), output.note, velocity],
             stop_value: None,
             reset_value: None,
+            boundary_reset: false,
             parameter: false,
         },
         MidiEvent {
@@ -248,6 +260,7 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
             bytes: [0x80 | (output.channel - 1), output.note, 0],
             stop_value: None,
             reset_value: None,
+            boundary_reset: false,
             parameter: false,
         },
     ];
@@ -259,6 +272,7 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
                 .default
                 .map(super::accent::midi_value),
             reset_value: Some(control.reset),
+            boundary_reset: false,
             parameter: false,
         });
         events.push(MidiEvent {
@@ -266,6 +280,7 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
             bytes: [0xb0 | (control.channel - 1), control.cc, control.reset],
             stop_value: None,
             reset_value: None,
+            boundary_reset: false,
             parameter: false,
         });
     }
@@ -297,6 +312,9 @@ fn resolve_raw(c: &Composition, step: u64) -> Vec<StepTrace> {
 /// Groove stays inside the source sixteenth; even long gates cannot overlap batches.
 /// Part references always see source-grid admissions, independent of groove interpretation.
 pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEvent>) {
+    if c.arrangement.is_some() {
+        return super::arrangement::resolve(c, step);
+    }
     use super::groove::{GrooveTrace, RunContour};
     let mut traces = resolve_raw(c, step);
     let run_context = c.parts.iter().any(|p| p.groove.run != RunContour::None);
@@ -444,14 +462,7 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
         trace.parameters = parameters;
         midi.extend(controls);
     }
-    midi.sort_by_key(|event| {
-        let priority = match event.bytes[0] & 0xf0 {
-            0x80 => 0, // release the previous note first
-            0xb0 => 1, // establish controls before the next attack
-            _ => 2,
-        };
-        (event.tick, priority, event.bytes)
-    });
+    midi.sort_by_key(midi_order);
     (traces, midi)
 }
 
@@ -462,4 +473,17 @@ pub fn resolve(c: &Composition, part: &Part, step: u64) -> StepTrace {
         .into_iter()
         .find(|trace| trace.part == part.id)
         .expect("resolve requires a member of the validated composition")
+}
+
+pub fn midi_order(event: &MidiEvent) -> (u64, u8, [u8; 3]) {
+    let priority = if event.bytes[0] & 0xf0 == 0x80 {
+        0
+    } else if event.boundary_reset {
+        1
+    } else if event.bytes[0] & 0xf0 == 0xb0 {
+        2
+    } else {
+        3
+    };
+    (event.tick, priority, event.bytes)
 }

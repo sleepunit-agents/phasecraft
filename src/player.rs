@@ -228,18 +228,30 @@ impl Player {
         } else {
             0.0
         };
-        // Resolving here is outside both playback threads and uses the exact visible model.
+        // Use the exact audible frame; previews resolve outside playback threads.
         let traces = self
-            .composition
+            .current
             .as_ref()
-            .map(|c| resolve_step(c, step.unwrap_or(0)).0)
-            .unwrap_or_default();
+            .map(|f| f.traces.clone())
+            .unwrap_or_else(|| {
+                self.composition
+                    .as_ref()
+                    .map(|c| resolve_step(c, 0).0)
+                    .unwrap_or_default()
+            });
+        let visible = self.composition.as_ref().map(|c| {
+            if c.arrangement.is_some() {
+                Arc::new(c.at_step(step.unwrap_or(0)).clone())
+            } else {
+                c.clone()
+            }
+        });
         Snapshot {
-            seed_label: self.composition.as_ref().map(|c| c.seed.to_string()),
+            seed_label: visible.as_ref().map(|c| c.seed.to_string()),
             playing,
             step,
             progress,
-            composition: self.composition.clone(),
+            composition: visible,
             traces,
             history: self.history.iter().cloned().collect(),
             error: self.error.clone(),
@@ -278,6 +290,43 @@ mod tests {
             serde_json::to_string(&due.traces).unwrap(),
             serde_json::to_string(&resolve_step(&c, 17).0).unwrap()
         );
+    }
+    #[test]
+    fn section_display_changes_only_when_its_frame_is_audible() {
+        let c = Arc::new(
+            Composition::parse(
+                r#"
+            tempo=132
+            seed=1
+            [parts.hat]
+            use="techno.closed_hat"
+            [phrases.A]
+            [phrases.B]
+            seed=2
+            [[phrases.B.parts]]
+            id="kick"
+            use="techno.kick"
+            [arrangement]
+            sections=[{phrase="A",bars=1},{phrase="B",bars=1}]
+        "#,
+            )
+            .unwrap(),
+        );
+        let now = Instant::now();
+        let mut player = Player::default();
+        player.composition = Some(c.clone());
+        player.pending.push_back(PlaybackFrame {
+            deadline: now + Duration::from_secs(1),
+            step: 16,
+            composition: c.clone(),
+            traces: resolve_step(&c, 16).0,
+            reload_error: None,
+        });
+        assert_eq!(player.poll_at(now).composition.unwrap().parts[0].id, "hat");
+        let due = player.poll_at(now + Duration::from_secs(1));
+        assert_eq!(due.composition.unwrap().parts[0].id, "kick");
+        assert_eq!(due.traces[0].section.as_ref().unwrap().phrase, "B");
+        assert_eq!(due.traces[0].tick, 16 * crate::music::STEP_TICKS);
     }
     #[test]
     fn repeat_start_stop_releases_notes_without_a_global_signal_handler() {

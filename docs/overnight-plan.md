@@ -33,7 +33,7 @@ metadata and example coverage need an updated audit, not an LCM-sized event buff
   consumers; bounded musical-time accumulation/decay for control emphasis, including
   rests. Keep semantic accents separate from MIDI and RNG addresses local. Use
   existing cutoff mapping for a 303-inspired percussion response; no pitched 303.
-- [ ] **4. Procedural phrases and arrangement:** reusable A/A2/B definitions with
+- [x] **4. Procedural phrases and arrangement:** reusable A/A2/B definitions with
   overrides, explicit section lengths/repeats and loop policy, quantized transitions,
   phase/probability/automation identity contracts, control cleanup at changes, and
   player section visibility. Reuse procedural Parts, never freeze a giant MIDI score.

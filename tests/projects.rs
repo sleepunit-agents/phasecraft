@@ -43,7 +43,7 @@ fn scaffold_is_portable_valid_and_preserves_proven_beats() {
     fs::rename(original, &p).unwrap();
     let report = project::validate(&p);
     assert!(report.valid, "{:?}", report.errors);
-    assert_eq!(report.files.len(), 11);
+    assert_eq!(report.files.len(), 12);
     assert_eq!(
         project::load(&p).unwrap().midi.port.as_deref(),
         Some("Phasecraft")
@@ -58,6 +58,7 @@ fn scaffold_is_portable_valid_and_preserves_proven_beats() {
         "breathing",
         "garage-touch",
         "accent-memory",
+        "sections",
     ] {
         let c = Composition::read(&p.join(format!("compositions/{genre}.toml"))).unwrap();
         let old = Composition::read(
@@ -211,7 +212,7 @@ fn validation_checks_all_compositions_and_produces_machine_readable_errors() {
     assert!(!output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["valid"], false);
-    assert_eq!(report["files"].as_array().unwrap().len(), 11);
+    assert_eq!(report["files"].as_array().unwrap().len(), 12);
     assert!(report["errors"][0].as_str().unwrap().contains("dnb.toml"));
     assert!(project::validate(&p.join("compositions/techno.toml")).valid);
 }
@@ -251,6 +252,7 @@ fn shared_library_edits_are_resolved_for_every_composition() {
         "breathing",
         "garage-touch",
         "accent-memory",
+        "sections",
     ] {
         let c = Composition::read(&p.join(format!("compositions/{genre}.toml"))).unwrap();
         assert_eq!(

@@ -1,0 +1,57 @@
+# A / A2 / B remain procedural. Uses the existing Phasecraft 909 Prepared Set.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[accents.drums]
+rhythm = { steps = 7, pulses = 3 }
+probability = 0.85
+amount = 0.8
+
+[parts.kick]
+use = "my.techno_kick"
+
+[parts.clap]
+use = "techno.clap"
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "kit.prepared.closed_hat"]
+accent.sources = ["drums"]
+accent.probability = 0.0
+profile.use = "accent.memory_punch"
+
+[parts.open_hat]
+use = "techno.open_hat"
+
+[parts.rim]
+compose = ["techno.rim", "kit.prepared.rim"]
+accent.sources = ["drums"]
+accent.probability = 0.0
+profile.use = "accent.memory_punch"
+profile.controls.cutoff.envelope.decay_beats = 3
+
+# The base Parts are the shared starting point for every phrase.
+[phrases.A]
+parts.closed_hat.parameters.cutoff = { value = 0.15, ramp = { to = 0.65, over_bars = 4 } }
+parts.rim.trigger.probability = 0.25
+
+[phrases.A2]
+use = "A"
+parts.closed_hat.trigger.probability = 0.95
+parts.rim.trigger.probability = 0.75
+parts.rim.parameters.pan = { value = 0.2, ramp = { to = 0.8, over_bars = 4 } }
+
+[phrases.B]
+parts.kick.trigger.probability = 0.0
+parts.clap.trigger.probability = 0.0
+parts.closed_hat.trigger.probability = 0.6
+parts.closed_hat.parameters.cutoff = { value = 0.6, ramp = { to = 0.15, over_bars = 4 } }
+parts.rim.parameters.decay = { value = 0.4 }
+
+[arrangement]
+repeat = true
+sections = [
+  { phrase = "A", bars = 4 },
+  { phrase = "A2", bars = 4, repeat = 2 },
+  { phrase = "B", bars = 4 },
+]

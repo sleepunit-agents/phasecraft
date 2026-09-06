@@ -259,6 +259,7 @@ pub fn resolve(
                     tick,
                     bytes: [0xb0 | (channel - 1), output.cc, value],
                     reset_value: (emphasis != 0.0).then(|| midi_value(base)),
+                    boundary_reset: false,
                     parameter: true,
                     stop_value: Some(midi_value(output.default.unwrap_or(initial))),
                 });

@@ -48,13 +48,18 @@ pub fn run_controlled<S: MidiOutput + 'static>(
     running: Arc<AtomicBool>,
     feedback: Option<mpsc::SyncSender<PlaybackFrame>>,
 ) -> Result<(), String> {
+    let end_steps = match (options.steps, c.end_step()) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
     let clock = MusicalClock { tempo: c.tempo };
     let origin = Instant::now() + options.lookahead;
     let ahead_steps = (options.lookahead.as_secs_f64()
         / clock.time_at_tick(STEP_TICKS).as_secs_f64())
     .ceil() as usize;
     let (tx, rx) = mpsc::sync_channel(
-        (2 + crate::music::parameter::MAX_SAMPLES_PER_STEP * crate::music::accent::MAX_CONTROLS)
+        (2 + (crate::music::parameter::MAX_SAMPLES_PER_STEP + 1)
+            * crate::music::accent::MAX_CONTROLS)
             * MAX_PARTS
             * (ahead_steps + 2),
     );
@@ -70,7 +75,7 @@ pub fn run_controlled<S: MidiOutput + 'static>(
             Duration::from_millis(20),
             SyncOptions {
                 enabled: options.send_clock,
-                end_tick: options.steps.map(|s| s * STEP_TICKS),
+                end_tick: end_steps.map(|s| s * STEP_TICKS),
             },
         )
     });
@@ -91,7 +96,8 @@ pub fn run_controlled<S: MidiOutput + 'static>(
     let mut skipped_steps = 0u64;
     let planned = (|| {
         let mut step = 0;
-        while running.load(Ordering::Relaxed) && options.steps.is_none_or(|end| step < end) {
+        let mut last_scheduled: Option<(u64, Arc<Composition>)> = None;
+        while running.load(Ordering::Relaxed) && end_steps.is_none_or(|end| step < end) {
             let deadline = origin + clock.time_at_tick(step * STEP_TICKS);
             if deadline > Instant::now() + options.lookahead {
                 std::thread::sleep(Duration::from_millis(2));
@@ -101,6 +107,9 @@ pub fn run_controlled<S: MidiOutput + 'static>(
                 let reload = Composition::read(&options.file).and_then(|next| {
                     if next.tempo != c.tempo || next.phrase_bars != c.phrase_bars {
                         return Err("restart playback to change tempo or phrase_bars".into());
+                    }
+                    if !c.same_arrangement_layout(&next) {
+                        return Err("restart playback to change arrangement layout, phrase lengths or routing".into());
                     }
                     Ok(next)
                 });
@@ -133,7 +142,26 @@ pub fn run_controlled<S: MidiOutput + 'static>(
                 step += 1;
                 continue;
             }
-            let (traces, events) = resolve_step(&c, step);
+            let (traces, mut events) = resolve_step(&c, step);
+            // Handle a producer stall that jumped over the exact section boundary.
+            // Use the last actually scheduled snapshot, not a guessed previous section.
+            if let (Some(a), Some((previous_step, previous))) = (&c.arrangement, &last_scheduled) {
+                let current = a.locate(step).map(|s| (s.position.index, s.position.cycle));
+                let old = previous
+                    .arrangement
+                    .as_ref()
+                    .and_then(|a| a.locate(*previous_step))
+                    .map(|s| (s.position.index, s.position.cycle));
+                if current != old {
+                    events.retain(|e| !e.boundary_reset);
+                    events.extend(crate::music::arrangement::resets(
+                        previous.at_step(*previous_step),
+                        step * STEP_TICKS,
+                    ));
+                    events.sort_by_key(crate::music::resolve::midi_order);
+                }
+            }
+            last_scheduled = Some((step, visual_composition.clone()));
             for midi in events {
                 tx.try_send(midi)
                     .map_err(|e| format!("MIDI dispatch queue: {e}"))?;
@@ -160,7 +188,7 @@ pub fn run_controlled<S: MidiOutput + 'static>(
             step += 1;
         }
         // A finite run owns its full bar duration, including trailing rests.
-        if let Some(end) = options.steps {
+        if let Some(end) = end_steps {
             let finish = origin + clock.time_at_tick(end * STEP_TICKS);
             while running.load(Ordering::Relaxed) && Instant::now() < finish {
                 std::thread::sleep(Duration::from_millis(2));

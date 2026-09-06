@@ -163,7 +163,12 @@ pub fn run() -> Result<(), String> {
             for step in start..end {
                 for trace in resolve_step(&c, step).0 {
                     if human {
-                        let part = c.parts.iter().find(|p| p.id == trace.part).unwrap();
+                        let part = c
+                            .at_step(step)
+                            .parts
+                            .iter()
+                            .find(|p| p.id == trace.part)
+                            .unwrap();
                         let result = trace
                             .event
                             .as_ref()
@@ -181,6 +186,19 @@ pub fn run() -> Result<(), String> {
                                 )
                             })
                             .unwrap_or_else(|| "rest".into());
+                        if let Some(section) = &trace.section {
+                            write!(
+                                out,
+                                "[{} section {}/{} bar {}/{} cycle {}] ",
+                                section.phrase,
+                                section.index,
+                                section.count,
+                                section.bar,
+                                section.bars,
+                                section.cycle + 1
+                            )
+                            .map_err(|e| e.to_string())?;
+                        }
                         writeln!(out, "{} {} | trigger pattern={} roll={:.4} p={:.2} fired={} | accent pattern={} roll={:.4} p={:.2} admitted={} | {} | parameters={}",
                             trace.position,trace.part,trace.trigger.rhythm.active(),trace.trigger.roll,trace.trigger.probability,trace.trigger.admitted,
                             trace.accent.rhythm.active(),trace.accent.roll,trace.accent.probability,trace.accent.admitted,result,serde_json::to_string(&trace.parameters).unwrap()).map_err(|e|e.to_string())?;
