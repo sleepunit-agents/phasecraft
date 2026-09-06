@@ -804,3 +804,22 @@ body:not(.project-open) .transport {
   gap: 0 12px;
   font: 11px monospace;
 }
+
+.pending-values {
+  color: var(--amber);
+  font: 11px/1.6 monospace;
+  margin: 8px 0 0;
+}
+.live-values {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.live-values span {
+  font: 11px/1.6 monospace;
+  color: var(--muted);
+}
+.live-values .pending {
+  color: var(--amber);
+}

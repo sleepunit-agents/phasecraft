@@ -37,6 +37,7 @@ jobs:
         run: |
           python3 -m pip install lupa==2.5
           python3 tools/controllers/test_script.py
+          python3 tools/controllers/test_kit_script.py
       - run: cargo build --locked --release
       - name: Package Unix executable
         if: runner.os != 'Windows'

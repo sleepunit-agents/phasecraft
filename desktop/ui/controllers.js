@@ -2,13 +2,13 @@ export function setupController(invoke) {
   const settings = document.getElementById("settings-dialog");
   const box = document.createElement("section");
   box.className = "controller-settings";
-  box.innerHTML = `<h3>Controller · kick preview</h3><p class="muted">Connect the E16 separately from the MIDI destination used by Ableton.</p><label for="controller-input">INPUT FROM CONTROLLER</label><select id="controller-input"><option value="">Choose input…</option></select><label for="controller-output">FEEDBACK TO CONTROLLER</label><select id="controller-output"><option value="">Choose output…</option></select><div class="project-actions"><button id="controller-refresh">Refresh ports</button><button id="controller-connect">Connect</button><button id="controller-disconnect">Disconnect</button><button id="controller-reset">Reset live edits</button></div><p id="controller-status" role="status">Not connected.</p><p class="muted">Kick only, loop compositions. Edits apply at the next bar; Stop, Reset, or a valid file reload restores the score. Connections are selected each app launch.</p><details><summary>Kick control values</summary><div id="controller-values"></div></details>`;
+  box.innerHTML = `<h3>Controller · E16</h3><p class="muted">Connect the E16 separately from the MIDI destination used by Ableton.</p><label for="controller-input">INPUT FROM CONTROLLER</label><select id="controller-input"><option value="">Choose input…</option></select><label for="controller-output">FEEDBACK TO CONTROLLER</label><select id="controller-output"><option value="">Choose output…</option></select><div class="project-actions"><button id="controller-refresh">Refresh ports</button><button id="controller-connect">Connect</button><button id="controller-disconnect">Disconnect</button><button id="controller-reset">Reset live edits</button></div><p id="controller-status" role="status">Not connected.</p><p class="muted">Loop compositions, up to 32 Parts. Edits apply at the next bar; Stop, Reset, or a valid file reload restores the score. Connections are selected each app launch.</p><details><summary>Selected Part values</summary><div id="controller-values"></div></details>`;
   settings.append(box);
   const notice = document.createElement("div");
   notice.className = "notice";
   notice.hidden = true;
   notice.textContent =
-    "Live kick edits · next-bar changes · Stop or Reset restores the score. Not saved to TOML.";
+    "Live Part edits · next-bar changes · Stop or Reset restores the score. Not saved to TOML.";
   document.getElementById("system").before(notice);
   const el = (id) => document.getElementById(`controller-${id}`);
   let busy = false;
@@ -57,7 +57,7 @@ export function setupController(invoke) {
   async function poll() {
     const s = await invoke("controller_status");
     if (!s) return;
-    notice.hidden = !s.view?.edited;
+    notice.hidden = !(s.parts || [s.view]).some((v) => v?.edited || v?.pending);
     if (!settings.open) return;
     el("status").textContent =
       actionError ||
@@ -71,7 +71,7 @@ export function setupController(invoke) {
     el("values").replaceChildren(
       ...(s.view?.values || []).map((v) => {
         const row = document.createElement("p");
-        row.textContent = `${v.label}: ${v.enabled ? (["level", "cutoff", "decay", "trigger_probability", "accent_probability", "accent_amount"].includes(v.parameter) ? Math.round(v.value * 100) + "%" : v.value) : "unavailable"}`;
+        row.textContent = `${v.label}${v.pending ? " · NEXT BAR" : ""}: ${v.enabled ? (["level", "cutoff", "decay", "trigger_probability", "accent_probability", "accent_amount"].includes(v.parameter) ? Math.round(v.value * 100) + "%" : v.value) : "unavailable"}`;
         return row;
       }),
     );

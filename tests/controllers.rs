@@ -166,3 +166,52 @@ fn live_changes_commit_at_bar_and_reset_sends_default_during_silence() {
         "{bytes:?}"
     );
 }
+
+#[test]
+fn authored_order_and_independent_part_edits_survive_selection() {
+    let c = project::load(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/templates/project"
+    )))
+    .unwrap()
+    .composition;
+    assert_eq!(c.parts[0].id, "kick");
+    let custom = Composition::parse(
+        "tempo=132\nseed=1\n[parts.zebra]\nuse='techno.kick'\n[parts.alpha]\nuse='techno.clap'\n",
+    )
+    .unwrap();
+    assert_eq!(
+        custom
+            .parts
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["zebra", "alpha"]
+    );
+    let mut l = Live::default();
+    l.load(Some(c));
+    l.change("kick", Parameter::TriggerProbability, -30)
+        .unwrap();
+    l.select("clap").unwrap();
+    l.change("clap", Parameter::TriggerProbability, -50)
+        .unwrap();
+    assert_eq!(l.view("kick").values[2].value, 0.7);
+    assert_eq!(l.view("clap").values[2].value, 0.5);
+    assert!(l.view("clap").selected);
+    l.reset();
+    assert!(!l.view("kick").edited);
+    assert!(!l.view("clap").edited);
+    for name in ["techno", "dnb", "garage"] {
+        let c = project::load(
+            &std::path::Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/examples/controllers/kit"
+            ))
+            .join(format!("{name}.toml")),
+        )
+        .unwrap()
+        .composition;
+        l.load(Some(c));
+        assert!(l.views().iter().all(|v| v.values[0].enabled));
+    }
+}

@@ -133,9 +133,9 @@ pub fn run_with_controls<S: MidiOutput + 'static>(
                             last_source = source;
                             c = next;
                             if let Some(live) = &live {
-                                live.lock()
-                                    .map_err(|e| e.to_string())?
-                                    .load(Some(c.clone()));
+                                let mut live = live.lock().map_err(|e| e.to_string())?;
+                                live.rebase(c.clone());
+                                live.reset();
                             }
                             visual_composition = Arc::new(c.clone());
                             eprintln!(
@@ -201,10 +201,18 @@ pub fn run_with_controls<S: MidiOutput + 'static>(
                 ));
                 events.sort_by_key(crate::music::resolve::midi_order);
             }
+            let changed = last_scheduled
+                .as_ref()
+                .is_none_or(|(_, previous)| !Arc::ptr_eq(previous, &visual_composition));
             last_scheduled = Some((step, visual_composition.clone()));
             for midi in events {
                 tx.try_send(midi)
                     .map_err(|e| format!("MIDI dispatch queue: {e}"))?;
+            }
+            if changed && let Some(live) = &live {
+                live.lock()
+                    .map_err(|e| e.to_string())?
+                    .schedule(c.clone(), deadline);
             }
             if options.trace {
                 for trace in &traces {

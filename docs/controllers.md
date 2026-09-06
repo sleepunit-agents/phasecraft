@@ -1,6 +1,6 @@
 # Controller research: OXI E16 and Neuzeit Drop
 
-Research date: 2026-09-06. **Update:** the [one-kick E16 preview](../tools/controllers/README.md) now implements temporary bar-boundary controls and feedback; physical verification remains pending. The broader integration below remains a proposal. Both devices are already available to the user; price is not the deciding factor.
+Research date: 2026-09-06. **Update:** the kick adapter is hardware-confirmed. The [dynamic Kit upgrade](../tools/controllers/KIT.md) adds multi-Part selection, dynamic labels and audible pending feedback; this extension awaits physical testing. The broader integration below remains a proposal. Both devices are already available to the user; price is not the deciding factor.
 
 **Start with the E16 as Phasecraft's musical control surface. Keep a generic MIDI adapter so Drop can use the same parameter layer, with a layout aimed at performing eight Parts at once.** Drop is also a viable first controller if simultaneous faders and track controls matter more than contextual labels.
 

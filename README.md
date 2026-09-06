@@ -332,7 +332,7 @@ MIDI/audio timing. Listening and recording the real MIDI output remain the final
 acceptance test on each music machine.
 
 The desktop GUI is a player and visualizer; TOML remains the authoring surface.
-No harmony, AI/MCP, or DSP is included. The experimental [E16 kick preview](tools/controllers/README.md) adds temporary live controls and feedback; hardware verification is pending.
+No harmony, AI/MCP, or DSP is included. The [dynamic E16 Kit](tools/controllers/KIT.md) adds temporary live controls, Part selection and feedback. The initial kick adapter is hardware-confirmed; the multi-Part extension awaits its listening test.
 
 Reusable swing, laid-back timing, run contours and ghost articulation are available;
 see [groove and the 909 garage example](docs/groove.md).

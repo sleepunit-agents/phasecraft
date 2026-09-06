@@ -1,5 +1,5 @@
-//! Controller-independent, temporary edits for a single selected Part.
-//! The transport commits a complete validated Part at a bar boundary.
+//! Controller-independent temporary edits, with one selected Part for detail controls.
+//! The transport commits the validated composition at a bar boundary.
 use crate::music::{
     Composition, Part,
     parameter::ParameterLane,
@@ -7,11 +7,19 @@ use crate::music::{
 };
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    time::Instant,
+};
 pub type Shared = Arc<Mutex<Live>>;
 #[derive(Clone, Default)]
 pub struct Live {
     base: Option<Composition>,
-    edited: Option<Part>,
+    edited: BTreeMap<String, Part>,
+    pub selected: String,
+    pub playing: bool,
+    applied: Option<Composition>,
+    scheduled: VecDeque<(Instant, Composition)>,
     pub revision: u64,
     pub generation: u16,
 }
@@ -60,9 +68,14 @@ pub struct Value {
     pub value: f64,
     pub maximum: f64,
     pub enabled: bool,
+    pub pending: bool,
+    pub applied: f64,
 }
 #[derive(Clone, Serialize)]
 pub struct View {
+    pub part: String,
+    pub selected: bool,
+    pub pending: bool,
     pub generation: u16,
     pub revision: u64,
     pub edited: bool,
@@ -140,6 +153,15 @@ fn adjust(e: &mut Expression, k: usize, delta: i32) {
 impl Live {
     pub fn load(&mut self, c: Option<Composition>) {
         self.base = c;
+        self.selected = self
+            .base
+            .as_ref()
+            .and_then(|c| c.parts.first())
+            .map(|p| p.id.clone())
+            .unwrap_or_default();
+        self.playing = false;
+        self.scheduled.clear();
+        self.applied = self.base.clone();
         self.reset();
     }
     pub fn rebase(&mut self, c: Composition) {
@@ -148,33 +170,116 @@ impl Live {
             .as_ref()
             .is_none_or(|base| serde_json::to_vec(base).ok() != serde_json::to_vec(&c).ok())
         {
-            self.edited = None;
+            self.edited.clear();
+        }
+        if !c.parts.iter().any(|p| p.id == self.selected) {
+            self.selected = c.parts.first().map(|p| p.id.clone()).unwrap_or_default();
+        }
+        if !self.playing {
+            self.applied = Some(c.clone());
+            self.scheduled.clear();
         }
         self.base = Some(c);
         self.generation = (self.generation + 1) % 16384;
         self.revision += 1;
     }
     pub fn reset(&mut self) {
-        self.edited = None;
+        self.edited.clear();
         self.revision += 1;
         self.generation = (self.generation + 1) % 16384;
     }
     pub fn composition(&self) -> Option<Composition> {
         let mut c = self.base.clone()?;
-        if let Some(p) = &self.edited
-            && let Some(target) = c.parts.iter_mut().find(|v| v.id == p.id)
-        {
-            *target = p.clone();
+        for target in &mut c.parts {
+            if let Some(p) = self.edited.get(&target.id) {
+                *target = p.clone();
+            }
         }
         Some(c)
     }
-    pub fn view(&self, part: &str) -> View {
-        let c = self.composition();
-        let p = c
+    pub fn select(&mut self, id: &str) -> Result<(), String> {
+        if !self
+            .base
             .as_ref()
-            .filter(|c| c.arrangement.is_none())
-            .and_then(|c| c.parts.iter().find(|p| p.id == part));
-        let values = PARAMETERS
+            .is_some_and(|c| c.parts.iter().any(|p| p.id == id))
+        {
+            return Err("Part not found".into());
+        }
+        if self.selected != id {
+            self.selected = id.into();
+            self.generation = (self.generation + 1) % 16384;
+        }
+        Ok(())
+    }
+    pub fn ids(&self) -> Vec<String> {
+        self.base
+            .as_ref()
+            .map(|c| c.parts.iter().map(|p| p.id.clone()).collect())
+            .unwrap_or_default()
+    }
+    pub fn views(&self) -> Vec<View> {
+        self.ids().iter().map(|id| self.view(id)).collect()
+    }
+    pub fn schedule(&mut self, c: Composition, deadline: Instant) {
+        self.playing = true;
+        while self
+            .scheduled
+            .front()
+            .is_some_and(|(d, _)| *d <= Instant::now())
+        {
+            self.applied = self.scheduled.pop_front().map(|(_, c)| c);
+        }
+        self.scheduled.push_back((deadline, c));
+    }
+    pub fn stopped(&mut self) {
+        self.playing = false;
+        self.scheduled.clear();
+        self.reset();
+        self.applied = self.base.clone();
+    }
+    pub fn view(&self, part: &str) -> View {
+        self.view_at(part, Instant::now())
+    }
+    fn view_at(&self, part: &str, now: Instant) -> View {
+        let editable = self.base.as_ref().is_some_and(|c| c.arrangement.is_none());
+        let desired = if editable {
+            self.edited.get(part).or_else(|| {
+                self.base
+                    .as_ref()
+                    .and_then(|c| c.parts.iter().find(|p| p.id == part))
+            })
+        } else {
+            None
+        };
+        let mut values = Self::values(desired);
+        let audible = self
+            .scheduled
+            .iter()
+            .rev()
+            .find(|(d, _)| *d <= now)
+            .map(|(_, c)| c)
+            .or(self.applied.as_ref());
+        let applied = Self::values(
+            audible
+                .filter(|c| c.arrangement.is_none())
+                .and_then(|c| c.parts.iter().find(|p| p.id == part)),
+        );
+        for (v, a) in values.iter_mut().zip(applied) {
+            v.applied = if self.playing { a.value } else { v.value };
+            v.pending = self.playing && (v.value != a.value || v.enabled != a.enabled);
+        }
+        View {
+            part: part.into(),
+            selected: self.selected == part,
+            pending: values.iter().any(|v| v.pending),
+            generation: self.generation,
+            revision: self.revision,
+            edited: self.edited.contains_key(part),
+            values,
+        }
+    }
+    fn values(p: Option<&Part>) -> Vec<Value> {
+        PARAMETERS
             .iter()
             .enumerate()
             .map(|(i, &parameter)| {
@@ -211,20 +316,17 @@ impl Live {
                 });
                 Value {
                     parameter,
+                    pending: false,
+                    applied: 0.,
                     label: label.into(),
                     value: v.map(|v| v.0).unwrap_or(0.),
                     maximum: v.map(|v| v.1).unwrap_or(1.),
                     enabled: v.is_some(),
                 }
             })
-            .collect();
-        View {
-            generation: self.generation,
-            revision: self.revision,
-            edited: self.edited.is_some(),
-            values,
-        }
+            .collect()
     }
+
     pub fn change(&mut self, part: &str, parameter: Parameter, delta: i32) -> Result<(), String> {
         if delta == 0 {
             return Ok(());
@@ -307,7 +409,7 @@ impl Live {
         }
         let edited = p.clone();
         c.validate()?;
-        self.edited = Some(edited);
+        self.edited.insert(part.into(), edited);
         self.revision += 1;
         Ok(())
     }
@@ -348,6 +450,38 @@ mod tests {
         let mut l = Live::default();
         l.load(Some(c));
         l
+    }
+    #[test]
+    fn pending_follows_audible_deadlines_and_latest_desired_value() {
+        let mut l = live();
+        let id = l.ids()[0].clone();
+        let now = Instant::now();
+        l.change(&id, Parameter::TriggerProbability, -10).unwrap();
+        let first = l.composition().unwrap();
+        l.schedule(first, now + std::time::Duration::from_secs(10));
+        l.change(&id, Parameter::TriggerProbability, -10).unwrap();
+        l.schedule(
+            l.composition().unwrap(),
+            now + std::time::Duration::from_secs(20),
+        );
+        let before = l.view_at(&id, now);
+        assert!(before.pending);
+        assert_ne!(before.values[2].applied, before.values[2].value);
+        assert!(
+            l.view_at(&id, now + std::time::Duration::from_secs(15))
+                .pending
+        );
+        assert!(
+            !l.view_at(&id, now + std::time::Duration::from_secs(21))
+                .pending
+        );
+        l.reset();
+        assert!(
+            l.view_at(&id, now + std::time::Duration::from_secs(21))
+                .pending
+        );
+        l.stopped();
+        assert!(!l.view(&id).pending);
     }
     #[test]
     fn edits_validate_and_reset_without_changing_seed_or_other_lanes() {

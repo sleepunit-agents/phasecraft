@@ -186,16 +186,10 @@ fn controller_status(
         .as_ref()
         .map(|c| c.status())
         .unwrap_or_default();
-    status.view = Some(
-        state
-            .player
-            .lock()
-            .map_err(|e| e.to_string())?
-            .live
-            .lock()
-            .map_err(|e| e.to_string())?
-            .view("kick"),
-    );
+    let player = state.player.lock().map_err(|e| e.to_string())?;
+    let live = player.live.lock().map_err(|e| e.to_string())?;
+    status.view = Some(live.view(&live.selected));
+    status.parts = live.views();
     Ok(status)
 }
 #[tauri::command]

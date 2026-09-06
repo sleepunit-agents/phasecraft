@@ -1,0 +1,102 @@
+# Use the existing Phasecraft 909 Prepared Set.
+# 909 Core Kit: straightforward four-on-the-floor, backbeat clap,
+# eighth-note hats and a quiet, independently cycling rim.
+# Fixed kick/clap anchors; hat emphasis cycles over seven sixteenths.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[[parts]]
+id = "kick"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 4, rotation = 0 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 110
+boost = 0
+[parts.output]
+channel = 10
+note = 36
+controls.cutoff = { cc = 20, channel = 15, default = 1.0 }
+controls.level = { cc = 22, channel = 15, default = 1.0 }
+controls.pan = { cc = 25, channel = 15, default = 0.5 }
+controls.decay = { cc = 21, channel = 15, default = 0.5590551181102362 }
+
+[[parts]]
+id = "clap"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 4 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 1, pulses = 0, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 100
+boost = 0
+[parts.output]
+channel = 10
+note = 39
+controls.cutoff = { cc = 45, channel = 15, default = 1.0 }
+controls.level = { cc = 47, channel = 15, default = 1.0 }
+controls.pan = { cc = 50, channel = 15, default = 0.5 }
+controls.decay = { cc = 46, channel = 15, default = 1.0 }
+
+[[parts]]
+id = "closed_hat"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 4, rotation = 0 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 3, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 66
+boost = 16
+[parts.output]
+channel = 10
+note = 42
+controls.cutoff = { cc = 75, channel = 15, default = 1.0 }
+controls.level = { cc = 77, channel = 15, default = 1.0 }
+controls.pan = { cc = 80, channel = 15, default = 0.5 }
+controls.decay = { cc = 76, channel = 15, default = 0.7007874015748031 }
+
+[[parts]]
+id = "open_hat"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 16, pulses = 4, rotation = 2 }
+probability = 1.0
+[parts.accent]
+rhythm = { type = "euclidean", steps = 16, pulses = 2, rotation = 6 }
+amount = 1.0
+[parts.profile]
+base = 78
+boost = 8
+[parts.output]
+channel = 10
+note = 46
+controls.cutoff = { cc = 37, channel = 16, default = 1.0 }
+controls.level = { cc = 39, channel = 16, default = 1.0 }
+controls.pan = { cc = 42, channel = 16, default = 0.5 }
+controls.decay = { cc = 38, channel = 16, default = 1.0 }
+
+[[parts]]
+id = "rim"
+[parts.trigger]
+rhythm = { type = "euclidean", steps = 15, pulses = 2, rotation = 3 }
+probability = 0.55
+[parts.accent]
+rhythm = { type = "euclidean", steps = 7, pulses = 2, rotation = 0 }
+amount = 1.0
+[parts.profile]
+base = 52
+boost = 12
+[parts.output]
+channel = 10
+note = 37
+controls.cutoff = { cc = 28, channel = 15, default = 1.0 }
+controls.level = { cc = 30, channel = 15, default = 1.0 }
+controls.pan = { cc = 34, channel = 15, default = 0.5 }
+controls.decay = { cc = 29, channel = 15, default = 1.0 }

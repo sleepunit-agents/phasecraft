@@ -25,6 +25,7 @@ use std::{
 
 #[derive(Serialize)]
 pub struct Snapshot {
+    pub controls: Vec<crate::control::View>,
     pub playing: bool,
     pub seed_label: Option<String>,
     pub step: Option<u64>,
@@ -187,7 +188,7 @@ impl Player {
             if let Err(e) = &result {
                 self.error = Some(e.clone());
             }
-            self.live.lock().map_err(|e| e.to_string())?.reset();
+            self.live.lock().map_err(|e| e.to_string())?.stopped();
             self.composition = self
                 .live
                 .lock()
@@ -199,6 +200,7 @@ impl Player {
             self.history.clear();
             return result;
         }
+        self.live.lock().map_err(|e| e.to_string())?.stopped();
         self.composition = self
             .live
             .lock()
@@ -301,6 +303,7 @@ impl Player {
             }
         });
         Snapshot {
+            controls: self.live.lock().map(|l| l.views()).unwrap_or_default(),
             seed_label: visible.as_ref().map(|c| c.seed.to_string()),
             playing,
             step,

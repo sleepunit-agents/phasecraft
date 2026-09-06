@@ -14,7 +14,7 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 sha2 = "0.10"
 tempfile = "3"
-toml = "0.9"
+toml = { version = "0.9", features = ["preserve_order"] }
 
 [profile.release]
 lto = true

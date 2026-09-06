@@ -93,6 +93,7 @@ async function boot(page) {
             return loaded
               ? {
                   ...fixture,
+                  controls: window.liveControls || [],
                   traces: fixture.traces
                     .map((t) =>
                       window.testGroove && t.part === "closed_hat"
@@ -495,12 +496,55 @@ test("controller connection is separate and temporary edits can be reset", async
     window.controllerEdited = true;
   });
   await expect(
-    page.getByText("Live kick edits", { exact: false }),
+    page.getByText("Live Part edits", { exact: false }),
   ).toBeVisible();
   await page.locator("#controller-reset").click();
   await expect(
-    page.getByText("Live kick edits", { exact: false }),
+    page.getByText("Live Part edits", { exact: false }),
   ).toBeHidden();
   await page.locator("#controller-disconnect").click();
   await expect(page.locator("#controller-status")).toHaveText("Not connected.");
+});
+
+test("desired values show immediately while audible rings retain old structure", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.locator("#welcome-open").click();
+  const id = await page.locator(".part-card").first().getAttribute("data-part");
+  await page.evaluate((id) => {
+    window.liveControls = [
+      {
+        part: id,
+        pending: true,
+        values: [
+          {
+            parameter: "a_pulses",
+            value: 7,
+            applied: 4,
+            enabled: true,
+            pending: true,
+          },
+        ],
+      },
+    ];
+  }, id);
+  const card = page.locator(`.part-card[data-part="${id}"]`);
+  await expect(card.locator(".pending-values")).toContainText("A pulses 4 → 7");
+  await card.click();
+  await expect(page.locator(".live-values")).toContainText(
+    "A pulses: 7 · next bar (playing 4)",
+  );
+  await page.screenshot({
+    path: "test-results/controller-pending.png",
+    fullPage: true,
+  });
+  await page.evaluate(() => {
+    window.liveControls[0].pending = false;
+    window.liveControls[0].values[0].pending = false;
+    window.liveControls[0].values[0].applied = 7;
+  });
+  await expect(card.locator(".pending-values")).toBeHidden();
+  await expect(page.locator(".live-values")).toContainText("A pulses: 7");
+  await expect(page.locator(".live-values")).not.toContainText("next bar");
 });

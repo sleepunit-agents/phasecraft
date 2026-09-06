@@ -345,7 +345,10 @@ function ensureCards(c) {
     );
     const caption = document.createElement("div");
     caption.className = "card-caption";
-    card.append(head, route, canvas, caption);
+    const pending = document.createElement("p");
+    pending.className = "pending-values";
+    pending.hidden = true;
+    card.append(head, route, canvas, caption, pending);
     card.onclick = () => {
       selectedPart = selectedPart === part.id ? null : part.id;
       renderDetail();
@@ -354,7 +357,7 @@ function ensureCards(c) {
     const formula = document.createElement("div");
     formula.className = "card-formula";
     card.insertBefore(formula, caption);
-    cards.set(part.id, { card, canvas, badge, caption, formula });
+    cards.set(part.id, { card, canvas, badge, caption, formula, pending });
   }
 }
 function drawRing(ctx, r, x, y, radius, live, progress, accent, resolved) {
@@ -547,7 +550,53 @@ function drawCard(view, trace, progress = snapshot.progress) {
     : snapshot.playing
       ? "RUNNING"
       : "READY";
+  const controls = snapshot.controls?.find((v) => v.part === trace.part);
+  view.pending.hidden = !controls?.pending;
+  view.pending.textContent =
+    controls?.values
+      .filter((v) => v.pending)
+      .map(
+        (v) =>
+          `${controlName(v.parameter)} ${controlValue(v, v.applied)} → ${controlValue(v, v.value)}`,
+      )
+      .join(" · ") + " · NEXT BAR";
   view.caption.textContent = `${Math.round(trace.trigger.probability * 100)}% trigger admission · ${all.length > 3 ? `${all.length} lanes · inspect all ↗` : "Inspect ↗"}`;
+}
+function controlName(p) {
+  return (
+    {
+      a_steps: "A steps",
+      a_pulses: "A pulses",
+      a_rotation: "A rotation",
+      b_steps: "B steps",
+      b_pulses: "B pulses",
+      b_rotation: "B rotation",
+      c_steps: "Accent steps",
+      c_pulses: "Accent pulses",
+      c_rotation: "Accent rotation",
+      operator: "Combine",
+      trigger_probability: "Trigger",
+      accent_probability: "Accent",
+      accent_amount: "Amount",
+      level: "Level",
+      cutoff: "Cutoff",
+      decay: "Decay",
+    }[p] || p
+  );
+}
+function controlValue(v, n) {
+  if (v.parameter === "operator")
+    return ["A", "OR", "AND", "XOR", "A-B", "B-A"][n];
+  return [
+    "level",
+    "cutoff",
+    "decay",
+    "trigger_probability",
+    "accent_probability",
+    "accent_amount",
+  ].includes(v.parameter)
+    ? Math.round(n * 100) + "%"
+    : String(n);
 }
 function renderDetail() {
   const trace = snapshot?.traces.find((t) => t.part === selectedPart);
@@ -555,6 +604,19 @@ function renderDetail() {
   if (!trace) return;
   $("detail-title").textContent = human(selectedPart);
   $("detail-body").replaceChildren();
+  const live = snapshot.controls?.find((v) => v.part === selectedPart);
+  if (live) {
+    const values = document.createElement("div");
+    values.className = "live-values";
+    for (const v of live.values.filter((v) => v.enabled)) {
+      const span = document.createElement("span");
+      span.classList.toggle("pending", v.pending);
+      span.textContent = `${controlName(v.parameter)}: ${controlValue(v, v.value)}${v.pending ? ` · next bar (playing ${controlValue(v, v.applied)})` : ""}`;
+      values.append(span);
+    }
+    $("detail-body").append(values);
+  }
+
   for (const [label, lane] of [
     ["Trigger", trace.trigger],
     ["Accent", trace.accent],

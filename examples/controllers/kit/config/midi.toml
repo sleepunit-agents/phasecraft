@@ -1,0 +1,3 @@
+port = "Phasecraft"
+lookahead_ms = 100
+send_clock = false

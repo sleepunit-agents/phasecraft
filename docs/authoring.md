@@ -151,3 +151,7 @@ for native Windows/Unix replacement and cleanup, with a subprocess replacement
 test on every supported native CI platform. Checksums detect mixed/corrupted
 assets; release authenticity relies on GitHub HTTPS and repository permissions,
 not a separate signing infrastructure.
+
+Part order in keyed `[parts.name]` tables is preserved as written, just like explicit
+`[[parts]]` arrays. Player cards and the E16 Kit use this order. It does not alter
+seeded decision identities or dependency evaluation order.

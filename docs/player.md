@@ -197,3 +197,7 @@ These connections are chosen per app launch and do not change the Ableton destin
 The [setup guide](../tools/controllers/README.md) provides the script, encoder assignments,
 one-kick project and limits. Temporary edits apply at the next bar and are not saved to
 TOML; Stop, composition switch or a changed valid file reload clears them.
+
+The [dynamic E16 Kit](../tools/controllers/KIT.md) follows authored Part order and
+keeps edits for multiple Parts. Cards and inspectors show desired values immediately
+with a pending marker until their audible bar boundary; rhythm graphics stay audible.

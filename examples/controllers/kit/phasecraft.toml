@@ -1,0 +1,4 @@
+name = "Controller kit laboratory"
+default = "techno.toml"
+compositions = ["techno.toml", "dnb.toml", "garage.toml"]
+midi = "config/midi.toml"

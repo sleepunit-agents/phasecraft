@@ -1,6 +1,8 @@
 # E16 kick preview
 
-First connected Part, tested in software; physical verification is still needed.
+**Hardware confirmed:** Jonathan found Navigate in the correct editor, mapped the
+controls, and reports the kick adapter works. The [dynamic Kit upgrade](KIT.md) adds
+all Parts, dynamic labels and pending values; this page documents the original adapter.
 Target: firmware **1.1.0**, Lua API **1.2.0**, Jonathan's HW v5 unit.
 
 ## Setup

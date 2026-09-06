@@ -1,0 +1,67 @@
+# Use the existing Phasecraft 909 Prepared Set.
+# Swung 2-step-inspired 909 system: anchored backbeat, soft snare chatter,
+# a moving hat accent cycle and percussion that avoids admitted kick hits.
+tempo = 132
+seed = 1329092
+phrase_bars = 4
+
+[parts.kick]
+output.controls.cutoff = { cc = 20, channel = 15, default = 1.0 }
+output.controls.level = { cc = 22, channel = 15, default = 1.0 }
+output.controls.pan = { cc = 25, channel = 15, default = 0.5 }
+output.controls.decay = { cc = 21, channel = 15, default = 0.5590551181102362 }
+compose = ["techno.kick", "groove.ukg"]
+trigger.rhythm = { steps = 16, pulses = 3 }
+
+[parts.snare]
+output.controls.cutoff = { cc = 37, channel = 15, default = 1.0 }
+output.controls.level = { cc = 39, channel = 15, default = 1.0 }
+output.controls.pan = { cc = 42, channel = 15, default = 0.5 }
+output.controls.decay = { cc = 38, channel = 15, default = 1.0 }
+compose = ["std.no_accent", "kit.909.snare", "groove.ukg", "groove.laid_back"]
+trigger.rhythm = { op = "or", a = { steps = 16, pulses = 2, rotation = 4 }, b = { steps = 16, pulses = 5, rotation = 1 } }
+accent.rhythm = { steps = 16, pulses = 2, rotation = 4 }
+accent.amount = 1.0
+profile = { base = 90, boost = 20 }
+# All non-backbeat hits become ghosts; backbeat accents stay full-strength.
+groove.ghost_probability = 1.0
+groove.ghost_gain = 0.4
+
+[parts.closed_hat]
+output.controls.cutoff = { cc = 75, channel = 15, default = 1.0 }
+output.controls.level = { cc = 77, channel = 15, default = 1.0 }
+output.controls.pan = { cc = 80, channel = 15, default = 0.5 }
+output.controls.decay = { cc = 76, channel = 15, default = 0.7007874015748031 }
+compose = ["techno.closed_hat", "groove.ukg", "groove.ramp_up", "groove.ghosts"]
+trigger.rhythm = { steps = 16, pulses = 13 }
+trigger.probability = 0.95
+accent.rhythm = { steps = 7, pulses = 3 }
+groove.ghost_probability = 0.2
+
+[parts.open_hat]
+output.controls.cutoff = { cc = 37, channel = 16, default = 1.0 }
+output.controls.level = { cc = 39, channel = 16, default = 1.0 }
+output.controls.pan = { cc = 42, channel = 16, default = 0.5 }
+output.controls.decay = { cc = 38, channel = 16, default = 1.0 }
+compose = ["techno.open_hat", "groove.ukg"]
+trigger.rhythm = { steps = 16, pulses = 2, rotation = 2 }
+profile.base = 67
+
+[parts.clap]
+output.controls.cutoff = { cc = 45, channel = 15, default = 1.0 }
+output.controls.level = { cc = 47, channel = 15, default = 1.0 }
+output.controls.pan = { cc = 50, channel = 15, default = 0.5 }
+output.controls.decay = { cc = 46, channel = 15, default = 1.0 }
+compose = ["techno.clap", "groove.laid_back"]
+trigger.rhythm = { steps = 16, pulses = 1, rotation = 12 }
+profile.base = 75
+
+[parts.rim]
+output.controls.cutoff = { cc = 28, channel = 15, default = 1.0 }
+output.controls.level = { cc = 30, channel = 15, default = 1.0 }
+output.controls.pan = { cc = 34, channel = 15, default = 0.5 }
+output.controls.decay = { cc = 29, channel = 15, default = 1.0 }
+compose = ["techno.rim", "groove.ukg", "groove.low_high_low"]
+trigger.rhythm = { op = "a_not_b", a = { steps = 12, pulses = 5, rotation = 1 }, b = { part = "kick", mode = "hits" } }
+trigger.probability = 0.7
+profile.base = 55

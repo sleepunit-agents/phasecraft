@@ -1,0 +1,124 @@
+-- Phasecraft kit adapter. Page 1 = Kit 1, 2 = Rhythm, 3 = Kit 2.
+--@assign id=1 abbr="ASte" name="A Steps" l=0 h=127 manual=true dis=0
+--@assign id=2 abbr="APul" name="A Pulses" l=0 h=127 manual=true dis=0
+--@assign id=3 abbr="ARot" name="A Rotation" l=0 h=127 manual=true dis=0
+--@assign id=4 abbr="Trig" name="Trigger Probability" l=0 h=127 manual=true dis=0
+--@assign id=5 abbr="BSte" name="B Steps" l=0 h=127 manual=true dis=0
+--@assign id=6 abbr="BPul" name="B Pulses" l=0 h=127 manual=true dis=0
+--@assign id=7 abbr="BRot" name="B Rotation" l=0 h=127 manual=true dis=0
+--@assign id=8 abbr="Comb" name="Combination" l=0 h=127 manual=true dis=0
+--@assign id=9 abbr="CSte" name="Accent Steps" l=0 h=127 manual=true dis=0
+--@assign id=10 abbr="CPul" name="Accent Pulses" l=0 h=127 manual=true dis=0
+--@assign id=11 abbr="CRot" name="Accent Rotation" l=0 h=127 manual=true dis=0
+--@assign id=12 abbr="Acc" name="Accent Probability" l=0 h=127 manual=true dis=0
+--@assign id=13 abbr="Levl" name="Part Level" l=0 h=127 manual=true dis=0
+--@assign id=14 abbr="Cut" name="Cutoff" l=0 h=127 manual=true dis=0
+--@assign id=15 abbr="Amt" name="Accent Amount" l=0 h=127 manual=true dis=0
+--@assign id=16 abbr="Decy" name="Decay" l=0 h=127 manual=true dis=0
+--@assign id=17 abbr="P01" name="Part 01 Level" manual=true dis=0
+--@assign id=33 abbr="P01" name="Select Part 01" p=true
+--@assign id=18 abbr="P02" name="Part 02 Level" manual=true dis=0
+--@assign id=34 abbr="P02" name="Select Part 02" p=true
+--@assign id=19 abbr="P03" name="Part 03 Level" manual=true dis=0
+--@assign id=35 abbr="P03" name="Select Part 03" p=true
+--@assign id=20 abbr="P04" name="Part 04 Level" manual=true dis=0
+--@assign id=36 abbr="P04" name="Select Part 04" p=true
+--@assign id=21 abbr="P05" name="Part 05 Level" manual=true dis=0
+--@assign id=37 abbr="P05" name="Select Part 05" p=true
+--@assign id=22 abbr="P06" name="Part 06 Level" manual=true dis=0
+--@assign id=38 abbr="P06" name="Select Part 06" p=true
+--@assign id=23 abbr="P07" name="Part 07 Level" manual=true dis=0
+--@assign id=39 abbr="P07" name="Select Part 07" p=true
+--@assign id=24 abbr="P08" name="Part 08 Level" manual=true dis=0
+--@assign id=40 abbr="P08" name="Select Part 08" p=true
+--@assign id=25 abbr="P09" name="Part 09 Level" manual=true dis=0
+--@assign id=41 abbr="P09" name="Select Part 09" p=true
+--@assign id=26 abbr="P10" name="Part 10 Level" manual=true dis=0
+--@assign id=42 abbr="P10" name="Select Part 10" p=true
+--@assign id=27 abbr="P11" name="Part 11 Level" manual=true dis=0
+--@assign id=43 abbr="P11" name="Select Part 11" p=true
+--@assign id=28 abbr="P12" name="Part 12 Level" manual=true dis=0
+--@assign id=44 abbr="P12" name="Select Part 12" p=true
+--@assign id=29 abbr="P13" name="Part 13 Level" manual=true dis=0
+--@assign id=45 abbr="P13" name="Select Part 13" p=true
+--@assign id=30 abbr="P14" name="Part 14 Level" manual=true dis=0
+--@assign id=46 abbr="P14" name="Select Part 14" p=true
+--@assign id=31 abbr="P15" name="Part 15 Level" manual=true dis=0
+--@assign id=47 abbr="P15" name="Select Part 15" p=true
+--@assign id=32 abbr="P16" name="Part 16 Level" manual=true dis=0
+--@assign id=48 abbr="P16" name="Select Part 16" p=true
+local generation, age, timer = -1, 0, 0
+local title, pending_title, host_title
+local flags = {}
+local labels, values, numbers, enabled, holds = {}, {}, {}, {}, {}
+local function active() local p=controller.getPage(); return p>=1 and p<=3 end
+local function send(kind,body)
+  local b={240,125,80,67,1,kind}
+  for _,v in ipairs(body) do b[#b+1]=v end
+  b[#b+1]=247
+  midi.sendSysex(0,b)
+end
+local function hello()
+  if active() then send(6,{controller.getPage()}) end
+end
+local function clear()
+  for i=1,16 do leds.reset(i);slots.reset(i) end
+  page.resetTitle();title=nil;pending_title=nil
+end
+function page.onInit()
+  generation=-1
+  for i=1,32 do controller.set(i,"v",8192) end
+  system.setUpdateRate(40)
+  hello()
+end
+function page.onPageChange(prev,curr)
+  clear(); host_title=nil;flags={};generation=-1; labels={}; values={}; numbers={}; enabled={}; holds={}
+  hello()
+end
+function controller.onEncoderTurn(enc)
+  if not active() or enc.page~=controller.getPage() or enc.id~=(enc.page==2 and enc.index or enc.index+16) then return end
+  if enc.index<1 or enc.index>16 then return end
+  controller.set(enc.id,"v",8192)
+  if generation<0 or not enabled[enc.index] then return end
+  local d=math.max(-8,math.min(8,enc.increment or 0))
+  if d==0 then return end
+  send(2,{generation//128,generation%128,enc.page,enc.index-1,d+64})
+  holds[enc.index]=25
+end
+function controller.onEncoderPress(enc)
+  if enc.page==2 or not active() or enc.page~=controller.getPage() or enc.id~=enc.index+32 then return end
+  if generation<0 or ((flags[enc.index] or 0)&8)==0 then return end
+  send(5,{generation//128,generation%128,enc.page,enc.index-1})
+end
+function controller.onSysex(b)
+  if #b==25 and b[1]==240 and b[2]==125 and b[3]==80 and b[4]==67 and b[5]==1 and b[6]==7 and b[25]==247 and active() and b[9]==controller.getPage() then
+    for i=2,24 do if b[i]<0 or b[i]>127 then return end end
+    host_title=string.char(table.unpack(b,10,24));return
+  end
+  if #b~=22 or b[1]~=240 or b[2]~=125 or b[3]~=80 or b[4]~=67 or b[5]~=1 or b[6]~=4 or b[22]~=247 then return end
+  for i=2,21 do if b[i]<0 or b[i]>127 then return end end
+  if not active() or b[9]~=controller.getPage() or b[10]>15 then return end
+  generation=b[7]*128+b[8];age=0
+  local i=b[10]+1
+  flags[i]=b[11];enabled[i]=(b[11]&1)==1;values[i]=b[12]*128+b[13]
+  labels[i]=string.char(b[14],b[15],b[16],b[17])
+  local n=string.char(b[18],b[19],b[20],b[21])
+  if numbers[i] and numbers[i]~=n then holds[i]=25 end
+  numbers[i]=n
+end
+function system.update()
+  if not active() then return end
+  age=age+1;timer=timer+1
+  if timer>=25 then timer=0;hello() end
+  if age>75 then generation=-1 end
+  if pending_title then page.setTitle(pending_title);pending_title=nil end
+  local next_title=generation<0 and "Connect player" or (host_title or "Phasecraft")
+  if next_title~=title then page.resetTitle();pending_title=next_title;title=next_title end
+  local batch={}
+  for i=1,16 do
+    if holds[i] and holds[i]>0 then holds[i]=holds[i]-1 end
+    slots.update(i,generation<0 and "----" or (((holds[i] or 0)>0 or ((flags[i] or 0)&2)>0) and numbers[i] or labels[i]) or "----")
+    batch[i]={i,generation>=0 and (values[i] or 0) or 0,((flags[i] or 0)&2)>0 and 20 or (((flags[i] or 0)&4)>0 and 0 or 60)}
+  end
+  leds.updateByIndex(batch)
+end
