@@ -31,7 +31,7 @@ a rest or initialize the whole kit before the first note.
 - **Level**: sustained gain for the voice, downstream of timbre shaping. Turning
   down the hat must not rewrite its velocities or change its velocity layers.
 - **Accent Gain**: optional short emphasis gain, on a separate gain stage. It must
-  not overwrite Level. A profile may use velocity, Accent Gain, tone or several.
+  not overwrite Level. A profile may use velocity, Accent Gain, cutoff or several.
 - **Drive**: nonlinear sound shaping, with separate compensation. Do not use Level
   as the drive input or use velocity as a substitute for a mixer fader.
 
@@ -44,11 +44,11 @@ response; additional velocity-to-filter behavior must be deliberate and visible.
 Macro order below matches CC order. Names/addresses form the stable contract;
 physical ranges are initial proposals to tune on the prepared voices, not universal
 claims about every sample. Labels shown to humans may use units; wire values are
-absolute 7-bit CC. Tone and decay curves need useful resolution near their low end.
+absolute 7-bit CC. Cutoff and decay curves need useful resolution near their low end.
 
 | Macro / CC | Semantic name | Meaning and intended host destination | Initial range / neutral | Intended lifetime |
 | --- | --- | --- | --- | --- |
-| 1 / 20 | `tone` | Brightness via a low-pass cutoff, fixed modest resonance | 200 Hz–20 kHz; neutral fully open; constrain low end per voice after listening | Held base + optional emphasis |
+| 1 / 20 | `cutoff` | Filter Cutoff: low-pass cutoff frequency, fixed modest resonance | 200 Hz–20 kHz; neutral fully open; constrain low end per voice after listening | Held base + optional emphasis |
 | 2 / 21 | `decay` | Audible tail duration, via a true amplitude decay where available | Voice-specific ranges below | Held base; per-hit variation only after testing envelope behavior |
 | 3 / 22 | `level` | Dedicated post-processing gain | -48 to 0 dB, neutral 0 dB; actual mute is a separate future command | Held; never reset on note-off |
 | 4 / 23 | `tune` | Sample transpose relative to the voice's manually chosen root tuning | -12 to +12 semitones; neutral exact 0; semitone steps | Held; no native pitch-bend dependence |
@@ -68,7 +68,7 @@ cannot be made longer merely by raising decay. Preserve the control and its mean
 but retune usable limits after a sample swap when necessary.
 
 Compatibility: current `accent.filter_punch` calls CC20 `filter` and CC21 `envelope`.
-Those names remain valid in existing compositions. They bind to the proposed Tone
+Those names remain valid in existing compositions. They bind to the proposed Filter Cutoff
 and Decay controls; do not silently rename the existing profile. New semantic names
 will need explicit kit bindings rather than two competing owners of the same CC.
 
@@ -172,7 +172,7 @@ which supports the proposed Drive compensation and reusable voice controls.
    even on rests; hold through note-offs. Stop policy must distinguish mixer state
    from temporary emphasis. Do not reset a fader merely because a note ended.
 3. **Base plus modulation resolution.** One owner computes the final output when
-   an accent modifies a held tone/drive base; releasing the accent restores the
+   an accent modifies a held cutoff/drive base; releasing the accent restores the
    current base. Do not allow two independent CC writers to race.
 4. **Control lifetimes beyond the gate.** Envelope values, short gain emphasis and
    reverb throws have different timing requirements. Earn those policies from the
@@ -201,6 +201,52 @@ No pitched sequencing or MPE implementation is part of this kit task.
 - Save/reopen the Set; save/import the rack separately and record precisely which
   bindings survive. Provide an honest minimum Live/device requirement.
 
-First construction milestone: rim + Tone, Decay, Level and Accent Gain, preserving
+First construction milestone: rim + Filter Cutoff, Decay, Level and Accent Gain, preserving
 channel16 CC20/21. Verify separation and envelope lifetime, then extend to all eight
 controls and voices. No runtime or Ableton files are modified by this draft.
+
+
+## 9. Generate one mapped template, independent of compositions
+
+Proposed delivery: Phasecraft creates a new folder containing one reusable
+`Phasecraft Drums.als`, with the prepared voices and all external CC assignments.
+An accompanying `.adg` is useful for the rack itself. This is a host-setup utility;
+it does not turn procedural compositions into Ableton clips or arrangements.
+
+ADG rack files and ALS Set files use gzip-compressed XML in existing tooling.
+Ableton identifies ADG as rack presets and ALS as Sets/templates. XML access makes
+generation plausible, but parsing successfully is not proof that Live 12.4 accepts
+the device state and mapping references. We have not yet generated or opened a
+12.4 template. Sources: [ADG creator implementation](https://github.com/ben-juodvalkis/Ableton-Device-Creator),
+[ALS parser implementation](https://github.com/jake-g/ableton-parser),
+[Ableton file types](https://help.ableton.com/hc/en-us/articles/209769625-Live-specific-file-types).
+
+Build strategy:
+
+1. Obtain a minimal Set saved by Live 12.4 Suite containing one representative
+   prepared voice. Save before and after adding one external MIDI CC mapping;
+   also save its rack preset. These are fixtures for understanding exact mapping
+   storage and whether rack export retains any of the external assignments.
+2. Decompress/parse those fixtures and compare their structures. Identify device
+   and parameter IDs, macro targets, channel encoding, mapping modes/ranges,
+   sample references and required version/device metadata. Preserve unknown data.
+3. Use the validated fixture as the seed; generate only the known voice structure
+   and address changes. Remap all cross-referenced IDs when cloning voices. Keep
+   this adapter separate from the deterministic musical engine.
+4. Open the result in Live 12.4, verify every mapping, save/reopen it, and test sample
+   replacement. Commit the reproducible build recipe and appropriate fixtures.
+5. Ship the resulting tested template as a bundled resource. The ordinary user
+   action can simply materialize that template into a new directory; users need
+   neither a Python toolchain nor runtime XML generation. Rebuild the resource
+   when the kit contract changes, not when a composition changes.
+
+Reference locally installed factory content or user-provided samples with a tested
+resolution strategy; do not assume this machine's absolute sample paths exist on
+another computer. Input-port choice and Track/Remote/Sync preferences remain local
+host setup. A ready-mapped Set does not install loopMIDI or guarantee those global
+preferences are already enabled.
+
+Do not generate an entire Live document from guessed XML or silently rewrite a
+user's existing Set. Reject unsupported fixture structures with useful errors.
+A version-specific starter template is the initial compatibility contract; more
+Live versions require their own opening/round-trip checks.
