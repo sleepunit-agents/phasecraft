@@ -22,6 +22,8 @@ PADS = {
     49: ("crash_alt", 14), 50: ("ride_alt", 15), 51: ("ride", 7),
 }
 TARGETS = {"AutomationTarget", "ModulationTarget"}
+# 64 permitted CCs per channel; eight slots per pad, eight pads per channel.
+COMPACT_CCS = list(range(20, 32)) + list(range(33, 64)) + list(range(70, 91))
 
 
 def require(condition, message):
@@ -69,7 +71,7 @@ def signature(node):
             tuple(signature(child) for child in node))
 
 
-def build(base, mapped):
+def build(base, mapped, compact=False):
     original = copy.deepcopy(base)
     source_voices = voices(mapped)
     template = source_voices[37].find("./Filter/Slot/Value/SimplerFilter")
@@ -92,8 +94,12 @@ def build(base, mapped):
                  if e.tag in TARGETS | {"Pointee"} and e.get("Id") is not None}
     require(allocated > max(known_ids), "NextPointeeId must exceed existing target IDs")
     report = []
-    for note, instrument in sorted(voices(base).items()):
+    for index, (note, instrument) in enumerate(sorted(voices(base).items())):
         role, channel = PADS[note]
+        cc = 20
+        if compact:
+            channel = 15 + index // 8
+            cc = COMPACT_CCS[(index % 8) * 8]
         filter_node = instrument.find("./Filter")
         require(filter_node is not None, f"Missing filter container on {role}")
         slot = filter_node.find("./Slot/Value")
@@ -116,6 +122,7 @@ def build(base, mapped):
             freq.remove(old_key)
         binding = copy.deepcopy(key)
         binding.find("Channel").set("Value", str(channel - 1))
+        binding.find("NoteOrController").set("Value", str(cc))
         # Follow the working fixture's parameter child order: LomId, KeyMidi, ...
         freq.insert(1, binding)
         filter_node.find("./IsOn/Manual").set("Value", "true")
@@ -123,7 +130,8 @@ def build(base, mapped):
         require(limits is not None and value(limits, "Min") == "30"
                 and value(limits, "Max") == "22000", f"Unexpected cutoff range on {role}")
         report.append({"role": role, "note": note, "note_channel": 10,
-                       "control_channel": channel, "cc": 20, "filter_created": added,
+                       "control_channel": channel, "cc": cc, "filter_created": added,
+                       "reserved_ccs": COMPACT_CCS[(index % 8)*8:(index % 8+1)*8] if compact else list(range(20,28)),
                        "cutoff_min_hz": 30, "cutoff_max_hz": 22000})
     next_id.set("Value", str(allocated))
     require(len(external_mappings(base)) == 16, "Expected sixteen external assignments")
@@ -141,8 +149,8 @@ def build(base, mapped):
     return base, report
 
 
-def write_bundle(base_path, mapped_path, output):
-    base, report = build(load(base_path), load(mapped_path))
+def write_bundle(base_path, mapped_path, output, compact=False):
+    base, report = build(load(base_path), load(mapped_path), compact)
     xml = ET.tostring(base, encoding="utf-8", xml_declaration=True)
     require(signature(ET.fromstring(xml)) == signature(base), "XML round-trip failed")
     output = Path(output)
@@ -154,13 +162,13 @@ def write_bundle(base_path, mapped_path, output):
     names = []
     bindings = []
     for pad in report:
-        role, note, channel = pad["role"], pad["note"], pad["control_channel"]
+        role, note, channel, cc = pad["role"], pad["note"], pad["control_channel"], pad["cc"]
         name = f"compositions/{note:02}-{role}.toml"
         names.append(name)
         bindings.append(f'''[library.behaviors."kit.target.{role}".output]
 note = {note}
 channel = 10
-controls.cutoff = {{ cc = 20, channel = {channel} }}
+controls.cutoff = {{ cc = {cc}, channel = {channel} }}
 ''')
         (project / name).write_text(f'''# Alternating dark/bright quarter notes. CC resets open at note-off.
 tempo = 100
@@ -184,6 +192,7 @@ profile.controls.cutoff = {{ base = 1.0, boost = -0.85 }}
     for config in project.rglob("*.toml"):
         tomllib.loads(config.read_text())
     manifest = {"status": "Awaiting Live 12.4.3 opening/listening validation",
+                "layout": "compact-v1" if compact else "legacy-per-pad-channel",
                 "creator": base.get("Creator"), "base_sha256": hashlib.sha256(Path(base_path).read_bytes()).hexdigest(),
                 "mapped_sha256": hashlib.sha256(Path(mapped_path).read_bytes()).hexdigest(),
                 "output_sha256": hashlib.sha256(als.read_bytes()).hexdigest(), "pads": report}
@@ -198,7 +207,8 @@ profile.controls.cutoff = {{ base = 1.0, boost = -0.85 }}
 4. Inspect the kick's Simpler filter frequency. It should alternate dark/bright
    with the quarter-note hits, returning fully open at note-off. Only this pad's
    cutoff should move. Stop; select the next composition to check another pad.
-5. Live MIDI Map mode should show 16 external CC20 assignments on channels 1..16.
+5. Live MIDI Map mode should show 16 external cutoff assignments matching
+   mapping-report.json. Compact layout uses only control channels 15 and 16.
    The original internal rack macros remain in place. Do not move a stock macro
    during this isolation test; it may control related instrument settings.
 6. Save As a fresh Set, close/reopen and retest. Report any missing samples,
@@ -227,8 +237,9 @@ def main():
     parser.add_argument("base", type=Path)
     parser.add_argument("mapped", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--compact", action="store_true", help="Reserve eight CC slots per pad across only two control channels")
     args = parser.parse_args()
-    write_bundle(args.base, args.mapped, args.output)
+    write_bundle(args.base, args.mapped, args.output, args.compact)
 
 
 if __name__ == "__main__":

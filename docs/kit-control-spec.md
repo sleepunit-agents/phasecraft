@@ -270,3 +270,36 @@ new visible rack macros and the full eight-control voice are not implemented.
 The generated matching project keeps all routes in `kit.toml` and includes one
 isolated test composition per pad. Structural/Phasecraft validation passes; actual
 Live opening, mapping behavior and save/reopen validation are pending user testing.
+
+## Compact address revision (supersedes per-pad channels for new kits)
+
+Jonathan confirmed the first generated cutoff Set works perfectly in Live. He
+requested consolidation: generated assignments need not be memorable, and a single
+16-pad rack should not consume all MIDI channels.
+
+**Compact v1** reserves eight CC slots per pad on two control channels, 15 and 16.
+Drum notes stay on channel 10. Pads sorted by note36..43 use control channel15;
+pads44..51 use channel16. Each channel's 64-slot pool is CC20..31,33..63,70..90,
+partitioned into eight consecutive blocks of eight. Slot order remains cutoff,
+decay, level, tune, drive, pan, space, accent_gain. The pool fits current CC validation
+and avoids bank/pedal/channel-mode ranges; these addresses remain adapter-specific.
+
+Only cutoff is mapped in the generated compact test. The other seven slots are
+reservations, not new engine capabilities. `mapping-report.json` includes each pad's
+complete reserved block. Use the Set and kit.toml from the same bundle; the original
+rim-only helper and previous per-pad-channel kit use different addresses. Legacy
+build mode stays available to reproduce the already-tested artifact.
+
+This leaves thirteen channels outside the note/control allocation for other
+routing, though a shared physical port still has finite bandwidth and target
+routing must avoid conflicts. Multiple ports are the eventual expansion path.
+The compact artifact passed XML/address/project validation; unlike the original
+per-pad version, it still awaits the user's Live opening/listening check.
+
+Next: held parameter state (initialize before playback, update through rests,
+preserve mix settings at note-off/Stop), then volume and pan mapping. Existing
+fixtures contain their parameter structures. Tuning has stock macro bindings to
+preserve; envelope controls require playback-mode-aware interpretation. Extra
+manual fixtures are needed only for genuinely new device/structure patterns, not
+one for every parameter or pad. Keep volume distinct from velocity and a later
+independent accent gain stage.

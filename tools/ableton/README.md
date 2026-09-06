@@ -32,3 +32,11 @@ checks for missing pads, invalid ID allocation and unexpected existing mappings.
 
 The original fixtures remain unchanged and outside Git. Generated Sets still need
 to be opened, played and saved/reopened in Live before claiming compatibility.
+
+Pass `--compact` to generate the new two-control-channel layout. It reserves eight
+CC slots per pad across channels15/16 while mapping only cutoff. Both layouts use
+the same source fixtures and validation; consumers must use the generated matching
+kit.toml. Compact validation additionally checked all 128 reserved `(channel, CC)`
+slots are unique and that the 16 serialized external mappings match the report.
+Jonathan has confirmed the original per-pad-channel Set works perfectly in Live;
+the compact revision awaits the same user check.
