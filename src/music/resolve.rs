@@ -44,6 +44,7 @@ pub struct MusicalEvent {
 /// A realized window is generic; source cycles need not fit in the window.
 #[derive(Clone, Debug, Serialize)]
 pub struct RhythmPattern {
+    pub cycles: Vec<super::cycle::CycleSpan>,
     pub start_tick: u64,
     pub end_tick: u64,
     pub events: Vec<MusicalEvent>,
@@ -209,6 +210,7 @@ fn resolve_part(
 }
 pub fn realize(c: &Composition, part: &Part, start_step: u64, steps: u64) -> RhythmPattern {
     RhythmPattern {
+        cycles: super::cycle::spans(c, &part.id, start_step, start_step + steps),
         start_tick: start_step * STEP_TICKS,
         end_tick: (start_step + steps) * STEP_TICKS,
         events: (start_step..start_step + steps)

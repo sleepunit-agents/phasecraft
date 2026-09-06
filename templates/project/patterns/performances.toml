@@ -1,0 +1,13 @@
+# Reusable motion and emphasis. Output bindings still belong to kits/.
+[library.behaviors."my.percussion_motion".parameters]
+cutoff = { value = 0.35, automation = { repeat = true, segments = [ { to = 0.8, over_bars = 4, curve = "smooth" }, { to = 0.35, over_bars = 4, curve = "smooth" } ] } }
+pan = { value = 0.35, automation = { repeat = true, segments = [ { to = 0.65, over_bars = 4, curve = "smooth" }, { to = 0.35, over_bars = 4, curve = "smooth" } ] } }
+level = { value = 0.85 }
+decay = { value = 0.5 }
+
+[library.behaviors."my.percussion_memory".accent]
+sources = ["drums"]
+
+[library.behaviors."my.percussion_memory".profile.controls.cutoff]
+boost = 0.2
+envelope = { decay_beats = 2, accumulation = 0.5 }

@@ -19,6 +19,8 @@ with tempfile.TemporaryDirectory(prefix="phasecraft-native-") as work:
     shutil.copytree(root / "templates/project", project)
     composition = project / "compositions/techno.toml"
     composition.write_text(composition.read_text().replace("tempo = 132", "tempo = 400").replace("phrase_bars = 4", "phrase_bars = 1"))
+    journey = project / "compositions/garage-journey.toml"
+    journey.write_text(journey.read_text().replace("tempo = 132", "tempo = 400").replace("bars = 8", "bars = 1").replace("bars = 4", "bars = 1"))
     preferences = work / "config/com.phasecraft.player"
     preferences.mkdir(parents=True)
     (preferences / "recent.json").write_text(json.dumps([str(project)]))
@@ -105,7 +107,16 @@ with tempfile.TemporaryDirectory(prefix="phasecraft-native-") as work:
             driver.find_elements(By.CSS_SELECTOR, "#compositions button")[11].click()
             driver.find_element(By.ID, "play").click()
             wait.until(lambda d: "A · section 1/4" in d.find_element(By.ID, "section-position").text)
-            driver.close()  # Closing an arrangement must restore kit defaults.
+            driver.find_element(By.ID, "stop").click()
+            wait.until(lambda d: "STOPPED" in d.find_element(By.ID, "state").text)
+            driver.find_elements(By.CSS_SELECTOR, "#compositions button")[14].click()
+            driver.find_element(By.ID, "play").click()
+            wait.until(lambda d: "SILENT PREVIEW" in d.find_element(By.ID, "state").text)
+            wait.until(lambda d: "STOPPED" in d.find_element(By.ID, "state").text)
+            assert "Outro · section 5/5" in driver.find_element(By.ID, "section-position").text
+            driver.find_element(By.ID, "play").click()
+            wait.until(lambda d: "Intro · section 1/5" in d.find_element(By.ID, "section-position").text)
+            driver.close()  # Closing a restarted arrangement must restore defaults.
 
 
             print("Native player: open, repeated playback, watched error/recovery, selection and close passed")

@@ -1,5 +1,8 @@
 # Engineering handoff audit
 
+For the latest status, see [Current percussion coverage](current-coverage.md).
+The tables below intentionally preserve the earlier audit.
+
 Audited 2026-09-05 against commit `13e5cbc` and Jonathan's original 49-section
 handoff. The handoff mixes immediate prototype requirements, architectural
 principles, and explicitly deferred possibilities. Those are separate obligations.

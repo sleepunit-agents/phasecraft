@@ -54,3 +54,27 @@ See `arrangement.md` for finite endings, repeats and explicit restart/continue c
 The sixteen-bar dry run sent 436 note messages, 965 controls and 1,536 clocks with
 zero drops, maximum measured lateness 1.022 ms. These are local scheduling checks;
 listening on Windows/Live is still yours.
+
+## 5. Combined examples and coverage
+
+New projects contain fifteen compositions. **techno-journey**, **dnb-journey** and
+**garage-journey** each play 32 procedural bars and stop, combining shared control
+motion, accent memory, groove and named sections. Their main A sections preserve
+the original genre's trigger decisions. See `current-coverage.md` for the updated
+spec map and explicit deferred work. Cycle spans now describe a realized window's
+phase alignment without materializing long common periods.
+
+102 Rust tests pass, including complete-project/standalone equivalence, original
+35-bar golden traces, arrangement watch validation and absent-Part inspection.
+Root and desktop clippy pass; three scoped Ableton fixture tests pass. Full DnB
+journey at 172 BPM: 1,272 note messages, 2,927 controls, 3,072 clocks, no dropped
+notes, maximum measured lateness 5.828 ms locally.
+
+The initial section CI exposed a test-design problem: a 400 BPM exact-clock test
+required shared Mac runners to meet real-time deadlines. The engine correctly
+stopped when they did not. Exact counts now use simulated deadlines; a separate
+real-time check covers finite transport duration and cleanup. Runtime clock safety
+was not weakened. That unsuccessful intermediate commit was not published.
+
+Full garage journey at 132 BPM: 1,840 note messages, 3,827 controls, 3,072 clocks,
+no dropped notes, maximum measured lateness 6.020 ms locally.

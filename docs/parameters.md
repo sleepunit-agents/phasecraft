@@ -61,7 +61,7 @@ original momentary response and configured reset base. Missing profile base now
 defaults to zero; existing explicit bases behave as before.
 
 This is still per-Part/channel control, not per-note expression. Changing a filter
-can affect already-sounding tails. [Stateful accent envelopes](accents.md#control-emphasis-with-memory)
+can affect already-sounding tails. [Stateful accent envelopes](https://github.com/sleepunit-agents/phasecraft/blob/main/docs/accents.md#control-emphasis-with-memory)
 can now add a decaying response instead of a gate-length emphasis impulse.
 
 ## Transport and editing semantics
@@ -115,7 +115,7 @@ Runtime “ramp from here” commands and group mixing remain outside this timel
 **movement** uses the expanded `Phasecraft 909 Prepared.als` with cutoff, level,
 pan and decay mappings. Its kit defaults are in `kits/909-prepared.toml`. Level
 is separate from velocity; decay follows each stock voice's envelope mechanism.
-See [prepared kit](prepared-kit.md) for target-specific details.
+See [prepared kit](https://github.com/sleepunit-agents/phasecraft/blob/main/docs/prepared-kit.md) for target-specific details.
 
 Updating the executable does not rewrite existing projects. For an older intro,
 add `default = 1.0` to each of the three `controls.cutoff` mappings in

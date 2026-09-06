@@ -111,3 +111,28 @@ accents, interpreted with offbeat/gap emphasis and bounded timing/velocity touch
 
 `quickstart/accent-memory.toml`: shared semantic accent source and two finite-memory
 cutoff responses. Prepared 909 Set; watch/listen for accumulation and decay on rests.
+
+## Prepared-kit feature tour
+
+These newer examples use **Phasecraft 909 Prepared.als**, with cutoff, level, pan
+and stock decay/tail mapped. The original stock-kit examples above remain unchanged.
+No new mappings are required if you already used `movement` successfully.
+
+| File in `quickstart/` | Listen for |
+| --- | --- |
+| `breathing.toml` | Sixteen-bar smooth open/hold/close/hold motion with independent pan |
+| `garage-touch.toml` | Compare against garage: unchanged admissions, procedural meter/gap/touch |
+| `accent-memory.toml` | Shared seven-step emphasis accumulating into hat/rim cutoff through rests |
+| `sections.toml` | A → A2 → A2 → B; inheritance, transitions and section display |
+| `techno-journey.toml` | 132 BPM, 32 bars: opening, evolving main groove, kickless break, A2 and closing |
+| `dnb-journey.toml` | 172 BPM, same structural tour with the proven DnB core |
+| `garage-journey.toml` | 132 BPM, swung ghosts, actual-kick avoidance and shared control motion |
+
+The three journeys stop automatically; set arrangement `repeat = true` to loop.
+The main A section retains its original genre's trigger decisions. New control
+behavior and groove interpretation do not scramble the note-admission random keys.
+Create a fresh project to get the compact versions plus shared libraries. Standalone
+journey files include their own definitions so copying one file is sufficient.
+
+See [the current coverage map](../docs/current-coverage.md) and
+[the arrangement contract](../docs/arrangement.md) for exact scope and clock behavior.

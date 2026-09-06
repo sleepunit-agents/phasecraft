@@ -77,3 +77,11 @@ accumulating cutoff responses that decay through rests. See ACCENTS.md.
 `sections` plays a procedural A → A2 → A2 → B cycle, with clean parameter
 transitions. See [ARRANGEMENT.md](ARRANGEMENT.md) for inheritance, section lengths,
 finite playback and explicit restart/continue phase behavior.
+
+## Combined performances
+
+`techno-journey` (132 BPM), `dnb-journey` (172 BPM), and `garage-journey` (132 BPM)
+combine groove, shared accent memory, cutoff/level/pan/decay motion and procedural
+sections. Each plays 32 bars and stops. They use **Phasecraft 909 Prepared.als**.
+Change arrangement `repeat` to true for a performance loop. Shared motion lives in
+`patterns/performances.toml`; the composition files describe their differences.

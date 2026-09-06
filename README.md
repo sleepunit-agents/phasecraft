@@ -350,3 +350,7 @@ Prepared 909 projects also include `movement`: an eight-bar cutoff/level build
 with opposing hat pans and changing tails. Stop restores explicit kit defaults;
 note-off restores the moving baseline. See [prepared kit](docs/prepared-kit.md)
 and [parameter reset/migration details](docs/parameters.md#prepared-kit-and-existing-projects).
+
+The percussion feature tour now includes procedural sections and prepared-909
+techno, DnB and garage journeys. See [current coverage](docs/current-coverage.md),
+[the listening guide](examples/README.md), and [arrangement authoring](docs/arrangement.md).

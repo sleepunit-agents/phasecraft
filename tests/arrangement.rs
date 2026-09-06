@@ -154,6 +154,9 @@ fn finite_transport_stops_on_its_own_with_exact_clock_count() {
     let c = sequence("[{phrase='A'},{phrase='A2'}]", false);
     let sink = Sink(Arc::new(Mutex::new(vec![])));
     let messages = sink.0.clone();
+    let started = std::time::Instant::now();
+    let clock = phasecraft::playback::MusicalClock { tempo: c.tempo };
+    let end_tick = c.end_step().unwrap() * STEP_TICKS;
     run_controlled(
         c,
         sink,
@@ -162,18 +165,38 @@ fn finite_transport_stops_on_its_own_with_exact_clock_count() {
             steps: None,
             watch: false,
             trace: false,
-            send_clock: true,
+            send_clock: false,
             lookahead: std::time::Duration::from_millis(50),
         },
         Arc::new(AtomicBool::new(true)),
         None,
     )
     .unwrap();
-    let messages = messages.lock().unwrap();
-    assert_eq!(messages.first().unwrap(), &[0xfa]);
-    assert_eq!(messages.last().unwrap(), &[0xfc]);
+    assert!(started.elapsed() >= clock.time_at_tick(end_tick));
+    assert!(messages.lock().unwrap().iter().any(|b| b[0] & 0xf0 == 0x90));
+    assert_eq!(messages.lock().unwrap().last().unwrap()[0] & 0xf0, 0x80);
+    // Exact clock semantics use explicit deadlines, independent of CI host jitter.
+    let origin = std::time::Instant::now();
+    let mut sync = phasecraft::playback::sync::ClockOutput::new(
+        origin,
+        clock,
+        phasecraft::playback::sync::SyncOptions {
+            enabled: true,
+            end_tick: Some(end_tick),
+        },
+    );
+    let mut pulses = Sink(Arc::new(Mutex::new(vec![])));
+    for pulse in 0..192 {
+        let deadline = origin + clock.time_at_tick(pulse * phasecraft::playback::sync::CLOCK_TICKS);
+        sync.send(&mut pulses, deadline).unwrap();
+    }
+    assert!(sync.deadline().is_none());
+    sync.stop(&mut pulses).unwrap();
+    let pulses = pulses.0.lock().unwrap();
+    assert_eq!(pulses.first().unwrap(), &[0xfa]);
+    assert_eq!(pulses.last().unwrap(), &[0xfc]);
     assert_eq!(
-        messages.iter().filter(|b| b.as_slice() == [0xf8]).count(),
+        pulses.iter().filter(|b| b.as_slice() == [0xf8]).count(),
         192
     );
 }
@@ -191,4 +214,72 @@ fn realized_windows_handle_absent_parts_and_a_finite_end() {
             .events
             .is_empty()
     );
+}
+
+#[test]
+fn watched_arrangements_reject_layout_edits_and_accept_musical_edits() {
+    use std::{
+        fs,
+        io::{BufRead, BufReader},
+        process::{Command, Stdio},
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("sequence.toml");
+    let source = format!("{BASE}\n[arrangement]\nsections=[{{phrase='A',bars=4}}]");
+    fs::write(&file, &source).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_phasecraft"))
+        .arg("play")
+        .arg(&file)
+        .args(["--dry-run", "--watch", "--trace", "--lookahead-ms", "50"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut rows = vec![];
+    for line in BufReader::new(child.stdout.take().unwrap()).lines() {
+        let row: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+        match row["step"].as_u64().unwrap() {
+            0 => fs::write(&file, source.replace("bars=4", "bars=2")).unwrap(),
+            16 => fs::write(
+                &file,
+                source.replace("trigger.probability=1.0", "trigger.probability=0.0"),
+            )
+            .unwrap(),
+            _ => (),
+        }
+        rows.push(row);
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(rows.len(), 64);
+    assert!(rows.iter().all(|r| r["section"]["bars"] == 4));
+    assert!(rows[32..].iter().all(|r| r["event"].is_null()));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("restart playback to change arrangement layout")
+    );
+}
+
+#[test]
+fn human_inspection_uses_the_incoming_part_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("sequence.toml");
+    let source = format!(
+        "{BASE}\n[phrases.B]\n[[phrases.B.parts]]\nid='kick'\nuse='techno.kick'\n[arrangement]\nsections=[{{phrase='A',bars=1}},{{phrase='B',bars=1}}]"
+    );
+    std::fs::write(&file, source).unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_phasecraft"))
+        .arg("inspect")
+        .arg(file)
+        .args(["--human", "--start", "16", "--steps", "1"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("B section 2/2"));
+    assert!(text.contains("note=36 channel=10"));
 }

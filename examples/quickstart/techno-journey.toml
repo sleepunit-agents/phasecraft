@@ -1,0 +1,232 @@
+# Thirty-two-bar procedural percussion journey. Uses Phasecraft 909 Prepared.als.
+# The validated 909 techno beat. Each table name is a stable musical identity.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[accents.drums]
+rhythm = { steps = 7, pulses = 3 }
+probability = 0.85
+amount = 0.8
+
+[parts.kick]
+use = "my.techno_kick"
+
+[parts.clap]
+use = "techno.clap"
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "kit.prepared.closed_hat", "my.percussion_motion", "my.percussion_memory"]
+groove.delay_ticks = 8
+groove.humanize = { timing_ticks = 5, velocity = 0.05 }
+groove.offbeat_gain = 1.1
+
+[parts.open_hat]
+use = "techno.open_hat"
+
+[parts.rim]
+compose = ["techno.rim", "kit.prepared.rim", "my.percussion_motion", "my.percussion_memory"]
+groove.delay_ticks = 8
+groove.humanize = { timing_ticks = 5, velocity = 0.05 }
+groove.offbeat_gain = 1.1
+
+[phrases.Intro]
+parts.closed_hat.parameters.cutoff = { value = 0.12, ramp = { to = 0.65, over_bars = 8 } }
+parts.closed_hat.parameters.level = { value = 0.3, ramp = { to = 0.85, over_bars = 8 } }
+parts.rim.trigger.probability = 0.25
+
+[phrases.A]
+
+[phrases.B]
+parts.kick.trigger.probability = 0.0
+parts.closed_hat.trigger.probability = 0.6
+parts.rim.parameters.decay = { value = 0.8 }
+parts.rim.parameters.cutoff = { value = 0.65, ramp = { to = 0.2, over_bars = 4 } }
+
+[phrases.A2]
+use = "A"
+parts.rim.trigger.probability = 0.8
+parts.closed_hat.accent.amount = 0.9
+
+[phrases.Outro]
+use = "A"
+parts.closed_hat.parameters.cutoff = { value = 0.65, ramp = { to = 0.05, over_bars = 4 } }
+parts.closed_hat.parameters.level = { value = 0.85, ramp = { to = 0.1, over_bars = 4 } }
+parts.rim.parameters.level = { value = 0.85, ramp = { to = 0.1, over_bars = 4 } }
+
+[arrangement]
+# Set repeat=true to turn this into a live performance cycle.
+repeat = false
+sections = [
+  { phrase = "Intro", bars = 8 },
+  { phrase = "A", bars = 8, phase = "continue" },
+  { phrase = "B", bars = 4 },
+  { phrase = "A2", bars = 8, phase = "continue" },
+  { phrase = "Outro", bars = 4 },
+]
+
+# Reusable musical ideas. Keep related patterns together in one file.
+# These inherit the proven beats; tune a shared behavior here, or a Part locally.
+[library.behaviors."my.techno_kick"]
+compose = ["techno.kick", "my.kit.kick"]
+
+[library.behaviors."my.dnb_kick"]
+compose = ["dnb.kick", "my.kit.kick"]
+
+# Example of a pattern without a MIDI destination: combine it with a kit component.
+[library.behaviors."my.backbeat".trigger]
+rhythm = { steps = 16, pulses = 2, rotation = 4 }
+
+# Shared timing feel: every garage Part using this component follows this setting.
+[library.behaviors."my.garage_swing"]
+use = "groove.ukg"
+groove.swing = 0.58
+
+# Ableton 909 Core Kit pad mapping. Add other kit components as needed.
+# Connections/ports belong in config/midi.toml; musical pad mappings live here.
+[library.behaviors."my.kit.kick".output]
+channel = 10
+note = 36
+
+# compact-v1: notes on channel 10; controls on 15/16. Defaults restore on Stop.
+[library.behaviors."kit.prepared.kick".output]
+note = 36
+channel = 10
+controls.cutoff = { cc = 20, channel = 15, default = 1.0 }
+controls.level = { cc = 22, channel = 15, default = 1.0 }
+controls.pan = { cc = 25, channel = 15, default = 0.5 }
+controls.decay = { cc = 21, channel = 15, default = 0.5590551181102362 }
+
+[library.behaviors."kit.prepared.rim".output]
+note = 37
+channel = 10
+controls.cutoff = { cc = 28, channel = 15, default = 1.0 }
+controls.level = { cc = 30, channel = 15, default = 1.0 }
+controls.pan = { cc = 34, channel = 15, default = 0.5 }
+controls.decay = { cc = 29, channel = 15, default = 1.0 }
+
+[library.behaviors."kit.prepared.snare".output]
+note = 38
+channel = 10
+controls.cutoff = { cc = 37, channel = 15, default = 1.0 }
+controls.level = { cc = 39, channel = 15, default = 1.0 }
+controls.pan = { cc = 42, channel = 15, default = 0.5 }
+controls.decay = { cc = 38, channel = 15, default = 1.0 }
+
+[library.behaviors."kit.prepared.clap".output]
+note = 39
+channel = 10
+controls.cutoff = { cc = 45, channel = 15, default = 1.0 }
+controls.level = { cc = 47, channel = 15, default = 1.0 }
+controls.pan = { cc = 50, channel = 15, default = 0.5 }
+controls.decay = { cc = 46, channel = 15, default = 1.0 }
+
+[library.behaviors."kit.prepared.kick_alt".output]
+note = 40
+channel = 10
+controls.cutoff = { cc = 53, channel = 15, default = 1.0 }
+controls.level = { cc = 55, channel = 15, default = 1.0 }
+controls.pan = { cc = 58, channel = 15, default = 0.5 }
+controls.decay = { cc = 54, channel = 15, default = 0.3543307086614173 }
+
+[library.behaviors."kit.prepared.snare_alt".output]
+note = 41
+channel = 10
+controls.cutoff = { cc = 61, channel = 15, default = 1.0 }
+controls.level = { cc = 63, channel = 15, default = 1.0 }
+controls.pan = { cc = 72, channel = 15, default = 0.5 }
+controls.decay = { cc = 62, channel = 15, default = 0.13385826771653545 }
+
+[library.behaviors."kit.prepared.closed_hat".output]
+note = 42
+channel = 10
+controls.cutoff = { cc = 75, channel = 15, default = 1.0 }
+controls.level = { cc = 77, channel = 15, default = 1.0 }
+controls.pan = { cc = 80, channel = 15, default = 0.5 }
+controls.decay = { cc = 76, channel = 15, default = 0.7007874015748031 }
+
+[library.behaviors."kit.prepared.snare_alt_2".output]
+note = 43
+channel = 10
+controls.cutoff = { cc = 83, channel = 15, default = 1.0 }
+controls.level = { cc = 85, channel = 15, default = 1.0 }
+controls.pan = { cc = 88, channel = 15, default = 0.5 }
+controls.decay = { cc = 84, channel = 15, default = 0.20885665748031496 }
+
+[library.behaviors."kit.prepared.low_tom".output]
+note = 44
+channel = 10
+controls.cutoff = { cc = 20, channel = 16, default = 1.0 }
+controls.level = { cc = 22, channel = 16, default = 1.0 }
+controls.pan = { cc = 25, channel = 16, default = 0.5 }
+controls.decay = { cc = 21, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.mid_tom".output]
+note = 45
+channel = 10
+controls.cutoff = { cc = 28, channel = 16, default = 1.0 }
+controls.level = { cc = 30, channel = 16, default = 1.0 }
+controls.pan = { cc = 34, channel = 16, default = 0.5 }
+controls.decay = { cc = 29, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.open_hat".output]
+note = 46
+channel = 10
+controls.cutoff = { cc = 37, channel = 16, default = 1.0 }
+controls.level = { cc = 39, channel = 16, default = 1.0 }
+controls.pan = { cc = 42, channel = 16, default = 0.5 }
+controls.decay = { cc = 38, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.high_tom".output]
+note = 47
+channel = 10
+controls.cutoff = { cc = 45, channel = 16, default = 1.0 }
+controls.level = { cc = 47, channel = 16, default = 1.0 }
+controls.pan = { cc = 50, channel = 16, default = 0.5 }
+controls.decay = { cc = 46, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.crash".output]
+note = 48
+channel = 10
+controls.cutoff = { cc = 53, channel = 16, default = 1.0 }
+controls.level = { cc = 55, channel = 16, default = 1.0 }
+controls.pan = { cc = 58, channel = 16, default = 0.5 }
+controls.decay = { cc = 54, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.crash_alt".output]
+note = 49
+channel = 10
+controls.cutoff = { cc = 61, channel = 16, default = 1.0 }
+controls.level = { cc = 63, channel = 16, default = 1.0 }
+controls.pan = { cc = 72, channel = 16, default = 0.5 }
+controls.decay = { cc = 62, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.ride_alt".output]
+note = 50
+channel = 10
+controls.cutoff = { cc = 75, channel = 16, default = 1.0 }
+controls.level = { cc = 77, channel = 16, default = 1.0 }
+controls.pan = { cc = 80, channel = 16, default = 0.5 }
+controls.decay = { cc = 76, channel = 16, default = 1.0 }
+
+[library.behaviors."kit.prepared.ride".output]
+note = 51
+channel = 10
+controls.cutoff = { cc = 83, channel = 16, default = 1.0 }
+controls.level = { cc = 85, channel = 16, default = 1.0 }
+controls.pan = { cc = 88, channel = 16, default = 0.5 }
+controls.decay = { cc = 84, channel = 16, default = 1.0 }
+
+# Reusable motion and emphasis. Output bindings still belong to kits/.
+[library.behaviors."my.percussion_motion".parameters]
+cutoff = { value = 0.35, automation = { repeat = true, segments = [ { to = 0.8, over_bars = 4, curve = "smooth" }, { to = 0.35, over_bars = 4, curve = "smooth" } ] } }
+pan = { value = 0.35, automation = { repeat = true, segments = [ { to = 0.65, over_bars = 4, curve = "smooth" }, { to = 0.35, over_bars = 4, curve = "smooth" } ] } }
+level = { value = 0.85 }
+decay = { value = 0.5 }
+
+[library.behaviors."my.percussion_memory".accent]
+sources = ["drums"]
+
+[library.behaviors."my.percussion_memory".profile.controls.cutoff]
+boost = 0.2
+envelope = { decay_beats = 2, accumulation = 0.5 }

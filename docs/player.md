@@ -149,3 +149,9 @@ Use your existing loopMIDI port: select it in Phasecraft and enable the same inp
 in Ableton. The experimental Microsoft MIDI Tools setup has been removed; no SDK
 or MIDI service setup is required by Phasecraft. Previously created ports are left
 alone and can still be selected if available. macOS/Linux retain virtual MIDI output.
+
+A selected composition can now contain its own procedural arrangement. The
+composition list is still a project browser; it does not sequence files. Within an
+arrangement, the Player shows phrase, section, local bar and cycle at the audible
+playhead. A finite arrangement stops automatically, and Play starts it again from
+its first section. See [arrangement authoring](arrangement.md).

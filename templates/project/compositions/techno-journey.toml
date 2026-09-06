@@ -1,0 +1,66 @@
+# Thirty-two-bar procedural percussion journey. Uses Phasecraft 909 Prepared.als.
+# The validated 909 techno beat. Each table name is a stable musical identity.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[accents.drums]
+rhythm = { steps = 7, pulses = 3 }
+probability = 0.85
+amount = 0.8
+
+[parts.kick]
+use = "my.techno_kick"
+
+[parts.clap]
+use = "techno.clap"
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "kit.prepared.closed_hat", "my.percussion_motion", "my.percussion_memory"]
+groove.delay_ticks = 8
+groove.humanize = { timing_ticks = 5, velocity = 0.05 }
+groove.offbeat_gain = 1.1
+
+[parts.open_hat]
+use = "techno.open_hat"
+
+[parts.rim]
+compose = ["techno.rim", "kit.prepared.rim", "my.percussion_motion", "my.percussion_memory"]
+groove.delay_ticks = 8
+groove.humanize = { timing_ticks = 5, velocity = 0.05 }
+groove.offbeat_gain = 1.1
+
+[phrases.Intro]
+parts.closed_hat.parameters.cutoff = { value = 0.12, ramp = { to = 0.65, over_bars = 8 } }
+parts.closed_hat.parameters.level = { value = 0.3, ramp = { to = 0.85, over_bars = 8 } }
+parts.rim.trigger.probability = 0.25
+
+[phrases.A]
+
+[phrases.B]
+parts.kick.trigger.probability = 0.0
+parts.closed_hat.trigger.probability = 0.6
+parts.rim.parameters.decay = { value = 0.8 }
+parts.rim.parameters.cutoff = { value = 0.65, ramp = { to = 0.2, over_bars = 4 } }
+
+[phrases.A2]
+use = "A"
+parts.rim.trigger.probability = 0.8
+parts.closed_hat.accent.amount = 0.9
+
+[phrases.Outro]
+use = "A"
+parts.closed_hat.parameters.cutoff = { value = 0.65, ramp = { to = 0.05, over_bars = 4 } }
+parts.closed_hat.parameters.level = { value = 0.85, ramp = { to = 0.1, over_bars = 4 } }
+parts.rim.parameters.level = { value = 0.85, ramp = { to = 0.1, over_bars = 4 } }
+
+[arrangement]
+# Set repeat=true to turn this into a live performance cycle.
+repeat = false
+sections = [
+  { phrase = "Intro", bars = 8 },
+  { phrase = "A", bars = 8, phase = "continue" },
+  { phrase = "B", bars = 4 },
+  { phrase = "A2", bars = 8, phase = "continue" },
+  { phrase = "Outro", bars = 4 },
+]

@@ -37,7 +37,7 @@ metadata and example coverage need an updated audit, not an LCM-sized event buff
   overrides, explicit section lengths/repeats and loop policy, quantized transitions,
   phase/probability/automation identity contracts, control cleanup at changes, and
   player section visibility. Reuse procedural Parts, never freeze a giant MIDI score.
-- [ ] **5. Coverage and hardening:** current spec-to-code coverage, cycle metadata
+- [x] **5. Coverage and hardening:** current spec-to-code coverage, cycle metadata
   where useful, integrated prepared-909 techno/DnB/garage examples, migration docs,
   input validation and meaningful transport regressions. Keep confirmed examples
   unchanged and do not invent vague density/variation knobs.

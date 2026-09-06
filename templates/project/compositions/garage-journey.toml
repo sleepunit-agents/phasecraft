@@ -1,0 +1,90 @@
+# Thirty-two-bar procedural percussion journey. Uses Phasecraft 909 Prepared.als.
+# Same admissions as garage; extra meter/gap/touch interpretation.
+# Swung 2-step-inspired 909 system: anchored backbeat, soft snare chatter,
+# a moving hat accent cycle and percussion that avoids admitted kick hits.
+tempo = 132
+seed = 1329092
+phrase_bars = 4
+
+[accents.drums]
+rhythm = { steps = 7, pulses = 3 }
+probability = 0.85
+amount = 0.8
+
+[parts.kick]
+compose = ["my.techno_kick", "my.garage_swing"]
+trigger.rhythm = { steps = 16, pulses = 3 }
+
+[parts.snare]
+compose = ["std.no_accent", "kit.909.snare", "my.garage_swing", "groove.laid_back"]
+trigger.rhythm = { op = "or", a = { steps = 16, pulses = 2, rotation = 4 }, b = { steps = 16, pulses = 5, rotation = 1 } }
+accent.rhythm = { steps = 16, pulses = 2, rotation = 4 }
+accent.amount = 1.0
+profile = { base = 90, boost = 20 }
+# All non-backbeat hits become ghosts; backbeat accents stay full-strength.
+groove.ghost_probability = 1.0
+groove.ghost_gain = 0.4
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "my.garage_swing", "groove.ramp_up", "groove.ghosts", "kit.prepared.closed_hat", "my.percussion_motion", "my.percussion_memory"]
+trigger.rhythm = { steps = 16, pulses = 13 }
+trigger.probability = 0.95
+accent.rhythm = { steps = 7, pulses = 3 }
+groove.ghost_probability = 0.2
+groove.delay_ticks = 12
+groove.offbeat_gain = 1.15
+groove.humanize = { timing_ticks = 8, velocity = 0.08 }
+
+[parts.open_hat]
+compose = ["techno.open_hat", "my.garage_swing"]
+trigger.rhythm = { steps = 16, pulses = 2, rotation = 2 }
+profile.base = 67
+groove.offbeat_gain = 1.1
+
+[parts.clap]
+compose = ["techno.clap", "groove.laid_back"]
+trigger.rhythm = { steps = 16, pulses = 1, rotation = 12 }
+profile.base = 75
+
+[parts.rim]
+compose = ["techno.rim", "my.garage_swing", "groove.low_high_low", "kit.prepared.rim", "my.percussion_motion", "my.percussion_memory"]
+trigger.rhythm = { op = "a_not_b", a = { steps = 12, pulses = 5, rotation = 1 }, b = { part = "kick", mode = "hits" } }
+trigger.probability = 0.7
+profile.base = 55
+groove.after_gap = { steps = 4, gain = 1.25 }
+groove.humanize = { timing_ticks = 6, velocity = 0.1 }
+
+[phrases.Intro]
+parts.closed_hat.parameters.cutoff = { value = 0.12, ramp = { to = 0.65, over_bars = 8 } }
+parts.closed_hat.parameters.level = { value = 0.3, ramp = { to = 0.85, over_bars = 8 } }
+parts.rim.trigger.probability = 0.25
+
+[phrases.A]
+
+[phrases.B]
+parts.kick.trigger.probability = 0.0
+parts.closed_hat.trigger.probability = 0.6
+parts.rim.parameters.decay = { value = 0.8 }
+parts.rim.parameters.cutoff = { value = 0.65, ramp = { to = 0.2, over_bars = 4 } }
+
+[phrases.A2]
+use = "A"
+parts.rim.trigger.probability = 0.8
+parts.closed_hat.accent.amount = 0.9
+
+[phrases.Outro]
+use = "A"
+parts.closed_hat.parameters.cutoff = { value = 0.65, ramp = { to = 0.05, over_bars = 4 } }
+parts.closed_hat.parameters.level = { value = 0.85, ramp = { to = 0.1, over_bars = 4 } }
+parts.rim.parameters.level = { value = 0.85, ramp = { to = 0.1, over_bars = 4 } }
+
+[arrangement]
+# Set repeat=true to turn this into a live performance cycle.
+repeat = false
+sections = [
+  { phrase = "Intro", bars = 8 },
+  { phrase = "A", bars = 8, phase = "continue" },
+  { phrase = "B", bars = 4 },
+  { phrase = "A2", bars = 8, phase = "continue" },
+  { phrase = "Outro", bars = 4 },
+]

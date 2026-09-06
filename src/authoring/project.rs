@@ -256,6 +256,22 @@ const FILES: &[(&str, &str)] = &[
         include_str!("../../templates/project/compositions/sections.toml"),
     ),
     ("ARRANGEMENT.md", include_str!("../../docs/arrangement.md")),
+    (
+        "patterns/performances.toml",
+        include_str!("../../templates/project/patterns/performances.toml"),
+    ),
+    (
+        "compositions/techno-journey.toml",
+        include_str!("../../templates/project/compositions/techno-journey.toml"),
+    ),
+    (
+        "compositions/dnb-journey.toml",
+        include_str!("../../templates/project/compositions/dnb-journey.toml"),
+    ),
+    (
+        "compositions/garage-journey.toml",
+        include_str!("../../templates/project/compositions/garage-journey.toml"),
+    ),
     ("ACCENTS.md", include_str!("../../docs/accents.md")),
     (
         "README.md",
