@@ -1,19 +1,19 @@
 # E16 navigation probe
 
-This is a hardware experiment, not a controller integration. It uses the documented Lua API and has not yet been run on an E16. Jonathan's unit is HW v5, upgrading from firmware 1.0.1; the official latest release checked on 2026-09-06 is 1.1.0. Update completion is not yet confirmed.
+This is a hardware experiment, not a controller integration. Jonathan has loaded it on his HW v5 E16 and confirmed the **Nav probe** title, labels and turn counter. Whether O alone triggers the page-change callback, and whether the push assignment works, remain to be isolated. His previous firmware was 1.0.1; he was updating, but the resulting version has not yet been confirmed.
 
-In the OXI App, create a spare test scene and a script containing [e16-navigation-probe.lua](e16-navigation-probe.lua). Select that script for the scene. Assign its **Probe Turn** and **Probe Push** parameters to encoder 1's turn and push actions, on native pages 1 and 2. Upload the scene using the app. Keep the standard Alt-menu page destinations for this test.
+In the OXI App, create a spare test scene and import [nav.e16script](nav.e16script). The file contains Lua, but Jonathan's import test established that the extension must be `.e16script` and the filename must be at most 16 characters. This filename is 13 characters including the extension. Select that script for the scene. Assign its **Probe Turn** and **Probe Push** parameters to encoder 1's turn and push actions, on native pages 1 and 2. Upload the scene using the app. Keep the standard Alt-menu page destinations for this test.
 
 The script sends no MIDI and writes no persistent variables. Its top four screen labels show:
 
 - `P`: current native page.
 - `E`: number of page-change callbacks since the script loaded.
-- `T`: number of turn callbacks.
-- `B`: number of press callbacks.
+- `T`: number of turn callbacks, regardless of direction; not a parameter value or distance turned.
+- `B`: number of encoder-press callbacks (not presses of O). If it stays zero, check that **Probe Push** is assigned to the encoder's push action as well as **Probe Turn** to its turn action.
 
 1. Open page 1. Confirm the title reads **Nav probe** and the labels show counters.
 2. Turn and quickly press encoder 1. Confirm T and B increment respectively. Avoid long presses, which can invoke firmware functions.
-3. Note E. Tap O to open the native page/Alt menu. Note whether the menu keeps its normal appearance. Tap O again to return. Report whether E changed and whether the probe labels survived.
+3. Note P and E. Tap O to open the native page/Alt menu, then tap O again to return, without touching any encoders. Report P and E before and after, whether the menu keeps its normal appearance, and whether the probe labels survived. Repeat once to check consistency.
 4. Tap O, select native page 2, and confirm P becomes 2 and E increments. Return to page 1 through the menu and check again.
 
 If the title never appears or counters reset unexpectedly, report that before interpreting the results. No change in E on an O round trip would establish only that this firmware does not expose that action through the page-change callback; it would not prove there are no undocumented APIs.
