@@ -11,6 +11,29 @@
 * {
   box-sizing: border-box;
 }
+/* Match the document, composition list and dialogs across desktop webviews. */
+@media (forced-colors: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #526d67 #101516;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: #101516;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #526d67;
+    border: 2px solid #101516;
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #93d5c6;
+  }
+}
 body {
   margin: 0;
 }
