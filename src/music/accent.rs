@@ -8,6 +8,7 @@ pub const MAX_CONTROLS: usize = 8;
 #[serde(deny_unknown_fields)]
 pub struct ControlResponse {
     /// Normalized resting value and signed emphasis contribution.
+    #[serde(default)]
     pub base: f64,
     pub boost: f64,
 }
@@ -39,13 +40,13 @@ pub fn validate(
     responses: &BTreeMap<String, ControlResponse>,
     outputs: &BTreeMap<String, ControlOutput>,
 ) -> Result<(), String> {
-    if responses.len() > MAX_CONTROLS {
+    if outputs.len() > MAX_CONTROLS {
         return Err(format!(
             "accent profiles support at most {MAX_CONTROLS} controls"
         ));
     }
-    if !responses.keys().eq(outputs.keys()) {
-        return Err("profile.controls and output.controls must contain the same names".into());
+    if responses.keys().any(|name| !outputs.contains_key(name)) {
+        return Err("profile.controls names require matching output.controls mappings".into());
     }
     for (name, response) in responses {
         if name.trim().is_empty()
@@ -58,7 +59,11 @@ pub fn validate(
                 "control {name:?} requires a name, finite base 0..1 and boost -1..1"
             ));
         }
-        let output = &outputs[name];
+    }
+    for (name, output) in outputs {
+        if name.trim().is_empty() {
+            return Err("output control names cannot be empty".into());
+        }
         // Exclude bank selection, pedals, increment/decrement, parameter selection
         // and channel-mode commands; these are continuous momentary controls.
         if !(1..=31).contains(&output.cc)

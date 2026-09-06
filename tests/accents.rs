@@ -241,6 +241,27 @@ fn maximum_control_load_is_bounded_and_every_attack_has_a_matching_reset() {
     }
     d.cleanup().unwrap();
     assert_eq!(d.sink.messages.len(), events.len());
+    let mut continuous = c.clone();
+    for part in &mut continuous.parts {
+        part.groove.swing = 0.75;
+        part.groove.delay_ticks = 60;
+        for name in part.output.controls.keys() {
+            part.parameters.insert(
+                name.clone(),
+                phasecraft::music::parameter::ParameterLane {
+                    value: 0.4,
+                    ramp: None,
+                },
+            );
+        }
+    }
+    continuous.validate().unwrap();
+    let full = resolve_step(&continuous, 1).1;
+    assert_eq!(
+        full.len(),
+        MAX_PARTS * (2 + MAX_CONTROLS * phasecraft::music::parameter::MAX_SAMPLES_PER_STEP)
+    );
+    assert!(full.iter().all(|e| e.tick >= 240 && e.tick < 480));
     let p = &mut c.parts[0];
     p.profile.controls.insert(
         "excess".into(),

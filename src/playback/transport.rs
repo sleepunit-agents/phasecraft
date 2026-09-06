@@ -54,7 +54,9 @@ pub fn run_controlled<S: MidiOutput + 'static>(
         / clock.time_at_tick(STEP_TICKS).as_secs_f64())
     .ceil() as usize;
     let (tx, rx) = mpsc::sync_channel(
-        (2 + 2 * crate::music::accent::MAX_CONTROLS) * MAX_PARTS * (ahead_steps + 2),
+        (2 + crate::music::parameter::MAX_SAMPLES_PER_STEP * crate::music::accent::MAX_CONTROLS)
+            * MAX_PARTS
+            * (ahead_steps + 2),
     );
     let dispatch_running = running.clone();
     // Late threshold is shorter than one sixteenth even at the maximum BPM.

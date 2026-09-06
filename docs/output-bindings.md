@@ -55,11 +55,11 @@ channels, supported parameter maps and lifetimes deliberately. See the official
 - CC number and optional channel are configurable per named response. They are not
   hardcoded to the Ableton layout. Current CC range validation is deliberately
   narrower than 0–127; a full hardware adapter may need target-aware validation.
-- NRPN, pitch bend, held control parameters and target-specific value curves are
+- NRPN, pitch bend and target-specific value curves are
   not implemented. Do not equate “can send drum notes to hardware” with a complete
   hardware control profile.
-- Current controls reset at note-off. A hardware adapter must not use that policy
-  blindly for tuning, mix levels or long envelopes. These are the same held/base
-  plus modulation requirements identified in the prepared-kit spec.
+- Accent-only responses reset at note-off. [Parameter lanes](parameters.md) now
+  provide held values and musical-time ramps, including on rests. A hardware
+  adapter must choose the right lifetime for tuning, levels and envelopes.
 - Different instruments give velocity, gate and emphasis different responses.
   Reusing musical intent preserves the system, not an identical sound.

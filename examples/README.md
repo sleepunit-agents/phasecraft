@@ -92,3 +92,9 @@ Compare `studies/groove-straight.toml` with `studies/groove-swung.toml`, then tr
 on 909 percussion. `studies/learn-filter.toml` and `learn-envelope.toml` isolate its
 CCs for MIDI learning. See [the accent guide](../docs/accents.md) for host mapping
 and reset semantics.
+
+### Parameter timelines
+
+`quickstart/intro.toml` opens hats and rim over eight bars while its four-bar phrase
+repeats. It targets the generated compact-v1 cutoff Set. See
+[parameter lanes](../docs/parameters.md) for base values, ramps and accent interaction.

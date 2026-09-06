@@ -165,3 +165,15 @@ group/global accents and pitched articulation remain open.
 Per Jonathan's preference, removed experimental Windows MIDI Tools setup UI/CLI
 and launcher code. Existing loopMIDI/output selection and tempo/transport sync stay;
 macOS/Linux virtual MIDI remains available. No existing system endpoints are deleted.
+
+## Held parameter timelines (2026-09-05)
+
+Per-Part named parameter lanes now supply constant held values or one scheduled
+linear ramp in absolute musical bars. They initialize at playback, advance through
+rests and phrase repeats, and hold the final value. Existing accent responses add
+to the current base; release restores the current sampled base. Dispatch deduplicates
+unchanged CC values and suppresses stale timeline samples. Unused kit bindings are
+now permitted. GUI/CLI traces expose base/emphasis/final values; new projects include
+an eight-bar shared opening targeting the compact 909 cutoff Set. Full automation
+segments, live-relative ramp commands, shared/global controls and arrangement remain
+future work. Prepared-volume/pan mappings remain a separate adapter task.

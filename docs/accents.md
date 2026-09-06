@@ -38,8 +38,8 @@ restores the configured base, not a value read from the host. A rest emits no
 controls. Late control attacks are skipped; resets are still delivered.
 
 Each `(channel, CC)` has one owner across the composition. Every named profile
-control must have exactly one output mapping, and mappings without responses are
-rejected. The supported CC ranges are 1–31, 33–63 and 70–95, excluding pedal,
+control must have an output mapping. Kits may declare additional unused mappings;
+these emit nothing until a response or parameter lane uses them. The supported CC ranges are 1–31, 33–63 and 70–95, excluding pedal,
 bank-selection, parameter-selection and channel-mode commands. A mapping's channel
 defaults to the Part's note channel. MIDI CC is channel-wide; a Part name does not
 make it specific to one Drum Rack pad. Configure that association in the host.
@@ -83,3 +83,6 @@ and parameter response determine the audible shape; Phasecraft performs no DSP.
 
 The proposed [prepared-kit control contract](https://github.com/sleepunit-agents/phasecraft/blob/main/docs/kit-control-spec.md) separates
 velocity, held mix level and temporary accent gain, and plans stable per-voice mappings.
+
+[Held parameters and ramps](https://github.com/sleepunit-agents/phasecraft/blob/main/docs/parameters.md)
+can now supply a moving base underneath these temporary accent responses.

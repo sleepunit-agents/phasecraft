@@ -1,5 +1,6 @@
 pub mod accent;
 pub mod groove;
+pub mod parameter;
 pub mod resolve;
 pub mod rhythm;
 use rhythm::Expression;
@@ -86,6 +87,8 @@ pub struct Part {
     pub profile: AccentProfile,
     #[serde(default, skip_serializing_if = "groove::Groove::is_default")]
     pub groove: groove::Groove,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub parameters: std::collections::BTreeMap<String, parameter::ParameterLane>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -265,6 +268,15 @@ impl Part {
             .map_err(|e| format!("accent.rhythm: {e}"))?;
         self.groove.validate()?;
         accent::validate(&self.profile.controls, &self.output.controls)?;
+        for (name, lane) in &self.parameters {
+            if !self.output.controls.contains_key(name) {
+                return Err(format!(
+                    "parameter {name:?} requires an output.controls mapping"
+                ));
+            }
+            lane.validate()
+                .map_err(|e| format!("parameter {name:?}: {e}"))?;
+        }
         let o = &self.output;
         if !(1..=16).contains(&o.channel) || o.note > 127 {
             return Err("MIDI channel must be 1..16 and note 0..127".into());

@@ -181,9 +181,9 @@ pub fn run() -> Result<(), String> {
                                 )
                             })
                             .unwrap_or_else(|| "rest".into());
-                        writeln!(out, "{} {} | trigger pattern={} roll={:.4} p={:.2} fired={} | accent pattern={} roll={:.4} p={:.2} admitted={} | {}",
+                        writeln!(out, "{} {} | trigger pattern={} roll={:.4} p={:.2} fired={} | accent pattern={} roll={:.4} p={:.2} admitted={} | {} | parameters={}",
                             trace.position,trace.part,trace.trigger.rhythm.active(),trace.trigger.roll,trace.trigger.probability,trace.trigger.admitted,
-                            trace.accent.rhythm.active(),trace.accent.roll,trace.accent.probability,trace.accent.admitted,result).map_err(|e|e.to_string())?;
+                            trace.accent.rhythm.active(),trace.accent.roll,trace.accent.probability,trace.accent.admitted,result,serde_json::to_string(&trace.parameters).unwrap()).map_err(|e|e.to_string())?;
                     } else {
                         serde_json::to_writer(&mut out, &trace).map_err(|e| e.to_string())?;
                         writeln!(out).map_err(|e| e.to_string())?;

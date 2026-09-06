@@ -341,3 +341,7 @@ The first design contracts are recorded in `docs/vertical-slice.md`.
 Reusable [multi-control accent profiles](docs/accents.md) can drive velocity plus
 named MIDI controls. New projects include a 909 `accent-punch` example and MIDI-learn
 helpers for its two Ableton mappings.
+
+[Parameter lanes](docs/parameters.md) hold values and ramp them in musical time,
+including through rests. New projects include an eight-bar `intro` for the compact
+prepared 909 cutoff Set.

@@ -423,6 +423,28 @@ function renderDetail() {
     }
     $("detail-body").append(block);
   }
+  if (trace.parameters?.length) {
+    const block = document.createElement("div");
+    block.className = "lane-detail";
+    const heading = document.createElement("h4");
+    heading.textContent = "Parameters";
+    block.append(heading);
+    const tick = trace.tick + (snapshot.playing ? snapshot.progress * 240 : 0);
+    for (const parameter of trace.parameters) {
+      const sample =
+        parameter.samples.filter((s) => s.tick <= tick).at(-1) ||
+        parameter.samples[0];
+      const detail = document.createElement("p");
+      detail.textContent = `${human(parameter.name)} · base ${sample.base.toFixed(3)} · emphasis ${sample.emphasis.toFixed(3)} → ${sample.amount.toFixed(3)} · channel ${parameter.channel} CC ${parameter.cc}: ${sample.value}`;
+      block.append(detail);
+    }
+    const policy = document.createElement("p");
+    policy.className = "muted";
+    policy.textContent =
+      "Runs through rests · held base survives note-off and Stop";
+    block.append(policy);
+    $("detail-body").append(block);
+  }
   const result = document.createElement("p");
   result.className = "resolved";
   result.textContent =

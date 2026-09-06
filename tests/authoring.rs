@@ -339,6 +339,10 @@ fn all_packaged_examples_have_ordered_complete_midi_pairs() {
             let mut active = std::collections::HashMap::new();
             let mut controls = std::collections::HashMap::new();
             for e in events {
+                if e.parameter {
+                    assert_eq!(e.bytes[0] & 0xf0, 0xb0);
+                    continue;
+                }
                 let key = (e.bytes[0] & 15, e.bytes[1]);
                 if e.bytes[0] & 0xf0 == 0xb0 {
                     if let Some(reset) = e.reset_value {

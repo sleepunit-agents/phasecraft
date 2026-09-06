@@ -51,3 +51,10 @@ the last good system playing. Change MIDI configuration while stopped.
 controls. Follow [ACCENTS.md](ACCENTS.md) to map filter and envelope in Ableton;
 `learn-filter` and `learn-envelope` are short helper compositions for MIDI learning.
 Without mappings, the notes still play normally.
+
+## Eight-bar opening
+
+`intro` uses the generated compact-v1 cutoff Set. Hats and rim open over eight bars
+while the four-bar phrase repeats. Edit `patterns/parameters.toml` to change the
+shared timeline and `kits/909-cutoff.toml` to change output bindings. See
+[PARAMETERS.md](PARAMETERS.md) for held values, accent interaction and edit semantics.

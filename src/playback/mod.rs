@@ -49,6 +49,7 @@ pub struct EventDispatcher<S: MidiOutput> {
     pub sink: S,
     active: BTreeSet<(u8, u8)>,
     controls: BTreeMap<(u8, u8), u8>,
+    last_controls: BTreeMap<(u8, u8), u8>,
     pub stats: DispatchStats,
 }
 impl<S: MidiOutput> EventDispatcher<S> {
@@ -57,6 +58,7 @@ impl<S: MidiOutput> EventDispatcher<S> {
             sink,
             active: BTreeSet::new(),
             controls: BTreeMap::new(),
+            last_controls: BTreeMap::new(),
             stats: DispatchStats::default(),
         }
     }
@@ -71,17 +73,27 @@ impl<S: MidiOutput> EventDispatcher<S> {
         let is_on = status & 0xf0 == 0x90 && velocity > 0;
         self.stats.max_lateness = self.stats.max_lateness.max(lateness);
         if status & 0xf0 == 0xb0 {
+            // Ignore obsolete timeline points, but release an outstanding emphasis.
+            if event.parameter
+                && lateness > late_limit
+                && (event.reset_value.is_some() || !self.controls.contains_key(&key))
+            {
+                return Ok(());
+            }
             if let Some(reset) = event.reset_value {
                 if lateness > late_limit {
                     return Ok(());
                 }
                 self.controls.insert(key, reset);
             }
-            self.sink.send(&event.bytes)?;
+            if !event.parameter || self.last_controls.get(&key) != Some(&velocity) {
+                self.sink.send(&event.bytes)?;
+                self.last_controls.insert(key, velocity);
+                self.stats.controls_sent += 1;
+            }
             if event.reset_value.is_none() {
                 self.controls.remove(&key);
             }
-            self.stats.controls_sent += 1;
             return Ok(());
         }
         if is_on && lateness > late_limit {
@@ -113,6 +125,8 @@ impl<S: MidiOutput> EventDispatcher<S> {
         for (&(channel, cc), &reset) in &self.controls {
             if let Err(e) = self.sink.send(&[0xb0 | channel, cc, reset]) {
                 error = Some(e);
+            } else {
+                self.last_controls.insert((channel, cc), reset);
             }
         }
         self.controls.clear();

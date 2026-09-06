@@ -147,3 +147,19 @@ are checked, and the existing musical golden traces remain in the suite.
   maximum observed lateness 1.283 ms on this Linux machine.
 - Physical Windows MIDI and Ableton parameter response remain user-side listening
   checks. Automated recording sinks verify the bytes; they do not prove sound.
+
+## Held parameters and ramps (2026-09-05)
+
+- 76 Rust tests pass, including an eight-bar ramp crossing four-bar phrases,
+  interpolation and holding endpoints, parameters on rests, deduplicated constant
+  values, current-base accent restoration, swung note boundaries, stale samples,
+  malformed timelines, maximum 32-Part/eight-parameter load, and watched value edits
+  during an entirely silent phrase. Original 35-bar provenance remains unchanged.
+- Eight browser tests pass, including the parameter inspector advancing on a rest
+  without flashing a note. Root and desktop clippy pass with warnings denied.
+- Native Linux Tauri/WebKit smoke passes repeated playback, watched error/recovery,
+  composition selection, the intro's live parameter inspector, and closing during playback.
+- Nine bars of the intro at 132 BPM through the silent realtime sink: 276 note
+  messages, 327 control messages, 864 clock pulses, zero dropped notes, maximum
+  measured dispatch lateness 2.713 ms on this machine. The intro's three output
+  bindings were checked against the generated compact Set's mapping report.

@@ -218,6 +218,19 @@ const FILES: &[(&str, &str)] = &[
         "kits/909.toml",
         include_str!("../../templates/project/kits/909.toml"),
     ),
+    (
+        "compositions/intro.toml",
+        include_str!("../../templates/project/compositions/intro.toml"),
+    ),
+    (
+        "patterns/parameters.toml",
+        include_str!("../../templates/project/patterns/parameters.toml"),
+    ),
+    (
+        "kits/909-cutoff.toml",
+        include_str!("../../templates/project/kits/909-cutoff.toml"),
+    ),
+    ("PARAMETERS.md", include_str!("../../docs/parameters.md")),
     ("ACCENTS.md", include_str!("../../docs/accents.md")),
     (
         "README.md",

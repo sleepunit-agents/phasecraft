@@ -1,0 +1,45 @@
+# Use the generated compact-v1 cutoff Set. The phrase is four bars; this opening
+# takes eight bars, then holds. Replay starts the opening again from bar one.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[parts.kick]
+use = "techno.kick"
+
+[parts.clap]
+use = "techno.clap"
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "my.cutoff_hat", "my.eight_bar_opening"]
+# This is added to the moving base only while an accented hit is active.
+profile.controls.cutoff = { boost = 0.1 }
+
+[parts.open_hat]
+compose = ["techno.open_hat", "my.cutoff_open_hat", "my.eight_bar_opening"]
+
+[parts.rim]
+compose = ["techno.rim", "my.cutoff_rim", "my.eight_bar_opening"]
+profile.controls.cutoff = { boost = 0.15 }
+
+# Applies to any Part whose target provides a cutoff control.
+[library.behaviors."my.eight_bar_opening".parameters.cutoff]
+value = 0.15
+ramp = { to = 0.9, over_bars = 8, start_bar = 1 }
+
+# Matches the generated compact-v1 Ableton cutoff Set. Replace these bindings
+# for another target; the composition's eight-bar opening stays the same.
+[library.behaviors."my.cutoff_hat".output]
+channel = 10
+note = 42
+controls.cutoff = { cc = 75, channel = 15 }
+
+[library.behaviors."my.cutoff_open_hat".output]
+channel = 10
+note = 46
+controls.cutoff = { cc = 37, channel = 16 }
+
+[library.behaviors."my.cutoff_rim".output]
+channel = 10
+note = 37
+controls.cutoff = { cc = 28, channel = 15 }

@@ -1,0 +1,23 @@
+# Use the generated compact-v1 cutoff Set. The phrase is four bars; this opening
+# takes eight bars, then holds. Replay starts the opening again from bar one.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[parts.kick]
+use = "my.techno_kick"
+
+[parts.clap]
+use = "techno.clap"
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "my.cutoff_hat", "my.eight_bar_opening"]
+# This is added to the moving base only while an accented hit is active.
+profile.controls.cutoff = { boost = 0.1 }
+
+[parts.open_hat]
+compose = ["techno.open_hat", "my.cutoff_open_hat", "my.eight_bar_opening"]
+
+[parts.rim]
+compose = ["techno.rim", "my.cutoff_rim", "my.eight_bar_opening"]
+profile.controls.cutoff = { boost = 0.15 }

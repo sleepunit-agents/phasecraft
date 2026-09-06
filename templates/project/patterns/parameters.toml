@@ -1,0 +1,4 @@
+# Applies to any Part whose target provides a cutoff control.
+[library.behaviors."my.eight_bar_opening".parameters.cutoff]
+value = 0.15
+ramp = { to = 0.9, over_bars = 8, start_bar = 1 }

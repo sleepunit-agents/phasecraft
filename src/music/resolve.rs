@@ -57,6 +57,8 @@ pub struct StepTrace {
     pub trigger: DecisionTrace,
     pub accent: DecisionTrace,
     pub event: Option<MusicalEvent>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub parameters: Vec<super::parameter::ParameterTrace>,
 }
 fn admission(
     c: &Composition,
@@ -120,6 +122,7 @@ fn resolve_part(
             .profile
             .controls
             .iter()
+            .filter(|(name, _)| !part.parameters.contains_key(*name))
             .map(|(name, response)| {
                 let output = &part.output.controls[name];
                 let amount = response.value(if accent.admitted {
@@ -151,6 +154,7 @@ fn resolve_part(
         tick: step * STEP_TICKS,
         position: format!("{}.{}.{}", step / 16 + 1, step / 4 % 4 + 1, step % 4 + 1),
         part: part.id.clone(),
+        parameters: Vec::new(),
         trigger,
         accent,
         event,
@@ -171,6 +175,8 @@ pub struct MidiEvent {
     pub bytes: [u8; 3],
     /// CC onset registers a resting value for stop/error cleanup.
     pub reset_value: Option<u8>,
+    /// Timeline sample: deduplicate values and skip obsolete samples on dispatch.
+    pub parameter: bool,
 }
 pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
     let output = &part.output;
@@ -188,11 +194,13 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
             tick: event.tick,
             bytes: [0x90 | (output.channel - 1), output.note, velocity],
             reset_value: None,
+            parameter: false,
         },
         MidiEvent {
             tick: event.tick + event.duration_ticks,
             bytes: [0x80 | (output.channel - 1), output.note, 0],
             reset_value: None,
+            parameter: false,
         },
     ];
     for control in &event.controls {
@@ -200,11 +208,13 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
             tick: event.tick,
             bytes: [0xb0 | (control.channel - 1), control.cc, control.value],
             reset_value: Some(control.reset),
+            parameter: false,
         });
         events.push(MidiEvent {
             tick: event.tick + event.duration_ticks,
             bytes: [0xb0 | (control.channel - 1), control.cc, control.reset],
             reset_value: None,
+            parameter: false,
         });
     }
     events
@@ -307,6 +317,9 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
             }
             midi.extend(to_midi(part, event));
         }
+        let (parameters, controls) = super::parameter::resolve(part, step, trace.event.as_ref());
+        trace.parameters = parameters;
+        midi.extend(controls);
     }
     midi.sort_by_key(|event| {
         let priority = match event.bytes[0] & 0xf0 {

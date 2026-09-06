@@ -61,37 +61,69 @@ async function boot(page) {
             return loaded
               ? {
                   ...fixture,
-                  traces: fixture.traces.map((t) =>
-                    window.testGroove && t.part === "closed_hat"
-                      ? {
-                          ...t,
-                          event: {
-                            tick: 2280,
-                            duration_ticks: 100,
-                            accent: { active: false, amount: 0 },
-                            controls: [
+                  traces: fixture.traces
+                    .map((t) =>
+                      window.testGroove && t.part === "closed_hat"
+                        ? {
+                            ...t,
+                            event: {
+                              tick: 2280,
+                              duration_ticks: 100,
+                              accent: { active: false, amount: 0 },
+                              controls: [
+                                {
+                                  name: "filter",
+                                  amount: 0.2,
+                                  channel: 16,
+                                  cc: 20,
+                                  value: 25,
+                                  reset: 25,
+                                },
+                              ],
+                              groove: {
+                                offset_ticks: 120,
+                                requested_gate_ticks: 120,
+                                ghost_roll: 0.2,
+                                ghost: true,
+                                run_before: 1,
+                                run_after: 1,
+                                velocity_factor: 0.4,
+                              },
+                            },
+                          }
+                        : t,
+                    )
+                    .map((t) =>
+                      window.testParameters && t.part === "closed_hat"
+                        ? {
+                            ...t,
+                            event: null,
+                            parameters: [
                               {
-                                name: "filter",
-                                amount: 0.2,
-                                channel: 16,
-                                cc: 20,
-                                value: 25,
-                                reset: 25,
+                                name: "cutoff",
+                                channel: 15,
+                                cc: 75,
+                                samples: [
+                                  {
+                                    tick: t.tick,
+                                    base: 0.2,
+                                    emphasis: 0,
+                                    amount: 0.2,
+                                    value: 25,
+                                  },
+                                  {
+                                    tick: t.tick + 120,
+                                    base: 0.7,
+                                    emphasis: 0,
+                                    amount: 0.7,
+                                    value: 89,
+                                  },
+                                ],
                               },
                             ],
-                            groove: {
-                              offset_ticks: 120,
-                              requested_gate_ticks: 120,
-                              ghost_roll: 0.2,
-                              ghost: true,
-                              run_before: 1,
-                              run_after: 1,
-                              velocity_factor: 0.4,
-                            },
-                          },
-                        }
-                      : t,
-                  ),
+                          }
+                        : t,
+                    ),
                   progress: window.testProgress ?? fixture.progress,
                   playing,
                   step: playing ? 9 : null,
@@ -263,4 +295,28 @@ test("groove inspection exposes timing and the hit flash waits for the onset", a
   await expect(hat).not.toHaveClass(/fired/);
   await page.evaluate(() => (window.testProgress = 0.55));
   await expect(hat).toHaveClass(/fired/);
+});
+
+test("parameter inspector advances through a rest without flashing a note", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.evaluate(() => {
+    window.testParameters = true;
+    window.testProgress = 0.25;
+  });
+  await page.locator("#open").click();
+  await page.locator("#play").click();
+  const hat = page.locator('[data-part="closed_hat"]');
+  await hat.click();
+  await expect(page.locator("#detail-body")).toContainText("base 0.200");
+  await expect(page.locator("#detail-body")).toContainText("Resolved rest");
+  await expect(hat).not.toHaveClass(/fired/);
+  await page.evaluate(() => {
+    window.testProgress = 0.75;
+  });
+  await expect(page.locator("#detail-body")).toContainText("base 0.700");
+  await expect(page.locator("#detail-body")).toContainText(
+    "channel 15 CC 75: 89",
+  );
 });

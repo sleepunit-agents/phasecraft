@@ -80,7 +80,15 @@ with tempfile.TemporaryDirectory(prefix="phasecraft-native-") as work:
             driver.find_element(By.CSS_SELECTOR, '[data-part="rim"]').click()
             wait.until(lambda d: "CC 20" in d.find_element(By.ID, "detail-body").text)
             wait.until(lambda d: "CC 21" in d.find_element(By.ID, "detail-body").text)
-            driver.close()  # Close during multi-control playback must release output.
+            driver.find_element(By.ID, "stop").click()
+            wait.until(lambda d: "STOPPED" in d.find_element(By.ID, "state").text)
+            driver.find_elements(By.CSS_SELECTOR, "#compositions button")[6].click()
+            driver.find_element(By.ID, "play").click()
+            driver.find_element(By.CSS_SELECTOR, '[data-part="closed_hat"]').click()
+            wait.until(lambda d: "held base survives" in d.find_element(By.ID, "detail-body").text)
+            wait.until(lambda d: "CC 75" in d.find_element(By.ID, "detail-body").text)
+            driver.close()  # Close during a ramp must stop output and remove emphasis.
+
 
             print("Native player: open, repeated playback, watched error/recovery, selection and close passed")
         except Exception:
