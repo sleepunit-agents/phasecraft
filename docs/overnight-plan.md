@@ -41,7 +41,7 @@ metadata and example coverage need an updated audit, not an LCM-sized event buff
   where useful, integrated prepared-909 techno/DnB/garage examples, migration docs,
   input validation and meaningful transport regressions. Keep confirmed examples
   unchanged and do not invent vague density/variation knobs.
-- [ ] **6. Delivery:** publish passing cross-platform milestones, verify updater
+- [x] **6. Delivery:** publish passing cross-platform milestones, verify updater
   artifacts, and write `docs/morning-handoff.md` with listening order, changes,
   any remaining physical checks, and exact release/fixture locations.
 
@@ -57,3 +57,11 @@ The existing stock Simpler adapter remains; a new device/gain stage can require 
 Live fixture and will be documented rather than guessed. Physical Windows/Live
 listening is handed off explicitly; automated event/scheduling/UI validation can
 continue here. No existing user projects are rewritten by updates.
+
+## Completion
+
+All six checkpoints completed. Feature release `1ea8fee` passed every platform and
+its published Windows installer signature/checksum were independently verified.
+See [the morning handoff](morning-handoff.md) for the example ZIP, listening order,
+validation evidence and deliberate future scope. Windows/Live listening remains
+an explicit user-dependent check, with no new mappings required.
