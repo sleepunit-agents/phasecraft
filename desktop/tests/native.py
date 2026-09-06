@@ -40,10 +40,19 @@ with tempfile.TemporaryDirectory(prefix="phasecraft-native-") as work:
                         raise
                     time.sleep(.2)
             wait = WebDriverWait(driver, 20)
-            wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, "#recent button"))
-            driver.find_element(By.CSS_SELECTOR, "#recent button").click()
+            wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, "#welcome-recent button"))
+            driver.find_element(By.CSS_SELECTOR, "#welcome-recent button").click()
             wait.until(lambda d: len(d.find_elements(By.CSS_SELECTOR, ".part-card")) == 5)
+            driver.find_element(By.ID, "settings-open").click()
             Select(driver.find_element(By.ID, "destination")).select_by_value("@silent")
+            driver.find_element(By.ID, "settings-save").click()
+            driver.find_element(By.ID, "projects-menu").click()
+            driver.find_element(By.ID, "close-project").click()
+            wait.until(lambda d: d.find_element(By.ID, "welcome").is_displayed())
+            driver.find_element(By.CSS_SELECTOR, "#welcome-recent button").click()
+            driver.find_element(By.ID, "settings-open").click()
+            assert Select(driver.find_element(By.ID, "destination")).first_selected_option.get_attribute("value") == "@silent"
+            driver.find_element(By.ID, "settings-dismiss").click()
             for _ in range(3):
                 driver.find_element(By.ID, "play").click()
                 wait.until(lambda d: "SILENT PREVIEW" in d.find_element(By.ID, "state").text)
@@ -69,7 +78,9 @@ with tempfile.TemporaryDirectory(prefix="phasecraft-native-") as work:
             wait.until(lambda d: "STOPPED" in d.find_element(By.ID, "state").text)
             driver.find_elements(By.CSS_SELECTOR, "#compositions button")[2].click()
             wait.until(lambda d: len(d.find_elements(By.CSS_SELECTOR, ".part-card")) == 6)
+            driver.find_element(By.ID, "settings-open").click()
             driver.find_element(By.ID, "send-clock").click()
+            driver.find_element(By.ID, "settings-save").click()
             driver.find_element(By.ID, "play").click()
             wait.until(lambda d: "SILENT PREVIEW" in d.find_element(By.ID, "state").text)
             driver.find_element(By.CSS_SELECTOR, '[data-part="closed_hat"]').click()
@@ -113,10 +124,24 @@ with tempfile.TemporaryDirectory(prefix="phasecraft-native-") as work:
             driver.find_element(By.ID, "play").click()
             wait.until(lambda d: "SILENT PREVIEW" in d.find_element(By.ID, "state").text)
             wait.until(lambda d: "STOPPED" in d.find_element(By.ID, "state").text)
-            assert "Outro · section 5/5" in driver.find_element(By.ID, "section-position").text
+            assert driver.find_element(By.ID, "position").text == "1.1.1"
+            assert "Intro · section 1/5" in driver.find_element(By.ID, "section-position").text
             driver.find_element(By.ID, "play").click()
             wait.until(lambda d: "Intro · section 1/5" in d.find_element(By.ID, "section-position").text)
-            driver.close()  # Closing a restarted arrangement must restore defaults.
+            # Closing the last window also kills WebDriver's session, so observe
+            # the application process instead of asking the closed page to reply.
+            application = Path(sys.argv[1]).resolve()
+            app_processes = []
+            for entry in Path("/proc").glob("[0-9]*"):
+                try:
+                    if (entry / "exe").resolve() == application:
+                        if str(work / "config").encode() in (entry / "environ").read_bytes():
+                            app_processes.append(entry)
+                except (OSError, PermissionError):
+                    pass
+            assert len(app_processes) == 1
+            driver.execute_script('setTimeout(() => document.getElementById("window-close").click(), 100)')
+            wait.until(lambda _: not app_processes[0].exists())
 
 
             print("Native player: open, repeated playback, watched error/recovery, selection and close passed")

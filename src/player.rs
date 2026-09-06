@@ -161,13 +161,26 @@ impl Player {
             let result = session
                 .worker
                 .join()
-                .map_err(|_| "playback worker panicked".to_string())?;
+                .map_err(|_| "playback worker panicked".to_string())
+                .and_then(|result| result);
             if let Err(e) = &result {
                 self.error = Some(e.clone());
             }
+            self.current = None;
             self.pending.clear();
+            self.history.clear();
             return result;
         }
+        self.current = None;
+        self.pending.clear();
+        self.history.clear();
+        Ok(())
+    }
+    pub fn close(&mut self) -> Result<(), String> {
+        self.stop()?;
+        self.project = None;
+        self.selected = None;
+        self.composition = None;
         Ok(())
     }
     pub fn poll(&mut self) -> Snapshot {
@@ -365,6 +378,31 @@ mod tests {
         }
         assert!(active.is_empty());
         assert!(!notes.lock().unwrap().is_empty());
+    }
+    #[test]
+    fn stop_resets_position_and_close_cleans_up_a_running_project() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("project");
+        project::create(&path).unwrap();
+        let mut player = Player::default();
+        player.open(&path).unwrap();
+        player.start(SilentOutput).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while player.poll().step.is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(player.poll().step.is_some());
+        player.stop().unwrap();
+        let stopped = player.poll();
+        assert_eq!(stopped.step, None);
+        assert!(stopped.history.is_empty());
+        assert!(!stopped.playing);
+        player.start(SilentOutput).unwrap();
+        player.close().unwrap();
+        assert!(player.project.is_none());
+        assert!(player.selected.is_none());
+        assert!(player.poll().composition.is_none());
+        assert!(player.session.is_none());
     }
     #[test]
     fn full_visual_channel_cannot_block_the_transport() {

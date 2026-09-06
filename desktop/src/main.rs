@@ -7,6 +7,7 @@ use phasecraft::{
 use serde::Serialize;
 use std::{path::PathBuf, sync::Mutex};
 use tauri::Manager;
+mod settings;
 mod updates;
 
 #[derive(Default)]
@@ -15,6 +16,7 @@ struct AppState {
     recent: Mutex<Vec<PathBuf>>,
     preferences: Mutex<Option<PathBuf>>,
     updates: updates::State,
+    settings: Mutex<settings::Settings>,
 }
 #[derive(Serialize)]
 struct Opened {
@@ -23,6 +25,7 @@ struct Opened {
     port: Option<String>,
     virtual_port: bool,
     send_clock: bool,
+    silent: bool,
 }
 #[derive(Serialize)]
 struct Initial {
@@ -62,12 +65,26 @@ fn open_project(path: PathBuf, state: tauri::State<AppState>) -> Result<Opened, 
             let _ = std::fs::write(path, bytes);
         }
     }
+    let routing = state
+        .settings
+        .lock()
+        .map_err(|e| e.to_string())?
+        .projects
+        .get(&project.path)
+        .cloned()
+        .unwrap_or(settings::Routing {
+            port: player.midi.port.clone(),
+            virtual_port: player.midi.virtual_port,
+            send_clock: player.midi.send_clock,
+            silent: false,
+        });
     Ok(Opened {
         project,
         selected: player.selected.clone(),
-        port: player.midi.port.clone(),
-        virtual_port: player.midi.virtual_port,
-        send_clock: player.midi.send_clock,
+        port: routing.port,
+        virtual_port: routing.virtual_port,
+        send_clock: routing.send_clock,
+        silent: routing.silent,
     })
 }
 #[tauri::command(async)]
@@ -82,6 +99,35 @@ fn select_composition(path: PathBuf, state: tauri::State<AppState>) -> Result<()
         .lock()
         .map_err(|e| e.to_string())?
         .select(&path)
+}
+#[tauri::command(async)]
+fn close_project(state: tauri::State<AppState>) -> Result<(), String> {
+    state.player.lock().map_err(|e| e.to_string())?.close()
+}
+#[tauri::command(async)]
+fn save_settings(routing: settings::Routing, state: tauri::State<AppState>) -> Result<(), String> {
+    let mut player = state.player.lock().map_err(|e| e.to_string())?;
+    if player.poll().playing {
+        return Err("Stop playback before changing MIDI settings".into());
+    }
+    let project = player
+        .project
+        .as_ref()
+        .ok_or("Open a project first")?
+        .path
+        .clone();
+    let path = state
+        .preferences
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .ok_or("Settings directory unavailable")?
+        .with_file_name("player-settings.json");
+    state
+        .settings
+        .lock()
+        .map_err(|e| e.to_string())?
+        .save(&path, project, routing)
 }
 #[tauri::command(async)]
 fn start(
@@ -106,6 +152,23 @@ fn stop(state: tauri::State<AppState>) -> Result<(), String> {
     state.player.lock().map_err(|e| e.to_string())?.stop()
 }
 #[tauri::command]
+fn window_control(window: tauri::WebviewWindow, action: &str) -> Result<(), String> {
+    match action {
+        "minimize" => window.minimize(),
+        "maximize" => {
+            if window.is_maximized().map_err(|e| e.to_string())? {
+                window.unmaximize()
+            } else {
+                window.maximize()
+            }
+        }
+        "close" => window.close(),
+        "drag" => window.start_dragging(),
+        _ => return Err("Unknown window action".into()),
+    }
+    .map_err(|e| e.to_string())
+}
+#[tauri::command]
 fn snapshot(state: tauri::State<AppState>) -> Result<Snapshot, String> {
     Ok(state.player.lock().map_err(|e| e.to_string())?.poll())
 }
@@ -122,16 +185,21 @@ fn main() {
                 {
                     *state.recent.lock().unwrap() = recent.into_iter().take(8).collect();
                 }
+                *state.settings.lock().unwrap() =
+                    settings::Settings::load(&path.with_file_name("player-settings.json"));
                 *state.preferences.lock().unwrap() = Some(path);
             }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             initial,
+            window_control,
             destinations,
             open_project,
             new_project,
             select_composition,
+            close_project,
+            save_settings,
             start,
             stop,
             snapshot,

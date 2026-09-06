@@ -1,25 +1,35 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { rings, pulseAt, expression, position } from "./rhythm.js";
+import {
+  rings,
+  pulseAt,
+  expression,
+  position,
+  operatorLabel,
+  visualProgress,
+} from "./rhythm.js";
 import "./style.css";
 import { setupUpdates } from "./updates.js";
 
 const app = document.querySelector("#app");
 app.innerHTML = `
+<div class="titlebar"><div id="window-drag" class="window-drag">◉ <span>phasecraft</span></div><div class="window-controls"><button id="window-minimize" aria-label="Minimize window">─</button><button id="window-maximize" aria-label="Maximize or restore window">□</button><button id="window-close" aria-label="Close window">×</button></div></div>
 <aside class="sidebar">
   <div class="brand"><span class="brand-mark">◉</span><div>phasecraft<small>MUSICAL SYSTEMS</small></div></div>
-  <div class="project-actions"><button id="open" class="primary">↗ Open project</button><button id="new">＋ New project</button></div>
-  <div class="eyebrow">COMPOSITIONS</div><nav id="compositions"><p class="muted side-note">Open a project to explore its systems.</p></nav>
-  <div class="recent-section"><div class="eyebrow">RECENT PROJECTS</div><nav id="recent"></nav></div>
+  <button id="projects-menu" aria-haspopup="dialog">Projects <span>⌄</span></button>
+  <div class="eyebrow composition-heading">COMPOSITIONS</div><nav id="compositions"><p class="muted side-note">Open a project to explore its systems.</p></nav>
+
   <div class="sidebar-bottom"><span class="status-dot"></span> DETERMINISTIC BY DESIGN<small id="version">PLAYER / DEV</small></div>
 </aside>
 <main>
   <header><div><div class="eyebrow">PHASECRAFT / PLAYER</div><h1 id="title">Small systems.<br>Long stories.</h1><p id="subtitle">Open a folder. Find the groove. Watch it unfold.</p></div><div class="header-right"><button id="update-chip" class="update-chip" hidden></button><span id="watch-status" class="pill">TOML → LIVE MIDI</span><span id="part-count"></span></div></header>
-  <p id="section-position" class="muted" hidden></p><section class="transport" aria-label="Playback controls"><button id="play" class="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button><div class="metric"><label>POSITION</label><strong id="position">1.1.1</strong></div><div class="metric"><label>BPM</label><strong id="tempo">—</strong></div><div class="metric seed"><label>SEED</label><strong id="seed">—</strong></div><div class="routing"><label for="destination">MIDI DESTINATION</label><div><select id="destination"><option value="">Choose an output…</option><option value="@silent">Silent preview</option></select><button id="refresh" title="Refresh MIDI outputs" aria-label="Refresh MIDI outputs">↻</button></div><label class="sync-control"><input id="send-clock" type="checkbox"> Send tempo & transport</label></div></section>
+  <p id="section-position" class="muted" hidden></p><section class="transport" aria-label="Playback controls"><button id="play" class="play" disabled>▶ Play</button><button id="stop" disabled>■ Stop</button><div class="metric"><label>POSITION</label><strong id="position">1.1.1</strong></div><div class="metric"><label>BPM</label><strong id="tempo">—</strong></div><div class="metric seed"><label>SEED</label><strong id="seed">—</strong></div><button id="settings-open" aria-haspopup="dialog">⚙ Settings</button></section>
+  <dialog id="projects-dialog" aria-labelledby="projects-title"><div class="dialog-heading"><h2 id="projects-title">Projects</h2><button id="projects-dismiss" aria-label="Dismiss projects">×</button></div><div class="project-actions"><button id="open" class="primary">↗ Open project</button><button id="new">＋ New project</button><button id="close-project" disabled>Close current project</button></div><p class="muted">Compositions are read from disk; there are no unsaved composition edits.</p><p id="project-error" role="alert" hidden></p><div class="eyebrow">RECENT PROJECTS</div><nav id="recent"></nav></dialog>
+  <dialog id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-heading"><h2 id="settings-title">MIDI & transport</h2><button id="settings-dismiss" aria-label="Dismiss settings">×</button></div><div class="routing"><label for="destination">MIDI DESTINATION</label><div><select id="destination"><option value="">Choose an output…</option><option value="@silent">Silent preview</option></select><button id="refresh" title="Refresh MIDI outputs" aria-label="Refresh MIDI outputs">↻</button></div><label class="sync-control"><input id="send-clock" type="checkbox"> Send tempo & transport</label></div><p class="muted">Remembered for this project on this computer. Starts with config/midi.toml until you save an override.</p><p id="settings-status" role="status"></p><button id="settings-save" class="primary">Save settings</button></dialog>
   <div id="error" role="alert" hidden></div><div id="midi-error" class="notice" hidden></div><div id="reload-error" class="notice" hidden></div>
-  <section id="welcome"><div class="welcome-rings" aria-hidden="true"><i></i><i></i><i></i><b>◉</b></div><div class="eyebrow">A FRONT PANEL FOR YOUR IDEAS</div><h2>Every cycle has<br>something to say.</h2><p>Independent rhythms, probability and emphasis.<br>Your musical systems, made visible.</p><button id="welcome-open" class="primary">Open a project folder ↗</button><p class="welcome-hint">New here? New project includes 909 techno, DnB and garage.</p></section>
+  <section id="welcome"><div class="welcome-rings" aria-hidden="true"><i></i><i></i><i></i><b>◉</b></div><div class="eyebrow">A FRONT PANEL FOR YOUR IDEAS</div><h2>Every cycle has<br>something to say.</h2><p>Independent rhythms, probability and emphasis.<br>Your musical systems, made visible.</p><button id="welcome-open" class="primary">Open a project folder ↗</button><button id="welcome-new">New project</button><div id="welcome-recent"></div><p class="welcome-hint">New here? New project includes 909 techno, DnB and garage.</p></section>
   <section id="system" hidden><div class="section-heading"><div><span class="eyebrow">THE SYSTEM</span><h2>Independent cycles. Shared time.</h2></div><div class="legend"><span><i class="hit"></i>Hit</span><span><i class="accent"></i>Accent</span><span><i class="rejected"></i>Omitted</span></div></div><div id="cards"></div>
-  <section id="detail" hidden><div class="detail-heading"><div class="eyebrow">UNDER THE SURFACE</div><h2 id="detail-title"></h2></div><div id="detail-body"></div></section></section>
+  <section id="detail" hidden><div class="detail-heading"><div class="eyebrow">UNDER THE SURFACE</div><h2 id="detail-title"></h2><button id="detail-close" aria-label="Close inspector">×</button></div><div id="detail-body"></div></section></section>
   <footer><span id="state">READY WHEN YOU ARE</span><span>Files are the score. This is the player.</span></footer>
 </main>`;
 const $ = (id) => document.getElementById(id);
@@ -31,12 +41,16 @@ let project = null,
 let cards = new Map(),
   recent = [],
   platform = "",
-  lastModel = "";
+  lastModel = "",
+  receivedAt = performance.now(),
+  settingsDraft = null;
 const basename = (path) => path.split(/[\\/]/).filter(Boolean).pop();
 const human = (id) => id.replaceAll("_", " ");
 function error(message) {
   $("error").hidden = !message;
   $("error").textContent = message || "";
+  $("project-error").textContent = message || "";
+  $("project-error").hidden = !message;
 }
 async function action(fn) {
   if (busy) return;
@@ -60,6 +74,10 @@ function controls() {
   $("destination").disabled = busy || playing;
   $("refresh").disabled = busy || playing;
   $("send-clock").disabled = busy || playing;
+  $("settings-open").disabled = busy || !project;
+  $("settings-save").disabled = busy || playing || !project;
+  $("close-project").disabled = busy || !project;
+  $("projects-menu").disabled = busy;
   $("open").disabled = busy;
   $("new").disabled = busy;
   $("welcome-open").disabled = busy;
@@ -68,6 +86,7 @@ function controls() {
 }
 function renderRecent() {
   $("recent").replaceChildren();
+  $("welcome-recent").replaceChildren();
   for (const path of recent) {
     const b = document.createElement("button");
     b.className = "nav-item recent";
@@ -75,6 +94,9 @@ function renderRecent() {
     b.title = path;
     b.onclick = () => action(() => openPath(path));
     $("recent").append(b);
+    const home = b.cloneNode(true);
+    home.onclick = b.onclick;
+    $("welcome-recent").append(home);
   }
 }
 async function openPath(path, create = false) {
@@ -82,8 +104,10 @@ async function openPath(path, create = false) {
     path,
   });
   project = result.project;
+  $("projects-dialog").close();
+  document.body.classList.add("project-open");
   selectedPart = null;
-  lastModel = "";
+  ((lastModel = ""), (receivedAt = performance.now()));
   recent = [project.path, ...recent.filter((p) => p !== project.path)].slice(
     0,
     8,
@@ -104,19 +128,117 @@ async function openPath(path, create = false) {
       action(async () => {
         await invoke("select_composition", { path });
         selectedPart = null;
-        lastModel = "";
+        ((lastModel = ""), (receivedAt = performance.now()));
         for (const item of $("compositions").children)
           item.classList.toggle("selected", item === b);
       });
     $("compositions").append(b);
   }
   $("send-clock").checked = result.send_clock || false;
-  const wanted = result.virtual_port ? "@virtual" : result.port || "";
+  const wanted = result.silent
+    ? "@silent"
+    : result.virtual_port
+      ? "@virtual"
+      : result.port || "";
   if (wanted && ![...$("destination").options].some((o) => o.value === wanted))
     $("destination").add(new Option(`${wanted} (unavailable)`, wanted));
   $("destination").value = wanted;
   $("watch-status").textContent = "WATCHING TOML";
 }
+function closeInspector() {
+  selectedPart = null;
+  renderDetail();
+}
+$("detail-close").onclick = closeInspector;
+$("projects-menu").onclick = () => $("projects-dialog").showModal();
+$("projects-dismiss").onclick = () => $("projects-dialog").close();
+$("settings-open").onclick = () => {
+  settingsDraft = {
+    destination: $("destination").value,
+    sendClock: $("send-clock").checked,
+  };
+  $("settings-status").textContent = "";
+  $("settings-dialog").showModal();
+};
+$("settings-dismiss").onclick = () => $("settings-dialog").close();
+$("settings-dialog").addEventListener("close", () => {
+  if (settingsDraft) {
+    $("destination").value = settingsDraft.destination;
+    $("send-clock").checked = settingsDraft.sendClock;
+    settingsDraft = null;
+    controls();
+  }
+});
+for (const id of ["projects-dialog", "settings-dialog"]) {
+  $(id).addEventListener("click", (e) => {
+    if (e.target === $(id)) {
+      const r = $(id).getBoundingClientRect();
+      if (
+        e.clientX < r.left ||
+        e.clientX > r.right ||
+        e.clientY < r.top ||
+        e.clientY > r.bottom
+      )
+        $(id).close();
+    }
+  });
+}
+$("close-project").onclick = () =>
+  action(async () => {
+    await invoke("close_project");
+    project = null;
+    snapshot = null;
+    selectedPart = null;
+    lastModel = "";
+    cards.clear();
+    $("projects-dialog").close();
+    document.body.classList.remove("project-open");
+    $("welcome").hidden = false;
+    $("system").hidden = true;
+    $("detail").hidden = true;
+    $("compositions").replaceChildren();
+    $("title").textContent = "Small systems. Long stories.";
+    $("subtitle").textContent =
+      "Open a folder. Find the groove. Watch it unfold.";
+    $("position").textContent = "1.1.1";
+    $("tempo").textContent = "—";
+    $("seed").textContent = "—";
+    $("part-count").textContent = "";
+    $("section-position").hidden = true;
+    $("reload-error").hidden = true;
+    $("watch-status").textContent = "TOML → LIVE MIDI";
+    $("state").textContent = "READY WHEN YOU ARE";
+    $("state").classList.remove("running");
+  });
+$("settings-save").onclick = () =>
+  action(async () => {
+    const output = $("destination").value;
+    try {
+      await invoke("save_settings", {
+        routing: {
+          port: output && !output.startsWith("@") ? output : null,
+          virtual_port: output === "@virtual",
+          silent: output === "@silent",
+          send_clock: $("send-clock").checked,
+        },
+      });
+    } catch (e) {
+      $("settings-status").textContent = String(e);
+      throw e;
+    }
+    settingsDraft = null;
+    $("settings-status").textContent = "Saved for this project.";
+    $("settings-dialog").close();
+  });
+for (const name of ["minimize", "maximize", "close"])
+  $("window-" + name).onclick = () =>
+    invoke("window_control", { action: name }).catch((e) => error(String(e)));
+$("window-drag").onmousedown = (e) => {
+  if (e.button === 0)
+    invoke("window_control", {
+      action: e.detail === 2 ? "maximize" : "drag",
+    }).catch((e) => error(String(e)));
+};
 async function chooseProject() {
   const path = await open({
     directory: true,
@@ -135,6 +257,7 @@ $("new").onclick = () =>
     });
     if (path) await openPath(path, true);
   });
+$("welcome-new").onclick = () => $("new").click();
 async function refreshPorts() {
   const previous = $("destination").value;
   $("destination").replaceChildren(
@@ -174,6 +297,8 @@ $("play").onclick = () =>
   });
 $("stop").onclick = () => action(() => invoke("stop"));
 document.addEventListener("keydown", (e) => {
+  if (e.code === "Escape") closeInspector();
+  if (document.querySelector("dialog[open]")) return;
   if (
     e.code === "Space" &&
     !["INPUT", "SELECT", "BUTTON", "TEXTAREA"].includes(
@@ -220,14 +345,17 @@ function ensureCards(c) {
     caption.className = "card-caption";
     card.append(head, route, canvas, caption);
     card.onclick = () => {
-      selectedPart = part.id;
+      selectedPart = selectedPart === part.id ? null : part.id;
       renderDetail();
     };
     $("cards").append(card);
-    cards.set(part.id, { card, canvas, badge, caption });
+    const formula = document.createElement("div");
+    formula.className = "card-formula";
+    card.insertBefore(formula, caption);
+    cards.set(part.id, { card, canvas, badge, caption, formula });
   }
 }
-function drawRing(ctx, r, x, y, radius, live, progress, accent) {
+function drawRing(ctx, r, x, y, radius, live, progress, accent, resolved) {
   const color = accent ? "#f6b980" : "#93d5c6";
   if (r.type === "part") {
     ctx.fillStyle = "#8d999c";
@@ -248,7 +376,9 @@ function drawRing(ctx, r, x, y, radius, live, progress, accent) {
     const theta = (index / r.steps) * Math.PI * 2 - Math.PI / 2;
     const on = pulseAt(index, r.steps, r.pulses, r.rotation);
     const current =
-      live && Math.floor(r.phase / stride) === Math.floor(index / stride);
+      live &&
+      progress < 0.3 &&
+      Math.floor(r.phase / stride) === Math.floor(index / stride);
     ctx.beginPath();
     ctx.arc(
       x + Math.cos(theta) * radius,
@@ -257,19 +387,26 @@ function drawRing(ctx, r, x, y, radius, live, progress, accent) {
       0,
       Math.PI * 2,
     );
-    ctx.fillStyle = current ? "#ffffff" : on ? color : "#344043";
-    ctx.fill();
+    ctx.fillStyle =
+      current && on && resolved ? "#ffffff" : on ? color : "#344043";
+    if (current && on && !resolved) {
+      ctx.strokeStyle = "#93a6a1";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    } else ctx.fill();
   }
   if (live) {
     const theta = ((r.phase + progress) / r.steps) * Math.PI * 2 - Math.PI / 2;
     ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(
-      x + Math.cos(theta) * (radius - 8),
-      y + Math.sin(theta) * (radius - 8),
+    ctx.arc(
+      x + Math.cos(theta) * radius,
+      y + Math.sin(theta) * radius,
+      3.5,
+      0,
+      Math.PI * 2,
     );
-    ctx.strokeStyle = color + "70";
-    ctx.stroke();
+    ctx.fillStyle = "#eef6f1";
+    ctx.fill();
   }
   ctx.textAlign = "center";
   ctx.fillStyle = "#edf2ea";
@@ -283,9 +420,19 @@ function drawRing(ctx, r, x, y, radius, live, progress, accent) {
     y + radius + 21,
   );
 }
-function drawCard(view, trace) {
+function drawCard(view, trace, progress = snapshot.progress) {
+  const all = [
+    ...rings(trace.trigger.rhythm),
+    ...rings(trace.accent.rhythm, "Accent"),
+    ...(trace.shared_accents || []).flatMap((s) =>
+      rings(s.decision.rhythm, `Shared ${human(s.name)}`),
+    ),
+  ];
+  const visible = all.slice(0, 8);
+  const columns = Math.min(3, visible.length);
+  const rows = Math.ceil(visible.length / columns);
   const width = view.canvas.clientWidth || 300,
-    height = 186,
+    height = rows * 110 + 76,
     scale = window.devicePixelRatio || 1;
   if (
     view.canvas.width !== Math.round(width * scale) ||
@@ -294,29 +441,61 @@ function drawCard(view, trace) {
     view.canvas.width = Math.round(width * scale);
     view.canvas.height = Math.round(height * scale);
   }
+  view.canvas.style.height = `${height}px`;
   const ctx = view.canvas.getContext("2d");
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.clearRect(0, 0, width, height);
-  const all = [
-    ...rings(trace.trigger.rhythm),
-    ...rings(trace.accent.rhythm, "Accent"),
-    ...(trace.shared_accents || []).flatMap(s => rings(s.decision.rhythm, `Shared ${human(s.name)}`)),
-  ];
-  const visible = all.length <= 3 ? all : [all[0], all[1], all[all.length - 1]];
-  const cell = width / visible.length,
-    radius = Math.min(34, cell / 2 - 12);
+  const cell = width / columns,
+    radius = Math.min(30, cell / 2 - 17);
+  const sounded =
+    !!trace.event && progress >= (trace.event.groove?.offset_ticks || 0) / 240;
   visible.forEach((r, i) =>
     drawRing(
       ctx,
       r,
-      cell * (i + 0.5),
-      57,
+      cell * ((i % columns) + 0.5),
+      45 + Math.floor(i / columns) * 110,
       radius,
       snapshot.playing && snapshot.step !== null,
-      snapshot.progress,
-      r.label.startsWith("Accent"),
+      progress,
+      !r.label.startsWith("Trigger"),
+      sounded && (r.label.startsWith("Trigger") || trace.event?.accent.active),
     ),
   );
+  // Inline operators are placed only between direct sibling leaves, never across unrelated lanes.
+  let leaf = 0;
+  function drawOperators(node) {
+    if (node.type !== "binary") {
+      leaf++;
+      return;
+    }
+    const first = leaf;
+    drawOperators(node.a);
+    const middle = leaf;
+    drawOperators(node.b);
+    if (
+      node.a.type !== "binary" &&
+      node.b.type !== "binary" &&
+      middle < visible.length &&
+      Math.floor(first / columns) === Math.floor(middle / columns)
+    ) {
+      ctx.fillStyle = node.active ? "#b9e4d5" : "#82928e";
+      ctx.font = "8px monospace";
+      ctx.textAlign = "center";
+      const label =
+        { a_not_b: "A−B", b_not_a: "B−A" }[node.op] || operatorLabel(node.op);
+      ctx.fillText(
+        label,
+        cell * middle,
+        45 + Math.floor(first / columns) * 110,
+      );
+    }
+  }
+  drawOperators(trace.trigger.rhythm);
+  view.formula.textContent = expression(trace.trigger.rhythm);
+  view.formula.title =
+    "Trigger relationship · hollow highlight means active input without a resolved note";
+  const historyY = rows * 110 + 32;
   const history = snapshot.history.slice(-16),
     gap = 5,
     box = (width - gap * 15) / 16;
@@ -327,7 +506,7 @@ function drawCard(view, trace) {
     if (
       snapshot.playing &&
       history[i - (16 - history.length)]?.step === snapshot.step &&
-      snapshot.progress < (trace.event?.groove?.offset_ticks || 0) / 240
+      progress < (trace.event?.groove?.offset_ticks || 0) / 240
     )
       item = null;
     ctx.fillStyle = item?.accented
@@ -335,25 +514,25 @@ function drawCard(view, trace) {
       : item?.fired
         ? "#93d5c6"
         : "#263133";
-    ctx.fillRect(i * (box + gap), 142, box, 11);
+    ctx.fillRect(i * (box + gap), historyY, box, 11);
     if (item?.eligible && !item.fired) {
       ctx.strokeStyle = "#89979a";
       ctx.beginPath();
-      ctx.moveTo(i * (box + gap) + 2, 144);
-      ctx.lineTo(i * (box + gap) + box - 2, 151);
+      ctx.moveTo(i * (box + gap) + 2, historyY + 2);
+      ctx.lineTo(i * (box + gap) + box - 2, historyY + 9);
       ctx.stroke();
     }
   }
   ctx.fillStyle = "#758589";
   ctx.textAlign = "left";
   ctx.font = "9px monospace";
-  ctx.fillText("RECENT RESOLVED OUTPUT", 0, 177);
+  ctx.fillText("RECENT RESOLVED OUTPUT", 0, historyY + 35);
   const hit =
     snapshot.playing &&
     snapshot.step !== null &&
     trace.event &&
-    snapshot.progress >= (trace.event.groove?.offset_ticks || 0) / 240 &&
-    snapshot.progress < (trace.event.groove?.offset_ticks || 0) / 240 + 0.65;
+    progress >= (trace.event.groove?.offset_ticks || 0) / 240 &&
+    progress < (trace.event.groove?.offset_ticks || 0) / 240 + 0.65;
   view.card.classList.toggle("fired", !!hit);
   view.card.classList.toggle("accented", !!(hit && trace.event.accent.active));
   view.card.classList.toggle("selected-part", trace.part === selectedPart);
@@ -377,7 +556,10 @@ function renderDetail() {
   for (const [label, lane] of [
     ["Trigger", trace.trigger],
     ["Accent", trace.accent],
-    ...(trace.shared_accents || []).map(s => [`Shared accent: ${human(s.name)} (amount ${s.amount.toFixed(2)})`, s.decision]),
+    ...(trace.shared_accents || []).map((s) => [
+      `Shared accent: ${human(s.name)} (amount ${s.amount.toFixed(2)})`,
+      s.decision,
+    ]),
   ]) {
     const block = document.createElement("div");
     block.className = "lane-detail";
@@ -440,8 +622,12 @@ function renderDetail() {
         parameter.samples.filter((s) => s.tick <= tick).at(-1) ||
         parameter.samples[0];
       const detail = document.createElement("p");
-      const memory = sample.envelope ? ` · envelope ${sample.envelope.level.toFixed(3)} from ${sample.envelope.impulses} impulses` : "";
-      const motion = sample.automation ? ` · segment ${sample.automation.segment}, cycle ${sample.automation.cycle + 1} (${human(sample.automation.curve)})` : "";
+      const memory = sample.envelope
+        ? ` · envelope ${sample.envelope.level.toFixed(3)} from ${sample.envelope.impulses} impulses`
+        : "";
+      const motion = sample.automation
+        ? ` · segment ${sample.automation.segment}, cycle ${sample.automation.cycle + 1} (${human(sample.automation.curve)})`
+        : "";
       detail.textContent = `${human(parameter.name)} · base ${sample.base.toFixed(3)} · emphasis ${sample.emphasis.toFixed(3)} → ${sample.amount.toFixed(3)} · channel ${parameter.channel} CC ${parameter.cc}: ${sample.value}${motion}${memory}`;
       block.append(detail);
     }
@@ -475,7 +661,9 @@ function render() {
   $("position").textContent = position(snapshot.step);
   const section = snapshot.traces[0]?.section;
   $("section-position").hidden = !section;
-  $("section-position").textContent = section ? `${section.phrase} · section ${section.index}/${section.count} · bar ${section.bar}/${section.bars} · cycle ${section.cycle + 1} · ${section.phase} phase` : "";
+  $("section-position").textContent = section
+    ? `${section.phrase} · section ${section.index}/${section.count} · bar ${section.bar}/${section.bars} · cycle ${section.cycle + 1} · ${section.phase} phase`
+    : "";
   $("part-count").textContent =
     `${c.parts.length} PARTS / ${c.phrase_bars}-BAR PHRASE`;
   $("state").textContent = snapshot.playing
@@ -500,6 +688,7 @@ async function poll() {
   polling = true;
   try {
     snapshot = await invoke("snapshot");
+    receivedAt = performance.now();
     render();
   } catch (e) {
     error(String(e));
@@ -512,6 +701,7 @@ async function poll() {
     const data = await invoke("initial");
     recent = data.recent;
     platform = data.version.platform;
+    document.body.classList.toggle("macos", platform.startsWith("macos"));
     $("version").textContent = `DEV / ${data.version.commit.slice(0, 7)}`;
     renderRecent();
     await refreshPorts();
@@ -523,3 +713,20 @@ async function poll() {
 })();
 setInterval(poll, 40);
 window.addEventListener("resize", render);
+
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+function animate(now) {
+  if (snapshot?.playing && !document.hidden) {
+    const progress = visualProgress(
+      snapshot,
+      now - receivedAt,
+      reducedMotion.matches,
+    );
+    for (const trace of snapshot.traces) {
+      const view = cards.get(trace.part);
+      if (view) drawCard(view, trace, progress);
+    }
+  }
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);

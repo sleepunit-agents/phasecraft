@@ -27,3 +27,23 @@ export function position(step) {
   if (step === null || step === undefined) return "1.1.1";
   return `${Math.floor(step / 16) + 1}.${Math.floor((step % 16) / 4) + 1}.${(step % 4) + 1}`;
 }
+
+export const operatorLabel = (op) =>
+  ({
+    or: "OR",
+    and: "AND",
+    xor: "XOR",
+    a_not_b: "A NOT B",
+    b_not_a: "B NOT A",
+  })[op] || op;
+// Interpolate only within the last authoritative step. Never invent later hits on a stalled IPC feed.
+export function visualProgress(snapshot, elapsedMs, reducedMotion = false) {
+  if (!snapshot?.playing || snapshot.step == null) return 0;
+  return Math.min(
+    1,
+    snapshot.progress +
+      (reducedMotion
+        ? 0
+        : Math.max(0, elapsedMs) / (60000 / snapshot.composition.tempo / 4)),
+  );
+}

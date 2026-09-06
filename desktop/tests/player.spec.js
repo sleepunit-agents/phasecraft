@@ -46,9 +46,20 @@ async function boot(page) {
               selected: "/music/night-maps/compositions/showcase.toml",
               port: "Phasecraft",
               virtual_port: false,
+              ...window.savedRouting,
             };
           }
-          if (command === "select_composition") return;
+          if (command === "select_composition" || command === "window_control")
+            return;
+          if (command === "save_settings") {
+            window.savedRouting = args.routing;
+            return;
+          }
+          if (command === "close_project") {
+            loaded = false;
+            playing = false;
+            return;
+          }
           if (command === "start") {
             playing = true;
             return;
@@ -88,7 +99,12 @@ async function boot(page) {
                                 run_before: 1,
                                 run_after: 1,
                                 velocity_factor: 0.4,
-                                touch: { offbeat_factor: 1.15, gap_factor: 1.25, velocity_jitter_factor: 0.95, requested_jitter_ticks: -4 },
+                                touch: {
+                                  offbeat_factor: 1.15,
+                                  gap_factor: 1.25,
+                                  velocity_jitter_factor: 0.95,
+                                  requested_jitter_ticks: -4,
+                                },
                               },
                             },
                           }
@@ -99,7 +115,13 @@ async function boot(page) {
                         ? {
                             ...t,
                             event: null,
-                            shared_accents: [{ name: "drums", amount: 0.7, decision: t.accent }],
+                            shared_accents: [
+                              {
+                                name: "drums",
+                                amount: 0.7,
+                                decision: t.accent,
+                              },
+                            ],
                             parameters: [
                               {
                                 name: "cutoff",
@@ -117,7 +139,12 @@ async function boot(page) {
                                     tick: t.tick + 120,
                                     base: 0.7,
                                     envelope: { level: 0.6, impulses: 2 },
-                                    automation: { segment: 2, cycle: 1, curve: "smooth", progress: 0.4 },
+                                    automation: {
+                                      segment: 2,
+                                      cycle: 1,
+                                      curve: "smooth",
+                                      progress: 0.4,
+                                    },
                                     emphasis: 0,
                                     amount: 0.7,
                                     value: 89,
@@ -147,10 +174,12 @@ test("open project, route, play, inspect and stop through the UI", async ({
 }) => {
   await boot(page);
   await expect(page.locator("#play")).toBeDisabled();
-  await page.locator("#open").click();
+  await page.locator("#welcome-open").click();
   await expect(page.locator("#title")).toHaveText("Night maps");
   await expect(page.locator(".part-card")).toHaveCount(6);
+  await page.locator("#settings-open").click();
   await page.locator("#destination").selectOption("@silent");
+  await page.locator("#settings-save").click();
   await page.locator("#play").click();
   await expect(page.locator("#state")).toContainText("SILENT PREVIEW");
   await expect(page.locator("#position")).toHaveText("1.3.2");
@@ -172,7 +201,7 @@ test("reload errors are visible without stopping and recover when corrected", as
   page,
 }) => {
   await boot(page);
-  await page.locator("#open").click();
+  await page.locator("#welcome-open").click();
   await page.locator("#play").click();
   await page.evaluate(
     () => (window.reloadError = "trigger.probability must be within 0..1"),
@@ -189,7 +218,7 @@ test("new project and recent folders are accessible, including at minimum width"
 }) => {
   await page.setViewportSize({ width: 900, height: 700 });
   await boot(page);
-  await page.locator("#new").click();
+  await page.locator("#welcome-new").click();
   await expect(page.locator(".part-card")).toHaveCount(6);
   expect(
     await page.evaluate(
@@ -208,7 +237,7 @@ test("update chip checks quietly, compares builds and installs only on click", a
 }) => {
   await boot(page);
   await expect(page.locator("#update-chip")).toBeHidden();
-  await page.locator("#open").click();
+  await page.locator("#welcome-open").click();
   await page.locator("#version").focus();
   await page.keyboard.press("Space");
   expect(
@@ -222,6 +251,7 @@ test("update chip checks quietly, compares builds and installs only on click", a
       window.calls.some((c) => c.command === "install_update"),
     ),
   ).toBe(false);
+  await page.locator("#projects-menu").click();
   await page.locator("#open").click();
   await page.locator("#play").click();
   await page.locator("#update-chip").click();
@@ -236,7 +266,7 @@ test("update chip checks quietly, compares builds and installs only on click", a
 });
 test("offline checks and failed installs are recoverable", async ({ page }) => {
   await boot(page);
-  await page.locator("#open").click();
+  await page.locator("#welcome-open").click();
   await page.locator("#play").click();
   await page.evaluate(() => (window.updateOffline = true));
   await page.locator("#version").click();
@@ -264,9 +294,11 @@ test("existing MIDI output supports explicit tempo and transport sync", async ({
   page,
 }) => {
   await boot(page);
-  await page.locator("#open").click();
+  await page.locator("#welcome-open").click();
   await expect(page.locator("#destination")).toHaveValue("Phasecraft");
+  await page.locator("#settings-open").click();
   await page.locator("#send-clock").check();
+  await page.locator("#settings-save").click();
   await page.locator("#play").click();
   await expect(page.locator("#send-clock")).toBeDisabled();
   expect(
@@ -284,7 +316,7 @@ test("groove inspection exposes timing and the hit flash waits for the onset", a
     window.testGroove = true;
     window.testProgress = 0.25;
   });
-  await page.locator("#open").click();
+  await page.locator("#welcome-open").click();
   await page.locator("#play").click();
   const hat = page.locator('[data-part="closed_hat"]');
   await hat.click();
@@ -309,7 +341,7 @@ test("parameter inspector advances through a rest without flashing a note", asyn
     window.testParameters = true;
     window.testProgress = 0.25;
   });
-  await page.locator("#open").click();
+  await page.locator("#welcome-open").click();
   await page.locator("#play").click();
   const hat = page.locator('[data-part="closed_hat"]');
   await hat.click();
@@ -323,7 +355,104 @@ test("parameter inspector advances through a rest without flashing a note", asyn
   await expect(page.locator("#detail-body")).toContainText(
     "channel 15 CC 75: 89",
   );
-  await expect(page.locator("#detail-body")).toContainText("segment 2, cycle 2 (smooth)");
-  await expect(page.locator("#detail-body")).toContainText("Shared accent: drums");
-  await expect(page.locator("#detail-body")).toContainText("envelope 0.600 from 2 impulses");
+  await expect(page.locator("#detail-body")).toContainText(
+    "segment 2, cycle 2 (smooth)",
+  );
+  await expect(page.locator("#detail-body")).toContainText(
+    "Shared accent: drums",
+  );
+  await expect(page.locator("#detail-body")).toContainText(
+    "envelope 0.600 from 2 impulses",
+  );
+});
+
+test("project menu closes to home, routing persists, and inspector toggles", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.locator("#welcome-open").click();
+  await page.locator("#settings-open").click();
+  await page.locator("#destination").selectOption("@silent");
+  await page.locator("#send-clock").check();
+  await page.locator("#settings-save").click();
+  const hat = page.locator('[data-part="closed_hat"]');
+  await hat.click();
+  await expect(page.locator("#detail")).toBeVisible();
+  await hat.click();
+  await expect(page.locator("#detail")).toBeHidden();
+  await hat.click();
+  await page.locator("#detail-close").click();
+  await expect(page.locator("#detail")).toBeHidden();
+  await page.locator("#play").click();
+  await page.locator("#stop").click();
+  await expect(page.locator("#position")).toHaveText("1.1.1");
+  await page.locator("#projects-menu").click();
+  await page.locator("#close-project").click();
+  await expect(page.locator("#welcome")).toBeVisible();
+  await expect(page.locator("#system")).toBeHidden();
+  await page.locator("#welcome-recent button").first().click();
+  await page.locator("#settings-open").click();
+  await expect(page.locator("#destination")).toHaveValue("@silent");
+  await expect(page.locator("#send-clock")).toBeChecked();
+});
+
+test("titlebar controls invoke window actions and relationships appear on cards", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.locator("#window-maximize").click();
+  expect(
+    await page.evaluate(() =>
+      window.calls.some(
+        (c) => c.command === "window_control" && c.args.action === "maximize",
+      ),
+    ),
+  ).toBe(true);
+  await page.locator("#welcome-open").click();
+  await expect(
+    page
+      .locator(".card-formula")
+      .filter({ hasText: /XOR|AND|NOT|OR/ })
+      .first(),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "test-results/player-evolved.png",
+    fullPage: true,
+  });
+});
+
+test("settings dismissal cancels edits and only compositions scroll", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 640 });
+  await boot(page);
+  await page.locator("#welcome-open").click();
+  await page.locator("#settings-open").click();
+  await page.locator("#destination").selectOption("@silent");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#destination")).toHaveValue("Phasecraft");
+  await page.evaluate(() => {
+    const nav = document.querySelector("#compositions");
+    for (let i = 0; i < 60; i++) {
+      const b = nav.firstElementChild.cloneNode(true);
+      b.textContent = "Composition " + i;
+      nav.append(b);
+    }
+  });
+  expect(
+    await page
+      .locator(".sidebar")
+      .evaluate((e) => e.scrollHeight <= e.clientHeight),
+  ).toBe(true);
+  expect(
+    await page
+      .locator("#compositions")
+      .evaluate((e) => e.scrollHeight > e.clientHeight),
+  ).toBe(true);
+  await expect(page.locator("#projects-menu")).toBeInViewport();
+  await expect(page.locator("#version")).toBeInViewport();
+  await page.screenshot({
+    path: "test-results/player-minimum.png",
+    fullPage: true,
+  });
 });
