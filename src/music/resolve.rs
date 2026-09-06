@@ -31,8 +31,16 @@ pub struct Accent {
     pub active: bool,
     pub amount: f64,
 }
+fn is_default_cell(v: &u64) -> bool {
+    *v == STEP_TICKS
+}
+fn is_one(v: &f64) -> bool {
+    *v == 1.0
+}
 #[derive(Clone, Debug, Serialize)]
 pub struct MusicalEvent {
+    #[serde(skip_serializing_if = "is_one")]
+    pub velocity_gain: f64,
     pub tick: u64,
     pub duration_ticks: u64,
     pub accent: Accent,
@@ -57,6 +65,14 @@ pub struct SharedAccentTrace {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct StepTrace {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sounding: Option<Vec<MusicalEvent>>,
+    #[serde(skip_serializing_if = "is_default_cell")]
+    pub cell_ticks: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub extra_events: Vec<MusicalEvent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ornaments: Option<super::ornament::OrnamentTrace>,
     pub step: u64,
     pub tick: u64,
     pub position: String,
@@ -73,6 +89,7 @@ pub struct StepTrace {
 }
 fn admission(
     c: &Composition,
+    cell: u64,
     part_id: &str,
     step: u64,
     name: &str,
@@ -81,10 +98,16 @@ fn admission(
 ) -> DecisionTrace {
     let (expression, probability, mode) = lane;
     let event_identity = match mode {
-        ProbabilityMode::PhraseLocked => step % c.phrase_steps(),
+        ProbabilityMode::PhraseLocked => {
+            decision_identity(c, cell, step, ProbabilityMode::PhraseLocked)
+        }
         ProbabilityMode::Continuous => step,
     };
-    let rhythm = expression.evaluate(step, c.phrase_steps(), reference);
+    let rhythm = expression.evaluate_position(
+        step,
+        (step * cell % (c.phrase_steps() * STEP_TICKS)) / cell,
+        reference,
+    );
     let roll = decision_roll(c.seed, part_id, name, event_identity, "admission");
     let admitted = rhythm.active() && roll < probability;
     DecisionTrace {
@@ -103,6 +126,7 @@ fn resolve_part(
 ) -> StepTrace {
     let trigger = admission(
         c,
+        part.subdivision.0,
         &part.id,
         step,
         "trigger",
@@ -115,6 +139,7 @@ fn resolve_part(
     );
     let accent = admission(
         c,
+        part.subdivision.0,
         &part.id,
         step,
         "accent",
@@ -132,10 +157,15 @@ fn resolve_part(
         .map(|name| {
             let lane = &c.accents[name];
             let event_identity = match lane.probability_mode {
-                ProbabilityMode::PhraseLocked => step % c.phrase_steps(),
-                ProbabilityMode::Continuous => step,
+                ProbabilityMode::PhraseLocked => {
+                    step * part.subdivision.0 / STEP_TICKS % c.phrase_steps()
+                }
+                ProbabilityMode::Continuous => step * part.subdivision.0 / STEP_TICKS,
             };
-            let rhythm = lane.rhythm.evaluate(step, c.phrase_steps(), &|_, _| false);
+            let shared_step = step * part.subdivision.0 / STEP_TICKS;
+            let rhythm = lane
+                .rhythm
+                .evaluate(shared_step, c.phrase_steps(), &|_, _| false);
             let roll = decision_roll(
                 c.seed,
                 name,
@@ -143,7 +173,9 @@ fn resolve_part(
                 event_identity,
                 "shared_admission",
             );
-            let admitted = rhythm.active() && roll < lane.probability;
+            let admitted = (step * part.subdivision.0).is_multiple_of(STEP_TICKS)
+                && rhythm.active()
+                && roll < lane.probability;
             SharedAccentTrace {
                 name: name.clone(),
                 amount: if admitted { lane.amount } else { 0.0 },
@@ -167,7 +199,8 @@ fn resolve_part(
         f64::max,
     );
     let event = trigger.admitted.then(|| MusicalEvent {
-        tick: step * STEP_TICKS,
+        velocity_gain: 1.0,
+        tick: step * part.subdivision.0,
         duration_ticks: part.output.gate_ticks,
         groove: None,
         controls: part
@@ -196,8 +229,12 @@ fn resolve_part(
         },
     });
     StepTrace {
+        sounding: None,
+        cell_ticks: part.subdivision.0,
+        extra_events: Vec::new(),
+        ornaments: None,
         step,
-        tick: step * STEP_TICKS,
+        tick: step * part.subdivision.0,
         position: format!("{}.{}.{}", step / 16 + 1, step / 4 % 4 + 1, step % 4 + 1),
         part: part.id.clone(),
         parameters: Vec::new(),
@@ -209,19 +246,21 @@ fn resolve_part(
     }
 }
 pub fn realize(c: &Composition, part: &Part, start_step: u64, steps: u64) -> RhythmPattern {
+    let mut compiled = Compiled::new(c);
+    let start_tick = start_step * STEP_TICKS;
+    let end_tick = (start_step + steps) * STEP_TICKS;
+    let mut events: Vec<_> = (start_step.saturating_sub(25)..start_step + steps + 2)
+        .flat_map(|s| compiled.resolve_step(s).0)
+        .filter(|t| t.part == part.id)
+        .flat_map(|t| t.event.into_iter().chain(t.extra_events))
+        .filter(|e| e.tick >= start_tick && e.tick < end_tick)
+        .collect();
+    events.sort_by_key(|e| e.tick);
     RhythmPattern {
         cycles: super::cycle::spans(c, &part.id, start_step, start_step + steps),
-        start_tick: start_step * STEP_TICKS,
-        end_tick: (start_step + steps) * STEP_TICKS,
-        events: (start_step..start_step + steps)
-            .filter_map(|s| {
-                resolve_step(c, s)
-                    .0
-                    .into_iter()
-                    .find(|t| t.part == part.id)
-                    .and_then(|t| t.event)
-            })
-            .collect(),
+        start_tick,
+        end_tick,
+        events,
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -237,17 +276,20 @@ pub struct MidiEvent {
     /// Section transition: reset before the incoming section initializes controls.
     pub boundary_reset: bool,
 }
-pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
-    let output = &part.output;
-    let velocity = (f64::from(part.profile.base)
-        * event.groove.as_ref().map_or(1.0, |g| g.velocity_factor)
+fn midi_velocity(part: &Part, event: &MusicalEvent) -> u8 {
+    ((f64::from(part.profile.base) * event.groove.as_ref().map_or(1.0, |g| g.velocity_factor)
         + if event.accent.active {
             event.accent.amount * f64::from(part.profile.boost)
         } else {
             0.0
         })
-    .round()
-    .clamp(1.0, 127.0) as u8;
+        * event.velocity_gain)
+        .round()
+        .clamp(1.0, 127.0) as u8
+}
+pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
+    let output = &part.output;
+    let velocity = midi_velocity(part, event);
     let mut events = vec![
         MidiEvent {
             tick: event.tick,
@@ -289,183 +331,19 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
     events
 }
 
-/// Merge one grid position before dispatch. Sending each Part's on/off pair
-/// immediately would delay simultaneous hits behind the first Part's note-off.
-fn resolve_raw(c: &Composition, step: u64) -> Vec<StepTrace> {
-    let parts = c
-        .evaluation_order()
-        .expect("resolve_step requires a validated composition");
-    let mut resolved = std::collections::BTreeMap::<String, StepTrace>::new();
-
-    for part in parts {
-        let reference = |id: &str, mode| {
-            let target = &resolved[id];
-            match mode {
-                ReferenceMode::Structural => target.trigger.rhythm.active(),
-                ReferenceMode::Hits => target.trigger.admitted,
-            }
-        };
-        let trace = resolve_part(c, part, step, &reference);
-        resolved.insert(part.id.clone(), trace);
+fn decision_identity(c: &Composition, cell: u64, step: u64, mode: ProbabilityMode) -> u64 {
+    match mode {
+        ProbabilityMode::Continuous => step,
+        ProbabilityMode::PhraseLocked if cell == STEP_TICKS => step % c.phrase_steps(),
+        ProbabilityMode::PhraseLocked => (step * cell) % (c.phrase_steps() * STEP_TICKS),
     }
-    resolved.into_values().collect()
 }
 
-/// Groove stays inside the source sixteenth; even long gates cannot overlap batches.
-/// Part references always see source-grid admissions, independent of groove interpretation.
+mod compiled;
+pub use compiled::Compiled;
+
 pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEvent>) {
-    if c.arrangement.is_some() {
-        return super::arrangement::resolve(c, step);
-    }
-    use super::groove::{GrooveTrace, RunContour};
-    let mut traces = resolve_raw(c, step);
-    let run_context = c.parts.iter().any(|p| p.groove.run != RunContour::None);
-    let lookbehind = c
-        .parts
-        .iter()
-        .filter_map(|p| p.groove.after_gap.as_ref().map(|g| u64::from(g.steps)))
-        .chain(
-            c.parts
-                .iter()
-                .flat_map(|p| p.profile.controls.values())
-                .filter_map(|r| r.envelope.as_ref().map(|e| e.history_steps())),
-        )
-        .max()
-        .unwrap_or(0)
-        .max(if run_context { 2 } else { 0 });
-    let mut neighbors = std::collections::BTreeMap::new();
-    let positions = (1..=lookbehind)
-        .filter_map(|n| step.checked_sub(n))
-        .chain((1..=if run_context { 2 } else { 0 }).filter_map(|n| step.checked_add(n)));
-    for s in positions {
-        if s < u64::MAX / STEP_TICKS {
-            neighbors.insert(s, resolve_raw(c, s));
-        }
-    }
-    let mut midi = Vec::with_capacity(c.parts.len() * 2);
-    for trace in &mut traces {
-        let part = c.parts.iter().find(|p| p.id == trace.part).unwrap();
-        if let Some(event) = &mut trace.event {
-            let g = &part.groove;
-            if !g.is_default() {
-                let fired = |s: Option<u64>| {
-                    s.and_then(|s| neighbors.get(&s)).is_some_and(|traces| {
-                        traces
-                            .iter()
-                            .any(|t| t.part == part.id && t.trigger.admitted)
-                    })
-                };
-                let mut before = 0;
-                let mut after = 0;
-                if g.run != RunContour::None {
-                    for n in 1..=2 {
-                        if fired(step.checked_sub(n)) {
-                            before += 1
-                        } else {
-                            break;
-                        }
-                    }
-                    for n in 1..=2 {
-                        if fired(step.checked_add(n)) {
-                            after += 1
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                let identity = match g.ghost_mode {
-                    ProbabilityMode::PhraseLocked => step % c.phrase_steps(),
-                    ProbabilityMode::Continuous => step,
-                };
-                let roll = decision_roll(c.seed, &part.id, "groove", identity, "ghost");
-                let ghost = !event.accent.active && roll < g.ghost_probability;
-                let touch = (g.offbeat_gain != 1.0
-                    || g.after_gap.is_some()
-                    || g.humanize.is_some())
-                .then(|| {
-                    let offbeat = step % 4 == 2;
-                    let after_gap = g.after_gap.as_ref().is_some_and(|gap| {
-                        step >= u64::from(gap.steps)
-                            && (1..=u64::from(gap.steps)).all(|n| !fired(step.checked_sub(n)))
-                    });
-                    let h = g.humanize.clone().unwrap_or_default();
-                    let identity = match h.mode {
-                        ProbabilityMode::PhraseLocked => step % c.phrase_steps(),
-                        ProbabilityMode::Continuous => step,
-                    };
-                    let (timing_roll, requested_jitter_ticks) =
-                        g.timing_jitter(c.seed, &part.id, step, c.phrase_steps());
-                    let velocity_roll =
-                        decision_roll(c.seed, &part.id, "groove", identity, "humanize_velocity");
-                    super::groove::TouchTrace {
-                        offbeat,
-                        offbeat_factor: if offbeat { g.offbeat_gain } else { 1.0 },
-                        after_gap,
-                        gap_factor: if after_gap {
-                            g.after_gap.as_ref().unwrap().gain
-                        } else {
-                            1.0
-                        },
-                        timing_roll,
-                        velocity_roll,
-                        requested_jitter_ticks,
-                        velocity_jitter_factor: 1.0 + (velocity_roll * 2.0 - 1.0) * h.velocity,
-                    }
-                });
-                let offset = (g.offset(step) as i64
-                    + touch.as_ref().map_or(0, |t| t.requested_jitter_ticks))
-                .clamp(0, STEP_TICKS as i64 - 2) as u64;
-                event.tick += offset;
-                event.duration_ticks = event.duration_ticks.min(STEP_TICKS - offset - 1);
-                event.groove = Some(GrooveTrace {
-                    offset_ticks: offset,
-                    requested_gate_ticks: part.output.gate_ticks,
-                    ghost_roll: roll,
-                    ghost,
-                    run_before: before,
-                    run_after: after,
-                    velocity_factor: g.contour(before, after)
-                        * if ghost { g.ghost_gain } else { 1.0 }
-                        * touch.as_ref().map_or(1.0, |t| {
-                            t.offbeat_factor * t.gap_factor * t.velocity_jitter_factor
-                        }),
-                    touch,
-                });
-            }
-            midi.extend(to_midi(part, event));
-        }
-        let mut history = Vec::new();
-        if part.profile.controls.values().any(|r| r.envelope.is_some()) {
-            for (&s, past) in &neighbors {
-                if s >= step {
-                    continue;
-                }
-                if let Some(event) = past
-                    .iter()
-                    .find(|t| t.part == part.id)
-                    .and_then(|t| t.event.as_ref())
-                    .filter(|e| e.accent.active)
-                {
-                    history.push((
-                        event.tick
-                            + part
-                                .groove
-                                .onset_offset(c.seed, &part.id, s, c.phrase_steps()),
-                        event.accent.amount,
-                    ));
-                }
-            }
-            if let Some(event) = trace.event.as_ref().filter(|e| e.accent.active) {
-                history.push((event.tick, event.accent.amount));
-            }
-        }
-        let (parameters, controls) =
-            super::parameter::resolve(part, step, trace.event.as_ref(), &history);
-        trace.parameters = parameters;
-        midi.extend(controls);
-    }
-    midi.sort_by_key(midi_order);
-    (traces, midi)
+    Compiled::new(c).resolve_step(step)
 }
 
 /// Resolve one member Part with the same dependency graph used by live playback.
@@ -483,9 +361,9 @@ pub fn midi_order(event: &MidiEvent) -> (u64, u8, [u8; 3]) {
     } else if event.boundary_reset {
         1
     } else if event.bytes[0] & 0xf0 == 0xb0 {
-        2
+        if event.reset_value.is_none() { 2 } else { 3 }
     } else {
-        3
+        4
     };
     (event.tick, priority, event.bytes)
 }

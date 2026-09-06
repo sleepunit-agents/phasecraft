@@ -1,6 +1,9 @@
 use phasecraft::{
-    config::{Composition, MAX_PARTS},
-    engine::{Expression, resolve, resolve_step},
+    music::{Composition, MAX_PARTS},
+    music::{
+        resolve::{resolve, resolve_step},
+        rhythm::Expression,
+    },
 };
 
 fn techno() -> Composition {

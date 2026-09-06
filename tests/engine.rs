@@ -1,6 +1,6 @@
 use phasecraft::{
-    config::{Composition, ProbabilityMode},
-    engine::*,
+    music::{Composition, ProbabilityMode},
+    music::{resolve::*, rhythm::*},
 };
 fn config() -> Composition {
     Composition::parse(include_str!("../examples/quickstart/hat.toml")).unwrap()
@@ -219,7 +219,7 @@ fn malformed_configs_fail_before_playback() {
         source.replace("note = 42", "note = 128"),
         source.replace("amount = 0.8", "amount = nan"),
         source.replace("probability = 0.85", "probabilty = 0.85"),
-        source.replace("note = 42", "note = 42\ngate_ticks = 240"),
+        source.replace("note = 42", "note = 42\ngate_ticks = 5761"),
     ] {
         assert!(Composition::parse(&text).is_err(), "accepted: {text}");
     }
@@ -235,5 +235,5 @@ fn decision_v1_golden_value_survives_build_and_platform_changes() {
 
 // Existing one-Part invariants continue to exercise the same resolver.
 fn resolve(c: &Composition, step: u64) -> StepTrace {
-    phasecraft::engine::resolve(c, &c.parts[0], step)
+    phasecraft::music::resolve::resolve(c, &c.parts[0], step)
 }

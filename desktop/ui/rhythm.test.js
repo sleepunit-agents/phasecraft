@@ -6,6 +6,7 @@ import {
   position,
   expression,
   visualProgress,
+  visibleTraces,
 } from "./rhythm.js";
 test("ring uses the engine Euclidean convention including signed rotation", () => {
   assert.equal(
@@ -51,4 +52,18 @@ test("cursor interpolates a sixteenth at tempo and stops at stale step boundary"
   assert.equal(visualProgress(snapshot, 5000), 1);
   assert.equal(visualProgress({ ...snapshot, playing: false }, 62.5), 0);
   assert.equal(visualProgress(snapshot, 62.5, true), 0);
+});
+
+test("mixed subdivisions select reached source positions without displaying a future attack", () => {
+  const old = { part: "hat", tick: 0, cell_ticks: 160 };
+  const next = { part: "hat", tick: 160, cell_ticks: 160 };
+  const kick = { part: "kick", tick: 0 };
+  const snapshot = {
+    playing: true,
+    step: 0,
+    progress: 0,
+    traces: [old, next, kick],
+  };
+  assert.deepEqual(visibleTraces(snapshot, 0.5), [old, kick]);
+  assert.deepEqual(visibleTraces(snapshot, 0.75), [next, kick]);
 });

@@ -7,6 +7,7 @@ import {
   position,
   operatorLabel,
   visualProgress,
+  visibleTraces,
 } from "./rhythm.js";
 import "./style.css";
 import { setupController } from "./controllers.js";
@@ -426,6 +427,23 @@ function drawRing(ctx, r, x, y, radius, live, progress, accent, resolved) {
   );
 }
 function drawCard(view, trace, progress = snapshot.progress) {
+  const tick = ((snapshot.step || 0) + progress) * 240;
+  const localProgress = Math.max(
+    0,
+    (tick - trace.tick) / (trace.cell_ticks || 240),
+  );
+  const windowSounding = snapshot.traces.find(
+    (t) => t.part === trace.part && t.sounding,
+  )?.sounding;
+  const soundedEvent = (
+    windowSounding || [trace.event, ...(trace.extra_events || [])]
+  )
+    .filter(Boolean)
+    .find(
+      (e) =>
+        tick >= e.tick &&
+        tick < e.tick + Math.min(156, (trace.cell_ticks || 240) * 0.65),
+    );
   const all = [
     ...rings(trace.trigger.rhythm),
     ...rings(trace.accent.rhythm, "Accent"),
@@ -452,8 +470,7 @@ function drawCard(view, trace, progress = snapshot.progress) {
   ctx.clearRect(0, 0, width, height);
   const cell = width / columns,
     radius = Math.min(30, cell / 2 - 17);
-  const sounded =
-    !!trace.event && progress >= (trace.event.groove?.offset_ticks || 0) / 240;
+  const sounded = !!soundedEvent;
   visible.forEach((r, i) =>
     drawRing(
       ctx,
@@ -462,7 +479,7 @@ function drawCard(view, trace, progress = snapshot.progress) {
       45 + Math.floor(i / columns) * 110,
       radius,
       snapshot.playing && snapshot.step !== null,
-      progress,
+      r.label.startsWith("Shared") ? progress : localProgress,
       !r.label.startsWith("Trigger"),
       sounded && (r.label.startsWith("Trigger") || trace.event?.accent.active),
     ),
@@ -497,7 +514,11 @@ function drawCard(view, trace, progress = snapshot.progress) {
     }
   }
   drawOperators(trace.trigger.rhythm);
-  view.formula.textContent = expression(trace.trigger.rhythm);
+  view.formula.textContent =
+    expression(trace.trigger.rhythm) +
+    " · " +
+    (snapshot.composition.parts.find((p) => p.id === trace.part)?.subdivision ||
+      "1/16");
   view.formula.title =
     "Trigger relationship · hollow highlight means active input without a resolved note";
   const historyY = rows * 110 + 32;
@@ -532,19 +553,14 @@ function drawCard(view, trace, progress = snapshot.progress) {
   ctx.textAlign = "left";
   ctx.font = "9px monospace";
   ctx.fillText("RECENT RESOLVED OUTPUT", 0, historyY + 35);
-  const hit =
-    snapshot.playing &&
-    snapshot.step !== null &&
-    trace.event &&
-    progress >= (trace.event.groove?.offset_ticks || 0) / 240 &&
-    progress < (trace.event.groove?.offset_ticks || 0) / 240 + 0.65;
+  const hit = snapshot.playing && snapshot.step !== null && soundedEvent;
   view.card.classList.toggle("fired", !!hit);
-  view.card.classList.toggle("accented", !!(hit && trace.event.accent.active));
+  view.card.classList.toggle("accented", !!(hit && hit.accent.active));
   view.card.classList.toggle("selected-part", trace.part === selectedPart);
   view.badge.textContent = hit
-    ? trace.event.groove?.ghost
+    ? hit.groove?.ghost
       ? "GHOST"
-      : trace.event.accent.active
+      : hit.accent.active
         ? "ACCENT"
         : "HIT"
     : snapshot.playing
@@ -599,7 +615,7 @@ function controlValue(v, n) {
     : String(n);
 }
 function renderDetail() {
-  const trace = snapshot?.traces.find((t) => t.part === selectedPart);
+  const trace = visibleTraces(snapshot).find((t) => t.part === selectedPart);
   $("detail").hidden = !trace;
   if (!trace) return;
   $("detail-title").textContent = human(selectedPart);
@@ -652,13 +668,32 @@ function renderDetail() {
     const heading = document.createElement("h4");
     heading.textContent = "Groove";
     const detail = document.createElement("p");
-    detail.textContent = `Timing +${g.offset_ticks} ticks · base velocity ×${g.velocity_factor.toFixed(3)} · ${g.ghost ? "ghost hit" : "normal hit"} · ghost roll ${g.ghost_roll.toFixed(3)}`;
+    detail.textContent = `Timing ${g.advance_ticks ? "-" + g.advance_ticks : "+" + g.offset_ticks} ticks · base velocity ×${g.velocity_factor.toFixed(3)} · ${g.ghost ? "ghost hit" : "normal hit"} · ghost roll ${g.ghost_roll.toFixed(3)}`;
     if (g.touch) {
       detail.textContent += ` · offbeat ×${g.touch.offbeat_factor.toFixed(2)} · gap ×${g.touch.gap_factor.toFixed(2)} · touch ×${g.touch.velocity_jitter_factor.toFixed(3)} · requested jitter ${g.touch.requested_jitter_ticks} ticks`;
     }
     const context = document.createElement("p");
     context.textContent = `Run context: ${g.run_before} before / ${g.run_after} after (up to 2 each) · gate ${trace.event.duration_ticks}/${g.requested_gate_ticks} ticks`;
     block.append(heading, detail, context);
+    $("detail-body").append(block);
+  }
+  if (trace.ornaments) {
+    const block = document.createElement("div");
+    block.className = "lane-detail";
+    const heading = document.createElement("h4");
+    heading.textContent = "Hit expansion";
+    const detail = document.createElement("p");
+    const o = trace.ornaments;
+    detail.textContent = `Ratchet ×${o.ratchet_count}${o.ratchet_roll == null ? "" : " · roll " + o.ratchet_roll.toFixed(3)} · flam ${o.flam_active ? "active" : "off"}${o.flam_roll == null ? "" : " · roll " + o.flam_roll.toFixed(3)}`;
+    const times = document.createElement("p");
+    times.textContent =
+      "Attack ticks: " +
+      [trace.event, ...(trace.extra_events || [])]
+        .filter(Boolean)
+        .map((e) => e.tick)
+        .sort((a, b) => a - b)
+        .join(", ");
+    block.append(heading, detail, times);
     $("detail-body").append(block);
   }
   if (trace.event?.controls?.length) {
@@ -741,7 +776,7 @@ function render() {
     ? `Edit rejected. Playing the last valid system. ${snapshot.reload_error}`
     : "";
   if (snapshot.error) error(snapshot.error);
-  for (const trace of snapshot.traces) {
+  for (const trace of visibleTraces(snapshot)) {
     const view = cards.get(trace.part);
     if (view) drawCard(view, trace);
   }
@@ -786,7 +821,7 @@ function animate(now) {
       now - receivedAt,
       reducedMotion.matches,
     );
-    for (const trace of snapshot.traces) {
+    for (const trace of visibleTraces(snapshot, progress)) {
       const view = cards.get(trace.part);
       if (view) drawCard(view, trace, progress);
     }

@@ -278,8 +278,9 @@ Positive rotation delays the pattern; negative rotation advances it. This
 orientation is part of the contract, not a promise of identical knob positions
 on another sequencer.
 
-Time is 960 ticks per quarter; this prototype evaluates sixteenths (240 ticks)
-in 4/4. A phrase defaults to four bars. Continuing cycles of 16, 5, and 7 steps
+Time is 960 ticks per quarter in 4/4. Each Part defaults to sixteenths (240 ticks),
+with optional straight, triplet or dotted subdivisions. A phrase defaults to four bars.
+Continuing sixteenth cycles of 16, 5, and 7 steps
 realign after 560 steps, or 35 bars, irrespective of phrase boundaries. We evaluate
 at an absolute position rather than allocating an LCM-sized event array.
 
@@ -300,14 +301,14 @@ produces velocity 108. Override it with `[part.profile]`, `base`, and `boost`.
 The profile clamps to valid nonzero MIDI velocity. No trigger means no note,
 even when the independent accent decision was admitted.
 
-Output defaults to channel 10 and a 120-tick gate. The drum slice restricts gates
-to 1..239 ticks to avoid overlapping instances of the same MIDI note. Musical
+Output defaults to channel 10 and a 120-tick gate. Gates are shortened to fit
+neighboring attacks and their owning bar; see [timing](docs/timing.md). Musical
 notes remain generator-independent; the output adapter creates note-on/off pairs.
 
-With `--watch`, edits apply when the next phrase boundary enters lookahead.
-An edit after that planning point waits until the following phrase. Invalid edits
-keep the previous configuration running. Tempo and phrase-length changes require
-a restart; seed, rhythms, probability, profiles, and routing fields can reload.
+With `--watch`, a background worker loads and validates edits. Completed candidates
+apply when a phrase boundary enters lookahead. Invalid edits keep the previous
+configuration running. Tempo, subdivision, topology, routing and phrase-layout
+changes require a restart; seed, rhythms, probability and profiles can reload.
 Continuing phase retains absolute transport position across edits. For an exact
 replay of an edited performance, repeat its configuration changes at the same
 boundaries; this slice does not record an edit history.
@@ -354,3 +355,14 @@ and [parameter reset/migration details](docs/parameters.md#prepared-kit-and-exis
 The percussion feature tour now includes procedural sections and prepared-909
 techno, DnB and garage journeys. See [current coverage](docs/current-coverage.md),
 [the listening guide](examples/README.md), and [arrangement authoring](docs/arrangement.md).
+
+## Triplets, dotted time and ornaments
+
+Parts can now use independent `subdivision = "1/8T"` or `"1/16."` clocks alongside
+straight drums. Probabilistic ratchets and flams expand admitted hits; signed groove
+delay allows anticipation within a bar. [Timing semantics and examples](docs/timing.md)
+cover references between grids, note cleanup and the prepared 909 test compositions.
+New projects include **triplet-techno**, **ratchet-breaks** and **dotted-garage**.
+
+Current routing scope: one musical MIDI output port per process, with independent
+Part notes/channels and CC mappings. Tempo is fixed and meter remains 4/4.

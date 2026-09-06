@@ -1,0 +1,35 @@
+# Swung 2-step anchors, dotted rim movement and a triplet hat response.
+tempo = 132
+seed = 132303
+phrase_bars = 4
+
+[parts.kick]
+compose = ["techno.kick", "kit.prepared.kick", "my.garage_swing"]
+trigger.rhythm = { steps = 16, pulses = 3 }
+
+[parts.snare]
+compose = ["dnb.snare", "kit.prepared.snare", "groove.laid_back"]
+ornaments.flam = { spacing = "1/64", probability = 0.4, gain = 0.35 }
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "kit.prepared.closed_hat", "my.garage_swing"]
+trigger.rhythm = { steps = 16, pulses = 11 }
+accent.rhythm = { steps = 7, pulses = 3 }
+ornaments.ratchet = { count = 3, probability = 0.15 }
+profile.base = 64
+
+[parts.open_hat]
+compose = ["techno.open_hat", "kit.prepared.open_hat"]
+subdivision = "1/8T"
+trigger.rhythm = { steps = 12, pulses = 2, rotation = 2 }
+output.gate = "1/16T"
+profile.base = 57
+
+[parts.rim]
+compose = ["techno.rim", "kit.prepared.rim"]
+subdivision = "1/8."
+trigger.rhythm = { op = "a_not_b", a = { steps = 7, pulses = 3 }, b = { part = "kick", mode = "hits" } }
+accent.rhythm = { steps = 5, pulses = 2 }
+groove.delay_ticks = -24
+profile.base = 68
+parameters.pan = { value = 0.25, automation = { repeat = true, segments = [{ to = 0.75, over_bars = 4, curve = "smooth" }, { to = 0.25, over_bars = 4, curve = "smooth" }] } }

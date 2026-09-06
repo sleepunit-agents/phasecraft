@@ -1,5 +1,5 @@
 //! A bounded sequence of procedural snapshots. Nothing here reads files or stores MIDI scores.
-use super::{Composition, STEP_TICKS};
+use super::Composition;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -117,7 +117,9 @@ impl Arrangement {
                         .parts
                         .iter()
                         .zip(&b.composition.parts)
-                        .all(|(a, b)| a.id == b.id && a.output == b.output)
+                        .all(|(a, b)| {
+                            a.id == b.id && a.output == b.output && a.subdivision == b.subdivision
+                        })
             })
     }
 }
@@ -183,36 +185,5 @@ pub fn resolve(
     Vec<super::resolve::StepTrace>,
     Vec<super::resolve::MidiEvent>,
 ) {
-    let a = c.arrangement.as_ref().unwrap();
-    let Some(located) = a.locate(step) else {
-        return (vec![], vec![]);
-    };
-    let (mut traces, mut events) =
-        super::resolve::resolve_step(&located.section.composition, located.musical_step);
-    let shift = (step - located.musical_step) * STEP_TICKS;
-    for e in &mut events {
-        e.tick += shift;
-    }
-    for t in &mut traces {
-        t.step = step;
-        t.tick = step * STEP_TICKS;
-        t.position = format!("{}.{}.{}", step / 16 + 1, step / 4 % 4 + 1, step % 4 + 1);
-        t.section = Some(located.position.clone());
-        if let Some(e) = &mut t.event {
-            e.tick += shift;
-        }
-        for p in &mut t.parameters {
-            for s in &mut p.samples {
-                s.tick += shift;
-            }
-        }
-    }
-    if located.local_step == 0
-        && step > 0
-        && let Some(previous) = a.locate(step - 1)
-    {
-        events.extend(resets(&previous.section.composition, step * STEP_TICKS));
-    }
-    events.sort_by_key(super::resolve::midi_order);
-    (traces, events)
+    super::resolve::Compiled::new(c).resolve_step(step)
 }

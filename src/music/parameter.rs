@@ -207,6 +207,21 @@ pub fn resolve(
     event: Option<&MusicalEvent>,
     history: &[(u64, f64)],
 ) -> (Vec<ParameterTrace>, Vec<MidiEvent>) {
+    resolve_window(
+        part,
+        step * STEP_TICKS,
+        (step + 1) * STEP_TICKS,
+        &event.into_iter().cloned().collect::<Vec<_>>(),
+        history,
+    )
+}
+pub fn resolve_window(
+    part: &Part,
+    start: u64,
+    end: u64,
+    events: &[MusicalEvent],
+    history: &[(u64, f64)],
+) -> (Vec<ParameterTrace>, Vec<MidiEvent>) {
     let names: std::collections::BTreeSet<_> = part
         .parameters
         .keys()
@@ -221,14 +236,14 @@ pub fn resolve(
     if names.is_empty() {
         return (Vec::new(), Vec::new());
     }
-    let start = step * STEP_TICKS;
-    let mut ticks: Vec<_> = (0..STEP_TICKS)
+    let mut ticks: Vec<_> = (0..end - start)
         .step_by(CONTROL_TICKS as usize)
         .map(|t| start + t)
         .collect();
-    if let Some(event) = event {
+    for event in events {
         ticks.extend([event.tick, event.tick + event.duration_ticks]);
     }
+    ticks.retain(|&t| t >= start && t < end);
     ticks.sort_unstable();
     ticks.dedup();
     let mut traces = Vec::new();
@@ -247,10 +262,9 @@ pub fn resolve(
                 let envelope = response
                     .and_then(|r| r.envelope.as_ref())
                     .map(|e| e.evaluate(tick, history));
-                let momentary = event
-                    .filter(|e| {
-                        tick >= e.tick && tick < e.tick + e.duration_ticks && e.accent.active
-                    })
+                let momentary = events
+                    .iter()
+                    .find(|e| tick >= e.tick && tick < e.tick + e.duration_ticks && e.accent.active)
                     .map_or(0.0, |e| e.accent.amount * boost);
                 let emphasis = envelope.as_ref().map_or(momentary, |e| e.level * boost);
                 let amount = (base + emphasis).clamp(0.0, 1.0);

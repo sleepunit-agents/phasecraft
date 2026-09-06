@@ -1,0 +1,33 @@
+# Straight kick; triplet hats; a dotted rim cycle that walks through the bars.
+# The prepared 909 Set uses the same mappings as the earlier control examples.
+tempo = 132
+seed = 132316
+phrase_bars = 4
+
+[parts.kick]
+compose = ["techno.kick", "kit.prepared.kick"]
+
+[parts.snare]
+compose = ["dnb.snare", "kit.prepared.snare"]
+ornaments.flam = { spacing = "1/64T", probability = 0.35, gain = 0.4 }
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "kit.prepared.closed_hat", "groove.ramp_up"]
+subdivision = "1/8T"
+trigger.rhythm = { steps = 12, pulses = 10 }
+accent.rhythm = { steps = 7, pulses = 3 }
+ornaments.ratchet = { count = 3, probability = 0.2 }
+profile.base = 62
+parameters.cutoff = { value = 0.4, automation = { repeat = true, segments = [{ to = 0.9, over_bars = 8, curve = "smooth" }, { to = 0.4, over_bars = 8, curve = "smooth" }] } }
+
+[parts.open_hat]
+compose = ["techno.open_hat", "kit.prepared.open_hat"]
+profile.base = 62
+
+[parts.rim]
+compose = ["techno.rim", "kit.prepared.rim"]
+subdivision = "1/16."
+trigger.rhythm = { op = "a_not_b", a = { steps = 5, pulses = 2 }, b = { part = "kick", mode = "hits" } }
+accent.rhythm = { steps = 7, pulses = 2 }
+profile.base = 65
+parameters.pan.value = 0.65

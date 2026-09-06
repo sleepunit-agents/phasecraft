@@ -85,3 +85,7 @@ combine groove, shared accent memory, cutoff/level/pan/decay motion and procedur
 sections. Each plays 32 bars and stops. They use **Phasecraft 909 Prepared.als**.
 Change arrangement `repeat` to true for a performance loop. Shared motion lives in
 `patterns/performances.toml`; the composition files describe their differences.
+
+## More rhythmic time
+
+Try **triplet-techno**, **ratchet-breaks**, and **dotted-garage** with the existing prepared 909 Set. See [TIMING.md](TIMING.md) for subdivisions, musical gates, ratchets, flams and early hits.

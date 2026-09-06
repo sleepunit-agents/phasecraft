@@ -1,4 +1,5 @@
 pub mod ports;
+mod reload;
 pub mod sync;
 pub mod transport;
 use crate::music::{PPQN, resolve::MidiEvent};

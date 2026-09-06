@@ -119,6 +119,14 @@ impl Expression {
         phrase_steps: u64,
         reference: &dyn Fn(&str, ReferenceMode) -> bool,
     ) -> RhythmTrace {
+        self.evaluate_position(absolute_step, absolute_step % phrase_steps, reference)
+    }
+    pub fn evaluate_position(
+        &self,
+        absolute_step: u64,
+        phrase_position: u64,
+        reference: &dyn Fn(&str, ReferenceMode) -> bool,
+    ) -> RhythmTrace {
         match self {
             Self::Euclidean {
                 steps,
@@ -127,7 +135,7 @@ impl Expression {
                 reset_on_phrase,
             } => {
                 let position = if *reset_on_phrase {
-                    absolute_step % phrase_steps
+                    phrase_position
                 } else {
                     absolute_step
                 };
@@ -151,8 +159,8 @@ impl Expression {
                 active: reference(id, *mode),
             },
             Self::Binary { op, a, b } => {
-                let a = Box::new(a.evaluate(absolute_step, phrase_steps, reference));
-                let b = Box::new(b.evaluate(absolute_step, phrase_steps, reference));
+                let a = Box::new(a.evaluate_position(absolute_step, phrase_position, reference));
+                let b = Box::new(b.evaluate_position(absolute_step, phrase_position, reference));
                 let active = op.apply(a.active(), b.active());
                 RhythmTrace::Binary {
                     op: *op,

@@ -272,6 +272,19 @@ const FILES: &[(&str, &str)] = &[
         "compositions/garage-journey.toml",
         include_str!("../../templates/project/compositions/garage-journey.toml"),
     ),
+    (
+        "compositions/triplet-techno.toml",
+        include_str!("../../templates/project/compositions/triplet-techno.toml"),
+    ),
+    (
+        "compositions/ratchet-breaks.toml",
+        include_str!("../../templates/project/compositions/ratchet-breaks.toml"),
+    ),
+    (
+        "compositions/dotted-garage.toml",
+        include_str!("../../templates/project/compositions/dotted-garage.toml"),
+    ),
+    ("TIMING.md", include_str!("../../docs/timing.md")),
     ("ACCENTS.md", include_str!("../../docs/accents.md")),
     (
         "README.md",

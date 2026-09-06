@@ -1,6 +1,9 @@
 use phasecraft::{
-    config::Composition,
-    engine::{BooleanOp, Expression, ReferenceMode, resolve_step},
+    music::Composition,
+    music::{
+        resolve::resolve_step,
+        rhythm::{BooleanOp, Expression, ReferenceMode},
+    },
 };
 use std::path::PathBuf;
 fn example(name: &str) -> Composition {

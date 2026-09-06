@@ -15,8 +15,8 @@ pub enum RunContour {
 pub struct Groove {
     /// Share of each eighth-note pair occupied by its first sixteenth.
     pub swing: f64,
-    /// Additional laid-back offset, in musical ticks (non-negative).
-    pub delay_ticks: u64,
+    /// Signed musical offset: negative values anticipate the source hit.
+    pub delay_ticks: i64,
     pub run: RunContour,
     pub ghost_probability: f64,
     pub ghost_gain: f64,
@@ -78,8 +78,8 @@ impl Groove {
         if !self.swing.is_finite() || !(0.5..=0.75).contains(&self.swing) {
             return Err("groove.swing must be within 0.5..0.75 (0.5 is straight)".into());
         }
-        if self.delay_ticks > 60 {
-            return Err("groove.delay_ticks must be within 0..60".into());
+        if !(-60..=60).contains(&self.delay_ticks) {
+            return Err("groove.delay_ticks must be within -60..60".into());
         }
         for (name, value) in [
             ("ghost_probability", self.ghost_probability),
@@ -110,6 +110,10 @@ impl Groove {
             ProbabilityMode::PhraseLocked => step % phrase_steps,
             ProbabilityMode::Continuous => step,
         };
+        self.timing_jitter_identity(seed, id, identity)
+    }
+    pub fn timing_jitter_identity(&self, seed: u64, id: &str, identity: u64) -> (f64, i64) {
+        let h = self.humanize.clone().unwrap_or_default();
         let roll = super::resolve::decision_roll(seed, id, "groove", identity, "humanize_timing");
         (
             roll,
@@ -117,13 +121,13 @@ impl Groove {
         )
     }
     pub fn onset_offset(&self, seed: u64, id: &str, step: u64, phrase_steps: u64) -> u64 {
-        (self.offset(step) as i64 + self.timing_jitter(seed, id, step, phrase_steps).1)
+        (self.offset(step) + self.timing_jitter(seed, id, step, phrase_steps).1)
             .clamp(0, super::STEP_TICKS as i64 - 2) as u64
     }
-    pub fn offset(&self, step: u64) -> u64 {
+    pub fn offset(&self, step: u64) -> i64 {
         self.delay_ticks
             + if step % 2 == 1 {
-                ((self.swing - 0.5) * 2.0 * STEP_TICKS as f64).round() as u64
+                ((self.swing - 0.5) * 2.0 * STEP_TICKS as f64).round() as i64
             } else {
                 0
             }
@@ -141,8 +145,13 @@ impl Groove {
         }
     }
 }
+fn is_zero(v: &u64) -> bool {
+    *v == 0
+}
 #[derive(Clone, Debug, Serialize)]
 pub struct GrooveTrace {
+    #[serde(skip_serializing_if = "is_zero")]
+    pub advance_ticks: u64,
     pub offset_ticks: u64,
     pub requested_gate_ticks: u64,
     pub ghost_roll: f64,

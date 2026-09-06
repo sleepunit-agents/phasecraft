@@ -12,6 +12,7 @@ pub struct CycleSpan {
     /// Common structural phase alignment, not a promise of identical realized events.
     /// None means the common multiple exceeds u64 (or a future source has no known cycle).
     pub phase_alignment_steps: Option<u64>,
+    pub phase_alignment_ticks: Option<u64>,
 }
 fn lcm(a: Option<u64>, b: Option<u64>) -> Option<u64> {
     let (a, b) = (a?, b?);
@@ -24,6 +25,7 @@ fn lcm(a: Option<u64>, b: Option<u64>) -> Option<u64> {
 fn expression(
     e: &Expression,
     phrase: u64,
+    cell: u64,
     references: &BTreeMap<&str, Option<u64>>,
 ) -> Option<u64> {
     match e {
@@ -31,32 +33,49 @@ fn expression(
             steps,
             reset_on_phrase,
             ..
-        } => Some(if *reset_on_phrase {
-            phrase
-        } else {
-            u64::from(*steps)
-        }),
+        } => {
+            if *reset_on_phrase {
+                lcm(Some(phrase), Some(cell))
+            } else {
+                u64::from(*steps).checked_mul(cell)
+            }
+        }
         Expression::Binary { a, b, .. } => lcm(
-            expression(a, phrase, references),
-            expression(b, phrase, references),
+            expression(a, phrase, cell, references),
+            expression(b, phrase, cell, references),
         ),
-        Expression::Part { id, .. } => references[id.as_str()],
+        Expression::Part { id, .. } => lcm(references[id.as_str()], Some(cell)),
     }
 }
 fn alignment(c: &Composition, p: &Part) -> Option<u64> {
     let mut refs = BTreeMap::new();
     for part in c.evaluation_order().expect("validated composition") {
-        let cycle = expression(&part.trigger.rhythm, c.phrase_steps(), &refs);
+        let cycle = expression(
+            &part.trigger.rhythm,
+            c.phrase_steps() * STEP_TICKS,
+            part.subdivision.0,
+            &refs,
+        );
         refs.insert(part.id.as_str(), cycle);
     }
     let mut cycle = lcm(
         refs[p.id.as_str()],
-        expression(&p.accent.rhythm, c.phrase_steps(), &refs),
+        expression(
+            &p.accent.rhythm,
+            c.phrase_steps() * STEP_TICKS,
+            p.subdivision.0,
+            &refs,
+        ),
     );
     for name in &p.accent.sources {
         cycle = lcm(
             cycle,
-            expression(&c.accents[name].rhythm, c.phrase_steps(), &refs),
+            expression(
+                &c.accents[name].rhythm,
+                c.phrase_steps() * STEP_TICKS,
+                STEP_TICKS,
+                &refs,
+            ),
         );
     }
     cycle
@@ -81,7 +100,10 @@ pub fn spans(c: &Composition, part_id: &str, start: u64, end: u64) -> Vec<CycleS
                 end_tick: until * STEP_TICKS,
                 phase_origin_tick: origin * STEP_TICKS,
                 phrase_steps: effective.phrase_steps(),
-                phase_alignment_steps: alignment(effective, p),
+                phase_alignment_steps: alignment(effective, p)
+                    .filter(|n| n.is_multiple_of(STEP_TICKS))
+                    .map(|n| n / STEP_TICKS),
+                phase_alignment_ticks: alignment(effective, p),
             });
         }
         step = until;

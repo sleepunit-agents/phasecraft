@@ -53,7 +53,7 @@ an unknown alignment. Per-step traces still expose individual leaf phases.
   lane decisions cover current examples. New algebra nodes need a concrete use case.
 - Universal density/variation knobs, automatic style generation and phrase mutation:
   their semantics remain intentionally unearned. Probability is not density.
-- Tempo/meter changes, subdivisions beyond the global sixteenth grid, transport
+- Tempo/meter changes, cross-bar pickups, arbitrary tuplets beyond triplets, transport
   seek/resume, clock following, multiple simultaneous output ports, and recording
   the edit history of a live performance.
 - A general configurable synthesizer template generator or mapped tune/drive/space/
@@ -72,3 +72,7 @@ arrangements have automated musical, scheduler and UI coverage here. They still
 need the same Windows/Live listening pass. Silent MIDI tests cannot prove audio
 latency or that a particular plugin's MIDI mapping is enabled. No new Set or manual
 mapping is required for the new prepared-kit examples.
+
+## Rhythmic time extension
+
+[Timing](timing.md) now covers per-Part straight/triplet/dotted clocks, musical gate syntax, independently admitted ratchets/flams, anticipation, tick-based cycle metadata and mixed-grid reference semantics. The compiled resolver caches dependencies and neighboring decisions; file reloads load and compile off the producer thread. The three timing examples await the Windows/Live listening pass.

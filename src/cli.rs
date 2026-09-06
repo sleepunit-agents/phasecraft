@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use phasecraft::playback::ports::open_output;
 use phasecraft::playback::transport::{PlayOptions, play};
 use phasecraft::{
-    music::{Composition, STEP_TICKS, resolve::resolve_step},
+    music::{Composition, STEP_TICKS, resolve::Compiled},
     playback::SilentOutput,
 };
 use std::{
@@ -160,8 +160,9 @@ pub fn run() -> Result<(), String> {
                 .filter(|end| *end <= u64::MAX / STEP_TICKS)
                 .ok_or("step range overflows musical time")?;
             let mut out = io::BufWriter::new(io::stdout().lock());
+            let mut compiled = Compiled::new(&c);
             for step in start..end {
-                for trace in resolve_step(&c, step).0 {
+                for trace in compiled.resolve_step(step).0 {
                     if human {
                         let part = c
                             .at_step(step)

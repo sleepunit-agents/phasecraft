@@ -234,16 +234,30 @@ impl Player {
         }
         while self.pending.front().is_some_and(|f| f.deadline <= now) {
             let frame = self.pending.pop_front().unwrap();
-            let parts = frame
-                .traces
-                .iter()
-                .map(|t| Hit {
+            let mut hits = std::collections::BTreeMap::<String, Hit>::new();
+            for t in &frame.traces {
+                let hit = hits.entry(t.part.clone()).or_insert_with(|| Hit {
                     id: t.part.clone(),
-                    eligible: t.trigger.rhythm.active(),
-                    fired: t.event.is_some(),
-                    accented: t.event.as_ref().is_some_and(|e| e.accent.active),
-                })
-                .collect();
+                    eligible: false,
+                    fired: false,
+                    accented: false,
+                });
+                hit.eligible |= t.trigger.rhythm.active();
+                for e in t
+                    .sounding
+                    .as_ref()
+                    .map(|v| v.iter().collect::<Vec<_>>())
+                    .unwrap_or_else(|| t.event.iter().chain(&t.extra_events).collect())
+                {
+                    if e.tick >= frame.step * crate::music::STEP_TICKS
+                        && e.tick < (frame.step + 1) * crate::music::STEP_TICKS
+                    {
+                        hit.fired = true;
+                        hit.accented |= e.accent.active;
+                    }
+                }
+            }
+            let parts = hits.into_values().collect();
             self.history.push_back(HistoryStep {
                 step: frame.step,
                 parts,

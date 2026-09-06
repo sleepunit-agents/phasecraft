@@ -43,7 +43,7 @@ fn scaffold_is_portable_valid_and_preserves_proven_beats() {
     fs::rename(original, &p).unwrap();
     let report = project::validate(&p);
     assert!(report.valid, "{:?}", report.errors);
-    assert_eq!(report.files.len(), 15);
+    assert_eq!(report.files.len(), 18);
     assert_eq!(
         project::load(&p).unwrap().midi.port.as_deref(),
         Some("Phasecraft")
@@ -215,7 +215,7 @@ fn validation_checks_all_compositions_and_produces_machine_readable_errors() {
     assert!(!output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["valid"], false);
-    assert_eq!(report["files"].as_array().unwrap().len(), 15);
+    assert_eq!(report["files"].as_array().unwrap().len(), 18);
     assert!(report["errors"][0].as_str().unwrap().contains("dnb.toml"));
     assert!(project::validate(&p.join("compositions/techno.toml")).valid);
 }

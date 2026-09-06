@@ -18,8 +18,8 @@ use the same ordinary `[library.behaviors."my.name".groove]` structure.
 
 | Parameter | Meaning |
 | --- | --- |
-| `swing` | First sixteenth's share of an eighth-note pair, 0.5–0.75. 0.5 is straight; 0.58 delays odd sixteenths by 38 ticks. |
-| `delay_ticks` | Additional laid-back offset, 0–60 musical ticks. 960 ticks = one quarter note. |
+| `swing` | First subdivision's share of a pair, 0.5–0.75. 0.5 is straight; 0.58 delays odd sixteenths by 38 ticks. |
+| `delay_ticks` | Signed offset, -60–60 musical ticks. Negative values anticipate. 960 ticks = one quarter note. |
 | `run` | `none`, `ramp_up`, or `low_high_low`. Applies to runs of at least three adjacent admitted hits. |
 | `ghost_probability` | Independent probability of softening a fired, unaccented hit; default zero. |
 | `ghost_gain` | Multiplier for a ghost's base velocity, default 0.45. |
@@ -39,11 +39,10 @@ boost is applied afterward. Accented hits are never ghosted. MIDI velocity remai
 trigger admission. Ghosting adds quiet articulation to eligible hits; extra snare
 chatter in the garage example is explicitly supplied by its trigger expression.
 
-This first timing layer only delays hits. It keeps every note-on and note-off
-inside the source sixteenth, shortening the gate when needed. The inspector shows
-the requested and resulting gates. This preserves scheduler ordering and clean
-phrase reloads; early hits, offsets across steps, triplets and arbitrary
-subdivisions remain future work. MIDI clock itself always stays straight.
+Timing can delay or anticipate hits across source steps. Bar boundaries keep
+ownership clean for configuration swaps. Independent subdivisions, ratchets,
+flams, gate clipping and exact-grid references are specified in [timing](timing.md).
+MIDI clock itself always stays straight.
 
 ## Listening
 

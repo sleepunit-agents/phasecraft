@@ -1,4 +1,4 @@
-use phasecraft::{engine::MidiEvent, playback::*};
+use phasecraft::{music::resolve::MidiEvent, playback::*};
 use std::{
     sync::{Arc, Mutex, atomic::AtomicBool, mpsc},
     time::{Duration, Instant},

@@ -47,3 +47,14 @@ export function visualProgress(snapshot, elapsedMs, reducedMotion = false) {
         : Math.max(0, elapsedMs) / (60000 / snapshot.composition.tempo / 4)),
   );
 }
+
+// Select the latest source position that has actually been reached on each Part's clock.
+export function visibleTraces(snapshot, progress = snapshot?.progress || 0) {
+  if (!snapshot) return [];
+  const tick = ((snapshot.step || 0) + progress) * 240;
+  const chosen = new Map();
+  for (const trace of snapshot.traces) {
+    if (trace.tick <= tick || !snapshot.playing) chosen.set(trace.part, trace);
+  }
+  return [...chosen.values()];
+}

@@ -1,0 +1,30 @@
+# A 172 BPM backbeat with independently admitted rolls and grace notes.
+tempo = 172
+seed = 172316
+phrase_bars = 4
+
+[parts.kick]
+compose = ["dnb.kick", "kit.prepared.kick"]
+
+[parts.snare]
+compose = ["dnb.snare", "kit.prepared.snare"]
+ornaments.flam = { spacing = "1/64T", probability = 0.55, gain = 0.45 }
+groove.delay_ticks = -18
+
+[parts.closed_hat]
+compose = ["dnb.closed_hat", "kit.prepared.closed_hat"]
+ornaments.ratchet = { count = 3, probability = 0.2 }
+profile.base = 64
+accent.rhythm = { steps = 7, pulses = 2 }
+
+[parts.open_hat]
+compose = ["dnb.open_hat", "kit.prepared.open_hat"]
+profile.base = 60
+
+[parts.rim]
+compose = ["dnb.rim", "kit.prepared.rim"]
+subdivision = "1/16T"
+trigger.rhythm = { steps = 24, pulses = 5, rotation = 2 }
+ornaments.ratchet = { count = 2, probability = 0.35, probability_mode = "continuous" }
+profile.base = 50
+parameters.pan.value = 0.3

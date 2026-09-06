@@ -93,3 +93,5 @@ Try `sections.toml` in a newly created project with **Phasecraft 909 Prepared.al
 It opens A's hats, derives a busier A2 with moving rim pan, then strips the kick and
 clap for B. No new Ableton mappings are needed. Existing project folders are never
 rewritten by updating the application.
+
+Subdivisions, ornaments and anticipation obey the [timing boundary rules](timing.md): source clocks can continue independently, while each bar owns and finishes its audible attacks. Subdivision changes require restarting playback.

@@ -35,6 +35,19 @@ pub(super) fn rhythm(value: &mut Value) -> Result<(), String> {
 }
 
 pub(super) fn behavior(fields: &mut Table) -> Result<(), String> {
+    if let Some(output) = fields.get_mut("output").and_then(Value::as_table_mut)
+        && let Some(gate) = output.remove("gate")
+    {
+        if output.contains_key("gate_ticks") {
+            return Err("choose output.gate or output.gate_ticks, not both".into());
+        }
+        let value = crate::music::time::NoteValue::parse(
+            gate.as_str()
+                .ok_or("output.gate must be a note value string")?,
+        )?;
+        output.insert("gate_ticks".into(), Value::Integer(value.0 as i64));
+    }
+
     for lane in ["trigger", "accent"] {
         if let Some(value) = fields
             .get_mut(lane)

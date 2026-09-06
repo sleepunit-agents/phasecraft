@@ -1,5 +1,5 @@
 use crate::{
-    music::{Composition, MAX_PARTS, STEP_TICKS, resolve::resolve_step},
+    music::{Composition, MAX_PARTS, STEP_TICKS, resolve::Compiled},
     playback::{MidiOutput, MusicalClock, dispatch_loop_with_sync, sync::SyncOptions},
 };
 use std::{
@@ -63,17 +63,19 @@ pub fn run_with_controls<S: MidiOutput + 'static>(
         (Some(a), Some(b)) => Some(a.min(b)),
         (a, b) => a.or(b),
     };
+    let mut compiled = Compiled::new(&c);
     let clock = MusicalClock { tempo: c.tempo };
     let origin = Instant::now() + options.lookahead;
     let ahead_steps = (options.lookahead.as_secs_f64()
         / clock.time_at_tick(STEP_TICKS).as_secs_f64())
     .ceil() as usize;
-    let (tx, rx) = mpsc::sync_channel(
-        (2 + (crate::music::parameter::MAX_SAMPLES_PER_STEP + 1)
-            * crate::music::accent::MAX_CONTROLS)
-            * MAX_PARTS
-            * (ahead_steps + 2),
-    );
+    // Up to six 64th-triplet source positions, each expanded into eight ratchets
+    // plus a flam; reserve two neighboring positions for anticipated gates.
+    let hits = 8 * 9;
+    let controls = crate::music::accent::MAX_CONTROLS;
+    let per_window = hits * 2 * (controls + 1)
+        + (crate::music::parameter::MAX_SAMPLES_PER_STEP + hits * 2) * controls;
+    let (tx, rx) = mpsc::sync_channel(per_window * MAX_PARTS * (ahead_steps + 2));
     let dispatch_running = running.clone();
     // Late threshold is shorter than one sixteenth even at the maximum BPM.
     let worker = std::thread::spawn(move || {
@@ -101,6 +103,9 @@ pub fn run_with_controls<S: MidiOutput + 'static>(
             ""
         }
     );
+    let watcher = options
+        .watch
+        .then(|| super::reload::Watcher::new(options.file.clone(), c.clone()));
     let mut last_source = serde_json::to_string(&c).map_err(|e| e.to_string())?;
     let mut last_error = String::new();
     let mut visual_composition = Arc::new(c.clone());
@@ -115,27 +120,22 @@ pub fn run_with_controls<S: MidiOutput + 'static>(
                 std::thread::sleep(Duration::from_millis(2));
                 continue;
             }
-            if options.watch && step > 0 && step % c.phrase_steps() == 0 {
-                let reload = Composition::read(&options.file).and_then(|next| {
-                    if next.tempo != c.tempo || next.phrase_bars != c.phrase_bars {
-                        return Err("restart playback to change tempo or phrase_bars".into());
-                    }
-                    if !c.same_arrangement_layout(&next) {
-                        return Err("restart playback to change arrangement layout, phrase lengths or routing".into());
-                    }
-                    Ok(next)
-                });
+            if step > 0
+                && step % c.phrase_steps() == 0
+                && let Some(reload) = watcher.as_ref().and_then(|w| w.take())
+            {
                 match reload {
                     Ok(next) => {
                         last_error.clear();
-                        let source = serde_json::to_string(&next).map_err(|e| e.to_string())?;
-                        if source != last_source {
-                            last_source = source;
-                            c = next;
+                        if next.source != last_source {
+                            last_source = next.source;
+                            c = next.composition;
+                            compiled = next.compiled;
                             if let Some(live) = &live {
                                 let mut live = live.lock().map_err(|e| e.to_string())?;
                                 live.rebase(c.clone());
                                 live.reset();
+                                live_revision = Some(live.revision);
                             }
                             visual_composition = Arc::new(c.clone());
                             eprintln!(
@@ -160,6 +160,7 @@ pub fn run_with_controls<S: MidiOutput + 'static>(
                     if let Some(next) = live.composition() {
                         c = next;
                         visual_composition = Arc::new(c.clone());
+                        compiled = Compiled::new(&c);
                     }
                     live_revision = Some(live.revision);
                 }
@@ -171,7 +172,7 @@ pub fn run_with_controls<S: MidiOutput + 'static>(
                 step += 1;
                 continue;
             }
-            let (traces, mut events) = resolve_step(&c, step);
+            let (traces, mut events) = compiled.resolve_step(step);
             // Handle a producer stall that jumped over the exact section boundary.
             // Use the last actually scheduled snapshot, not a guessed previous section.
             if let (Some(a), Some((previous_step, previous))) = (&c.arrangement, &last_scheduled) {

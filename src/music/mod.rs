@@ -2,9 +2,11 @@ pub mod accent;
 pub mod arrangement;
 pub mod cycle;
 pub mod groove;
+pub mod ornament;
 pub mod parameter;
 pub mod resolve;
 pub mod rhythm;
+pub mod time;
 use rhythm::Expression;
 use serde::{Deserialize, Serialize};
 
@@ -92,6 +94,10 @@ fn amount() -> f64 {
 #[serde(deny_unknown_fields)]
 pub struct Part {
     pub id: String,
+    #[serde(default, skip_serializing_if = "time::NoteValue::is_default")]
+    pub subdivision: time::NoteValue,
+    #[serde(default, skip_serializing_if = "ornament::Ornaments::is_default")]
+    pub ornaments: ornament::Ornaments,
     pub trigger: Lane,
     pub accent: AccentLane,
     pub output: Output,
@@ -163,7 +169,7 @@ impl Default for AccentProfile {
 }
 impl Composition {
     pub fn parse(text: &str) -> Result<Self, String> {
-        crate::library::expand(text, None)?
+        crate::authoring::library::expand(text, None)?
             .try_into()
             .map_err(|e: toml::de::Error| e.to_string())
     }
@@ -312,7 +318,11 @@ impl Part {
             .rhythm
             .validate(0)
             .map_err(|e| format!("accent.rhythm: {e}"))?;
+        if !self.subdivision.valid() {
+            return Err("invalid Part subdivision".into());
+        }
         self.groove.validate()?;
+        self.ornaments.validate(self.subdivision.0)?;
         accent::validate(&self.profile.controls, &self.output.controls)?;
         for (name, lane) in &self.parameters {
             if !self.output.controls.contains_key(name) {
@@ -327,8 +337,11 @@ impl Part {
         if !(1..=16).contains(&o.channel) || o.note > 127 {
             return Err("MIDI channel must be 1..16 and note 0..127".into());
         }
-        if o.gate_ticks == 0 || o.gate_ticks >= STEP_TICKS {
-            return Err("gate_ticks must be 1..239 for this drum slice".into());
+        if o.gate_ticks == 0 || o.gate_ticks > PPQN * 6 {
+            return Err(
+                "gate_ticks must be 1..5760; gates are limited by the next rhythmic cell and bar"
+                    .into(),
+            );
         }
         if !(1..=127).contains(&self.profile.base) || self.profile.boost > 127 {
             return Err("velocity base must be 1..127 and boost 0..127".into());
