@@ -102,3 +102,6 @@ repeats. It targets the generated compact-v1 cutoff Set. See
 `quickstart/movement.toml` requires **Phasecraft 909 Prepared.als**. It combines
 cutoff, level, pan and decay; Stop restores each touched parameter's kit default.
 The original `intro` still works with the compact cutoff Set.
+
+`quickstart/breathing.toml`: smooth six-bar opening, two-bar hold, six-bar closing,
+two-bar hold, repeating independently of the four-bar rhythm. Prepared 909 Set.

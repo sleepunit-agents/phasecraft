@@ -1,0 +1,36 @@
+# Prepared 909 Set. Sixteen-bar breathing motion across a four-bar rhythm phrase.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[library.behaviors."my.breathe".parameters.cutoff]
+value = 0.15
+automation.repeat = true
+automation.segments = [
+  { to = 0.9, over_bars = 6, curve = "smooth" },
+  { to = 0.9, over_bars = 2, curve = "hold" },
+  { to = 0.15, over_bars = 6, curve = "smooth" },
+  { to = 0.15, over_bars = 2, curve = "hold" },
+]
+
+[parts.kick]
+use = "my.techno_kick"
+
+[parts.clap]
+use = "techno.clap"
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "kit.prepared.closed_hat", "my.breathe"]
+profile.controls.cutoff = { boost = 0.1 }
+
+[parts.open_hat]
+compose = ["techno.open_hat", "kit.prepared.open_hat", "my.breathe"]
+parameters.pan.value = 0.25
+parameters.pan.automation = { repeat = true, segments = [
+  { to = 0.75, over_bars = 8, curve = "smooth" },
+  { to = 0.25, over_bars = 8, curve = "smooth" },
+] }
+
+[parts.rim]
+compose = ["techno.rim", "kit.prepared.rim", "my.breathe"]
+profile.controls.cutoff = { boost = 0.15 }

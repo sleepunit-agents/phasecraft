@@ -64,3 +64,6 @@ control to the cutoff opening. Bindings and neutral Stop values live in
 `kits/909-prepared.toml`. Stop restores defaults before trying another composition.
 Level is independent of note velocity. Decay is the closed hat's envelope decay
 and other voices' release/tail control. See PARAMETERS.md for reset semantics.
+
+`breathing` demonstrates sixteen-bar curved, held and repeating cutoff motion.
+It uses the same prepared Set; no additional mappings are needed.

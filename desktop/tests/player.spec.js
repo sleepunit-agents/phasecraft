@@ -114,6 +114,7 @@ async function boot(page) {
                                   {
                                     tick: t.tick + 120,
                                     base: 0.7,
+                                    automation: { segment: 2, cycle: 1, curve: "smooth", progress: 0.4 },
                                     emphasis: 0,
                                     amount: 0.7,
                                     value: 89,
@@ -319,4 +320,5 @@ test("parameter inspector advances through a rest without flashing a note", asyn
   await expect(page.locator("#detail-body")).toContainText(
     "channel 15 CC 75: 89",
   );
+  await expect(page.locator("#detail-body")).toContainText("segment 2, cycle 2 (smooth)");
 });

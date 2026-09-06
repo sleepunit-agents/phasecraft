@@ -435,7 +435,8 @@ function renderDetail() {
         parameter.samples.filter((s) => s.tick <= tick).at(-1) ||
         parameter.samples[0];
       const detail = document.createElement("p");
-      detail.textContent = `${human(parameter.name)} · base ${sample.base.toFixed(3)} · emphasis ${sample.emphasis.toFixed(3)} → ${sample.amount.toFixed(3)} · channel ${parameter.channel} CC ${parameter.cc}: ${sample.value}`;
+      const motion = sample.automation ? ` · segment ${sample.automation.segment}, cycle ${sample.automation.cycle + 1} (${human(sample.automation.curve)})` : "";
+      detail.textContent = `${human(parameter.name)} · base ${sample.base.toFixed(3)} · emphasis ${sample.emphasis.toFixed(3)} → ${sample.amount.toFixed(3)} · channel ${parameter.channel} CC ${parameter.cc}: ${sample.value}${motion}`;
       block.append(detail);
     }
     const policy = document.createElement("p");

@@ -43,6 +43,7 @@ fn eight_bar_ramp_crosses_phrases_and_holds_endpoint_in_musical_time() {
     assert_eq!(lane.at(100 * 3840), 1.0);
     assert_eq!(lane.at(u64::MAX), 1.0);
     let delayed = ParameterLane {
+        automation: None,
         value: 1.0,
         ramp: Some(Ramp {
             to: 0.0,
@@ -96,6 +97,7 @@ fn emphasis_tracks_the_moving_base_and_stop_restores_start_value_without_kit_def
     p.parameters.insert(
         "cutoff".into(),
         ParameterLane {
+            automation: None,
             value: 0.0,
             ramp: Some(Ramp {
                 to: 1.0,
@@ -184,6 +186,7 @@ fn invalid_timelines_fail_and_late_samples_do_not_burst() {
         bad.parts[0].parameters.insert(
             "cutoff".into(),
             ParameterLane {
+                automation: None,
                 value: v,
                 ramp: Some(Ramp {
                     to,
@@ -343,4 +346,104 @@ fn partial_control_send_failure_still_restores_kit_default() {
     );
     d.cleanup().unwrap();
     assert_eq!(d.sink.calls.last().unwrap(), &vec![0xbf, 20, 127]);
+}
+
+#[test]
+fn automation_segments_curves_holds_cycles_and_delayed_start() {
+    use phasecraft::music::parameter::{Automation, Curve, Segment};
+    let mut lane = ParameterLane {
+        value: 0.0,
+        ramp: None,
+        automation: Some(Automation {
+            start_bar: 2,
+            repeat: false,
+            segments: vec![
+                Segment {
+                    to: 1.0,
+                    over_bars: 1.0,
+                    curve: Curve::Smooth,
+                },
+                Segment {
+                    to: 0.5,
+                    over_bars: 0.5,
+                    curve: Curve::Hold,
+                },
+                Segment {
+                    to: 0.0,
+                    over_bars: 0.5,
+                    curve: Curve::Linear,
+                },
+            ],
+        }),
+    };
+    lane.validate().unwrap();
+    assert_eq!(lane.at(0), 0.0);
+    assert_eq!(lane.at(3840), 0.0);
+    assert_eq!(lane.at(3840 + 960), 0.15625);
+    assert_eq!(lane.at(7680), 1.0);
+    assert_eq!(lane.at(9599), 1.0);
+    assert_eq!(lane.at(9600), 0.5);
+    assert_eq!(lane.at(10560), 0.25);
+    assert_eq!(lane.at(11520), 0.0);
+    assert_eq!(lane.at(u64::MAX), 0.0);
+    lane.automation.as_mut().unwrap().repeat = true;
+    for t in 0..7680 {
+        assert_eq!(lane.at(3840 + t), lane.at(3840 + t + 7680));
+    }
+    assert!(lane.at(u64::MAX).is_finite());
+}
+
+#[test]
+fn automation_is_validated_and_overrides_a_reusable_ramp() {
+    let source = r#"
+    tempo=132
+    seed=1
+    [library.behaviors."my.old".parameters.cutoff]
+    value=0.2
+    ramp={to=1.0,over_bars=8}
+    [parts.hat]
+    compose=["techno.closed_hat","my.old"]
+    output.controls.cutoff={cc=75,channel=15,default=1.0}
+    parameters.cutoff.automation={repeat=true,segments=[{to=1.0,over_bars=1.0},{to=0.2,over_bars=1.0}]}
+    "#;
+    let c = Composition::parse(source).unwrap();
+    let lane = &c.parts[0].parameters["cutoff"];
+    assert!(lane.ramp.is_none());
+    assert_eq!(lane.at(3840), 1.0);
+    for invalid in [
+        source.replace("over_bars=1.0", "over_bars=0.0"),
+        source.replace("over_bars=1.0", "over_bars=0.1"),
+        source.replace("over_bars=1.0", "over_bars=65536.0"),
+        source.replace("repeat=true", "start_bar=0"),
+        source.replace(
+            "segments=[{to=1.0,over_bars=1.0},{to=0.2,over_bars=1.0}]",
+            "segments=[]",
+        ),
+    ] {
+        assert!(Composition::parse(&invalid).is_err());
+    }
+    let mut lane = lane.clone();
+    lane.ramp = Some(Ramp {
+        to: 1.0,
+        over_bars: 1,
+        start_bar: 1,
+    });
+    assert!(lane.validate().is_err());
+    let mut d = EventDispatcher::new(Recording::default());
+    for e in resolve_step(&c, 8).1 {
+        d.dispatch(&e, Duration::ZERO, Duration::ZERO).unwrap();
+    }
+    d.cleanup().unwrap();
+    assert_eq!(d.sink.0.last().unwrap(), &vec![0xbe, 75, 127]);
+    let mut tempo = c.clone();
+    tempo.tempo = 172.0;
+    assert_eq!(resolve_step(&c, 8).1, resolve_step(&tempo, 8).1);
+    let trace = resolve_step(&c, 40).0;
+    let position = trace[0].parameters[0].samples[0]
+        .automation
+        .as_ref()
+        .unwrap();
+    assert_eq!(position.cycle, 1);
+    assert_eq!(position.segment, 1);
+    assert_eq!(position.progress, 0.5);
 }

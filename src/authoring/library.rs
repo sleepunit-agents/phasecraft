@@ -30,6 +30,13 @@ fn names(value: Value, field: &str) -> Result<Vec<String>, String> {
 }
 fn merge(base: &mut Value, overlay: Value) {
     if let (Value::Table(a), Value::Table(b)) = (&mut *base, &overlay) {
+        // Replacing a trajectory through an override must not retain its old kind.
+        if b.contains_key("automation") && !b.contains_key("ramp") {
+            a.remove("ramp");
+        }
+        if b.contains_key("ramp") && !b.contains_key("automation") {
+            a.remove("automation");
+        }
         // Switching node/profile kinds discards fields belonging to the old kind.
         let new_kind = b
             .get("type")

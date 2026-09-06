@@ -107,11 +107,7 @@ base. Edit `patterns/parameters.toml` for the shared opening and
 `kits/909-cutoff.toml` for target bindings. The one-off `learn-filter` helper uses
 older addresses and is not needed for this prepared Set.
 
-This first timeline implements constants and one scheduled linear ramp per control.
-It does not yet implement multiple segments, curves, cycling automation, runtime
-“ramp from here” commands, group mixing, or whole-song arrangement. The lane model
-keeps these separate from note generation so those can be added without changing
-rhythmic identity.
+Runtime “ramp from here” commands and group mixing remain outside this timeline.
 
 ## Prepared kit and existing projects
 
@@ -124,3 +120,39 @@ Updating the executable does not rewrite existing projects. For an older intro,
 add `default = 1.0` to each of the three `controls.cutoff` mappings in
 `kits/909-cutoff.toml`. Otherwise the fallback reset is its starting value (0.15),
 which is still dark. New projects include these defaults and both examples.
+
+## Segments, curves and repeating motion
+
+Use `automation` instead of `ramp` for a sequence of destinations:
+
+```toml
+[parts.hat.parameters.cutoff]
+value = 0.15
+automation.repeat = true
+automation.segments = [
+  { to = 0.9, over_bars = 6, curve = "smooth" },
+  { to = 0.9, over_bars = 2, curve = "hold" },
+  { to = 0.15, over_bars = 6, curve = "smooth" },
+  { to = 0.15, over_bars = 2, curve = "hold" },
+]
+```
+
+Each segment begins at the previous destination; the first begins at `value`.
+`linear` is the default. `smooth` uses cubic smoothstep (gentle start and finish).
+`hold` retains the starting value until the segment ends, then changes to `to`;
+use equal start/destination values for a plain hold. This is normalized control
+space, not a promise of linear Hz/dB or host smoothing.
+
+`over_bars` accepts integer or fractional bars in sixteenth-note increments
+(0.0625 bars minimum). A lane accepts 1–64 segments, at most 65536 bars total.
+Optional `automation.start_bar` is one-based (default 1). Before that bar, the lane
+holds `value`. With `repeat = false` (default), the last destination holds forever.
+With `repeat = true`, the segment sequence repeats on its own total duration,
+independent of the rhythm phrase; the exact cycle boundary begins at `value`.
+For seamless cycles, end the final segment at `value`; unequal endpoints make an
+intentional jump. Stop defaults are unaffected.
+
+A local `automation` override replaces an inherited `ramp`, and vice versa. Explicit
+`ramp` and `automation` in the same lane are rejected. Existing single ramps remain
+compatible. Trace samples show segment number, zero-based cycle, curve and progress;
+the player presents one-based cycle numbers. `breathing` is the prepared-909 example.

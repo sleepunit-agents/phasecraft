@@ -16,6 +16,8 @@ pub struct ParameterLane {
     pub value: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ramp: Option<Ramp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub automation: Option<Automation>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -24,6 +26,119 @@ pub struct Ramp {
     pub over_bars: u32,
     #[serde(default = "first_bar")]
     pub start_bar: u32,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Automation {
+    pub segments: Vec<Segment>,
+    #[serde(default)]
+    pub repeat: bool,
+    #[serde(default = "first_bar")]
+    pub start_bar: u32,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Segment {
+    pub to: f64,
+    pub over_bars: f64,
+    #[serde(default)]
+    pub curve: Curve,
+}
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Curve {
+    #[default]
+    Linear,
+    Smooth,
+    Hold,
+}
+impl Curve {
+    fn shape(self, t: f64) -> f64 {
+        match self {
+            Self::Linear => t,
+            Self::Smooth => t * t * (3.0 - 2.0 * t),
+            Self::Hold => {
+                if t < 1.0 {
+                    0.0
+                } else {
+                    1.0
+                }
+            }
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct AutomationPosition {
+    /// One-based segment and zero-based cycle. None before the scheduled start.
+    pub segment: usize,
+    pub cycle: u64,
+    pub progress: f64,
+    pub curve: Curve,
+}
+impl Segment {
+    fn ticks(&self) -> u64 {
+        (self.over_bars * 4.0 * PPQN as f64).round() as u64
+    }
+}
+impl Automation {
+    pub fn duration_ticks(&self) -> u64 {
+        self.segments.iter().map(Segment::ticks).sum()
+    }
+    fn validate(&self) -> Result<(), String> {
+        if self.segments.is_empty()
+            || self.segments.len() > 64
+            || !(1..=65536).contains(&self.start_bar)
+        {
+            return Err("automation requires 1..64 segments and start_bar within 1..65536".into());
+        }
+        for segment in &self.segments {
+            let steps = segment.over_bars * 16.0;
+            if !normalized(segment.to)
+                || !steps.is_finite()
+                || !(1.0..=1048576.0).contains(&steps)
+                || (steps - steps.round()).abs() > 1e-9
+            {
+                return Err("segment.to must be within 0..1; over_bars must be 1/16..65536 in sixteenth-note increments".into());
+            }
+        }
+        if self.duration_ticks() > 65536 * 4 * PPQN {
+            return Err("automation total duration exceeds 65536 bars".into());
+        }
+        Ok(())
+    }
+    fn evaluate(&self, initial: f64, tick: u64) -> (f64, Option<AutomationPosition>) {
+        let start = u64::from(self.start_bar - 1) * 4 * PPQN;
+        if tick < start {
+            return (initial, None);
+        }
+        let elapsed = tick - start;
+        let duration = self.duration_ticks();
+        let cycle = if self.repeat { elapsed / duration } else { 0 };
+        let mut position = if self.repeat {
+            elapsed % duration
+        } else {
+            elapsed.min(duration)
+        };
+        let mut from = initial;
+        for (index, segment) in self.segments.iter().enumerate() {
+            let length = segment.ticks();
+            if position < length || index + 1 == self.segments.len() {
+                let progress = (position as f64 / length as f64).min(1.0);
+                return (
+                    from + (segment.to - from) * segment.curve.shape(progress),
+                    Some(AutomationPosition {
+                        segment: index + 1,
+                        cycle,
+                        progress,
+                        curve: segment.curve,
+                    }),
+                );
+            }
+            position -= length;
+            from = segment.to;
+        }
+        unreachable!("validated automation has segments")
+    }
 }
 fn first_bar() -> u32 {
     1
@@ -35,6 +150,12 @@ impl ParameterLane {
     pub fn validate(&self) -> Result<(), String> {
         if !normalized(self.value) {
             return Err("parameter.value must be finite and within 0..1".into());
+        }
+        if let Some(automation) = &self.automation {
+            if self.ramp.is_some() {
+                return Err("choose ramp or automation, not both".into());
+            }
+            automation.validate()?;
         }
         if let Some(ramp) = &self.ramp
             && (!normalized(ramp.to)
@@ -48,6 +169,9 @@ impl ParameterLane {
         Ok(())
     }
     pub fn at(&self, tick: u64) -> f64 {
+        if let Some(automation) = &self.automation {
+            return automation.evaluate(self.value, tick).0;
+        }
         let Some(ramp) = &self.ramp else {
             return self.value;
         };
@@ -64,6 +188,8 @@ pub struct ParameterSample {
     pub emphasis: f64,
     pub amount: f64,
     pub value: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub automation: Option<AutomationPosition>,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct ParameterTrace {
@@ -119,6 +245,10 @@ pub fn resolve(
                     tick,
                     base,
                     emphasis,
+                    automation: lane
+                        .automation
+                        .as_ref()
+                        .and_then(|a| a.evaluate(lane.value, tick).1),
                     amount,
                     value,
                 }
