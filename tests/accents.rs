@@ -217,6 +217,7 @@ fn maximum_control_load_is_bounded_and_every_attack_has_a_matching_reset() {
                 part.profile.controls.insert(
                     name.clone(),
                     ControlResponse {
+                        envelope: None,
                         base: 0.2,
                         boost: 0.5,
                     },
@@ -264,10 +265,30 @@ fn maximum_control_load_is_bounded_and_every_attack_has_a_matching_reset() {
         MAX_PARTS * (2 + MAX_CONTROLS * phasecraft::music::parameter::MAX_SAMPLES_PER_STEP)
     );
     assert!(full.iter().all(|e| e.tick >= 240 && e.tick < 480));
+    for part in &mut continuous.parts {
+        for response in part.profile.controls.values_mut() {
+            response.envelope = Some(phasecraft::music::accent::Envelope {
+                decay_beats: 8.0,
+                accumulation: 0.5,
+            });
+        }
+    }
+    continuous.validate().unwrap();
+    let (traces, events) = resolve_step(&continuous, 33);
+    assert!(
+        events.len()
+            <= MAX_PARTS * (2 + MAX_CONTROLS * phasecraft::music::parameter::MAX_SAMPLES_PER_STEP)
+    );
+    assert!(traces.iter().all(|t| {
+        t.parameters
+            .iter()
+            .all(|p| p.samples.iter().all(|s| s.envelope.is_some()))
+    }));
     let p = &mut c.parts[0];
     p.profile.controls.insert(
         "excess".into(),
         ControlResponse {
+            envelope: None,
             base: 0.2,
             boost: 0.5,
         },

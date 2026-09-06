@@ -29,7 +29,7 @@ metadata and example coverage need an updated audit, not an LCM-sized event buff
 - [x] **2. Procedural groove:** meter/offbeat emphasis, first-note-after-gap response,
   independently keyed timing/velocity variation, reusable profiles and a garage
   comparison. Preserve note admission and bounded scheduling; explain each effect.
-- [ ] **3. Shared and stateful emphasis:** named shared accent lanes with explicit
+- [x] **3. Shared and stateful emphasis:** named shared accent lanes with explicit
   consumers; bounded musical-time accumulation/decay for control emphasis, including
   rests. Keep semantic accents separate from MIDI and RNG addresses local. Use
   existing cutoff mapping for a 303-inspired percussion response; no pitched 303.

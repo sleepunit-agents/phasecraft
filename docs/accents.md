@@ -86,3 +86,68 @@ velocity, held mix level and temporary accent gain, and plans stable per-voice m
 
 [Held parameters and ramps](https://github.com/sleepunit-agents/phasecraft/blob/main/docs/parameters.md)
 can now supply a moving base underneath these temporary accent responses.
+
+## Shared semantic accent lanes
+
+One named clocked lane can emphasize any explicitly selected Parts:
+
+```toml
+[accents.drums]
+rhythm = { steps = 7, pulses = 3 }
+probability = 0.85
+amount = 0.8
+
+[parts.hat]
+use = "techno.closed_hat"
+accent.sources = ["drums"]
+accent.probability = 0.0 # disables only this Part's own accent decision
+```
+
+Consumers share the same admitted source impulse, including its seeded probability
+roll. Their trigger decisions remain independent. A shared accent on a rest creates
+no note. The resolver takes the **maximum** amount from the Part's admitted local
+accent and its admitted shared sources; simultaneous sources do not add loudness
+implicitly. Profiles interpret that resulting semantic amount as usual.
+
+Up to 16 named shared lanes are allowed. Consumers explicitly list unique existing
+names. Shared lanes have the same Euclidean/Boolean rhythms, reset policy, probability
+and probability modes as local lanes, but cannot reference Parts or other shared
+lanes. This avoids hidden dependency cycles. Shared decisions use a separate stable
+RNG namespace. They are global or group accents by which Parts consume them, not by
+special MIDI ownership. Traces and the player show each contributing source.
+
+## Control emphasis with memory
+
+A control response can retain recent accent impulses:
+
+```toml
+[parts.hat.profile.controls.cutoff]
+base = 0.2
+boost = 0.55
+envelope = { decay_beats = 2, accumulation = 0.5 }
+```
+
+Each fired accented note contributes `accent.amount × accumulation`, decaying
+linearly to zero over `decay_beats`. Overlapping contributions add, then clamp to
+0–1; the profile multiplies that envelope level by `boost` and adds it to the
+current parameter baseline (or profile `base` if no parameter lane is present).
+This is a bounded finite-memory control envelope, **not DSP or a TB-303 emulation**.
+`accent.memory_punch` is a reusable profile with this behavior.
+
+Decay accepts 0.25–8 beats in sixteenth increments; accumulation is 0–1. Recent
+history is bounded to 32 source steps, and impulses begin at actual grooved onsets.
+Responses continue through rests and note-offs. An unaccented note does not reset
+the envelope. Stop/error restores the binding's kit default, or the baseline's
+configured starting value when no explicit default exists. The same control cannot
+also have a competing momentary writer. Velocity emphasis remains per-hit.
+
+This response is reconstructed from deterministic admitted history, so inspection
+in any order yields the same result. At a watched edit, history is re-evaluated
+under the new configuration; it is not a recording of earlier revisions or MIDI
+notes physically heard by the host. The envelope decays in musical time, follows
+parameter sampling resolution, and is not tied to phrase repeats. The inspector
+shows envelope level and the number of recent contributing impulses.
+
+**accent-memory** drives closed-hat and rim cutoff from one shared seven-step
+accent process, using different decay lengths. Use the existing Prepared 909 Set.
+Listen for clustered accents to build emphasis and sparse passages to relax.

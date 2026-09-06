@@ -49,6 +49,12 @@ pub struct RhythmPattern {
     pub events: Vec<MusicalEvent>,
 }
 #[derive(Clone, Debug, Serialize)]
+pub struct SharedAccentTrace {
+    pub name: String,
+    pub decision: DecisionTrace,
+    pub amount: f64,
+}
+#[derive(Clone, Debug, Serialize)]
 pub struct StepTrace {
     pub step: u64,
     pub tick: u64,
@@ -56,6 +62,8 @@ pub struct StepTrace {
     pub part: String,
     pub trigger: DecisionTrace,
     pub accent: DecisionTrace,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub shared_accents: Vec<SharedAccentTrace>,
     pub event: Option<MusicalEvent>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<super::parameter::ParameterTrace>,
@@ -114,6 +122,47 @@ fn resolve_part(
         ),
         reference,
     );
+    let shared_accents: Vec<_> = part
+        .accent
+        .sources
+        .iter()
+        .map(|name| {
+            let lane = &c.accents[name];
+            let event_identity = match lane.probability_mode {
+                ProbabilityMode::PhraseLocked => step % c.phrase_steps(),
+                ProbabilityMode::Continuous => step,
+            };
+            let rhythm = lane.rhythm.evaluate(step, c.phrase_steps(), &|_, _| false);
+            let roll = decision_roll(
+                c.seed,
+                name,
+                "shared_accent",
+                event_identity,
+                "shared_admission",
+            );
+            let admitted = rhythm.active() && roll < lane.probability;
+            SharedAccentTrace {
+                name: name.clone(),
+                amount: if admitted { lane.amount } else { 0.0 },
+                decision: DecisionTrace {
+                    rhythm,
+                    event_identity,
+                    probability: lane.probability,
+                    roll,
+                    admitted,
+                },
+            }
+        })
+        .collect();
+    let combined_active = accent.admitted || shared_accents.iter().any(|s| s.decision.admitted);
+    let combined_amount = shared_accents.iter().map(|s| s.amount).fold(
+        if accent.admitted {
+            part.accent.amount
+        } else {
+            0.0
+        },
+        f64::max,
+    );
     let event = trigger.admitted.then(|| MusicalEvent {
         tick: step * STEP_TICKS,
         duration_ticks: part.output.gate_ticks,
@@ -122,14 +171,12 @@ fn resolve_part(
             .profile
             .controls
             .iter()
-            .filter(|(name, _)| !part.parameters.contains_key(*name))
+            .filter(|(name, response)| {
+                !part.parameters.contains_key(*name) && response.envelope.is_none()
+            })
             .map(|(name, response)| {
                 let output = &part.output.controls[name];
-                let amount = response.value(if accent.admitted {
-                    part.accent.amount
-                } else {
-                    0.0
-                });
+                let amount = response.value(combined_amount);
                 super::accent::ResolvedControl {
                     name: name.clone(),
                     amount,
@@ -141,12 +188,8 @@ fn resolve_part(
             })
             .collect(),
         accent: Accent {
-            active: accent.admitted,
-            amount: if accent.admitted {
-                part.accent.amount
-            } else {
-                0.0
-            },
+            active: combined_active,
+            amount: combined_amount,
         },
     });
     StepTrace {
@@ -155,6 +198,7 @@ fn resolve_part(
         position: format!("{}.{}.{}", step / 16 + 1, step / 4 % 4 + 1, step % 4 + 1),
         part: part.id.clone(),
         parameters: Vec::new(),
+        shared_accents,
         trigger,
         accent,
         event,
@@ -260,6 +304,12 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
         .parts
         .iter()
         .filter_map(|p| p.groove.after_gap.as_ref().map(|g| u64::from(g.steps)))
+        .chain(
+            c.parts
+                .iter()
+                .flat_map(|p| p.profile.controls.values())
+                .filter_map(|r| r.envelope.as_ref().map(|e| e.history_steps())),
+        )
         .max()
         .unwrap_or(0)
         .max(if run_context { 2 } else { 0 });
@@ -323,8 +373,8 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
                         ProbabilityMode::PhraseLocked => step % c.phrase_steps(),
                         ProbabilityMode::Continuous => step,
                     };
-                    let timing_roll =
-                        decision_roll(c.seed, &part.id, "groove", identity, "humanize_timing");
+                    let (timing_roll, requested_jitter_ticks) =
+                        g.timing_jitter(c.seed, &part.id, step, c.phrase_steps());
                     let velocity_roll =
                         decision_roll(c.seed, &part.id, "groove", identity, "humanize_velocity");
                     super::groove::TouchTrace {
@@ -338,8 +388,7 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
                         },
                         timing_roll,
                         velocity_roll,
-                        requested_jitter_ticks: ((timing_roll * 2.0 - 1.0) * h.timing_ticks as f64)
-                            .round() as i64,
+                        requested_jitter_ticks,
                         velocity_jitter_factor: 1.0 + (velocity_roll * 2.0 - 1.0) * h.velocity,
                     }
                 });
@@ -365,7 +414,33 @@ pub fn resolve_step(c: &Composition, step: u64) -> (Vec<StepTrace>, Vec<MidiEven
             }
             midi.extend(to_midi(part, event));
         }
-        let (parameters, controls) = super::parameter::resolve(part, step, trace.event.as_ref());
+        let mut history = Vec::new();
+        if part.profile.controls.values().any(|r| r.envelope.is_some()) {
+            for (&s, past) in &neighbors {
+                if s >= step {
+                    continue;
+                }
+                if let Some(event) = past
+                    .iter()
+                    .find(|t| t.part == part.id)
+                    .and_then(|t| t.event.as_ref())
+                    .filter(|e| e.accent.active)
+                {
+                    history.push((
+                        event.tick
+                            + part
+                                .groove
+                                .onset_offset(c.seed, &part.id, s, c.phrase_steps()),
+                        event.accent.amount,
+                    ));
+                }
+            }
+            if let Some(event) = trace.event.as_ref().filter(|e| e.accent.active) {
+                history.push((event.tick, event.accent.amount));
+            }
+        }
+        let (parameters, controls) =
+            super::parameter::resolve(part, step, trace.event.as_ref(), &history);
         trace.parameters = parameters;
         midi.extend(controls);
     }

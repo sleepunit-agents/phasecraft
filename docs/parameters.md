@@ -61,7 +61,8 @@ original momentary response and configured reset base. Missing profile base now
 defaults to zero; existing explicit bases behave as before.
 
 This is still per-Part/channel control, not per-note expression. Changing a filter
-can affect already-sounding tails. Stateful accent envelopes remain future work.
+can affect already-sounding tails. [Stateful accent envelopes](accents.md#control-emphasis-with-memory)
+can now add a decaying response instead of a gate-length emphasis impulse.
 
 ## Transport and editing semantics
 

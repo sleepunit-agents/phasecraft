@@ -190,6 +190,8 @@ pub struct ParameterSample {
     pub value: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub automation: Option<AutomationPosition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub envelope: Option<super::accent::EnvelopeTrace>,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct ParameterTrace {
@@ -203,8 +205,20 @@ pub fn resolve(
     part: &Part,
     step: u64,
     event: Option<&MusicalEvent>,
+    history: &[(u64, f64)],
 ) -> (Vec<ParameterTrace>, Vec<MidiEvent>) {
-    if part.parameters.is_empty() {
+    let names: std::collections::BTreeSet<_> = part
+        .parameters
+        .keys()
+        .chain(
+            part.profile
+                .controls
+                .iter()
+                .filter(|(_, r)| r.envelope.is_some())
+                .map(|(name, _)| name),
+        )
+        .collect();
+    if names.is_empty() {
         return (Vec::new(), Vec::new());
     }
     let start = step * STEP_TICKS;
@@ -219,19 +233,26 @@ pub fn resolve(
     ticks.dedup();
     let mut traces = Vec::new();
     let mut midi = Vec::new();
-    for (name, lane) in &part.parameters {
+    for name in names {
+        let lane = part.parameters.get(name);
+        let response = part.profile.controls.get(name);
+        let initial = lane.map_or_else(|| response.map_or(0.0, |r| r.base), |l| l.value);
         let output = &part.output.controls[name];
         let channel = output.channel.unwrap_or(part.output.channel);
         let boost = part.profile.controls.get(name).map_or(0.0, |r| r.boost);
         let samples = ticks
             .iter()
             .map(|&tick| {
-                let base = lane.at(tick);
-                let emphasis = event
+                let base = lane.map_or(initial, |l| l.at(tick));
+                let envelope = response
+                    .and_then(|r| r.envelope.as_ref())
+                    .map(|e| e.evaluate(tick, history));
+                let momentary = event
                     .filter(|e| {
                         tick >= e.tick && tick < e.tick + e.duration_ticks && e.accent.active
                     })
                     .map_or(0.0, |e| e.accent.amount * boost);
+                let emphasis = envelope.as_ref().map_or(momentary, |e| e.level * boost);
                 let amount = (base + emphasis).clamp(0.0, 1.0);
                 let value = midi_value(amount);
                 midi.push(MidiEvent {
@@ -239,16 +260,16 @@ pub fn resolve(
                     bytes: [0xb0 | (channel - 1), output.cc, value],
                     reset_value: (emphasis != 0.0).then(|| midi_value(base)),
                     parameter: true,
-                    stop_value: Some(midi_value(output.default.unwrap_or(lane.value))),
+                    stop_value: Some(midi_value(output.default.unwrap_or(initial))),
                 });
                 ParameterSample {
                     tick,
                     base,
                     emphasis,
+                    envelope,
                     automation: lane
-                        .automation
-                        .as_ref()
-                        .and_then(|a| a.evaluate(lane.value, tick).1),
+                        .and_then(|l| l.automation.as_ref())
+                        .and_then(|a| a.evaluate(initial, tick).1),
                     amount,
                     value,
                 }

@@ -19,6 +19,8 @@ pub struct Composition {
     #[serde(default = "four")]
     pub phrase_bars: u32,
     pub parts: Vec<Part>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub accents: std::collections::BTreeMap<String, AccentLane>,
 }
 // Accept the original single-Part file without changing its musical identity.
 #[derive(Deserialize)]
@@ -30,6 +32,8 @@ struct CompositionFile {
     phrase_bars: u32,
     part: Option<Part>,
     parts: Option<Vec<Part>>,
+    #[serde(default)]
+    accents: std::collections::BTreeMap<String, AccentLane>,
 }
 impl TryFrom<CompositionFile> for Composition {
     type Error = String;
@@ -49,6 +53,7 @@ impl TryFrom<CompositionFile> for Composition {
             seed: file.seed,
             phrase_bars: file.phrase_bars,
             parts,
+            accents: file.accents,
         };
         c.validate()?;
         Ok(c)
@@ -109,6 +114,8 @@ pub enum ProbabilityMode {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccentLane {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<String>,
     pub rhythm: Expression,
     #[serde(default = "one")]
     pub probability: f64,
@@ -215,12 +222,41 @@ impl Composition {
         if self.parts.is_empty() || self.parts.len() > MAX_PARTS {
             return Err(format!("composition requires 1..{MAX_PARTS} Parts"));
         }
+        if self.accents.len() > 16 {
+            return Err("at most 16 shared accent lanes are supported".into());
+        }
+        for (name, lane) in &self.accents {
+            if name.trim().is_empty()
+                || !lane.sources.is_empty()
+                || !lane.rhythm.references().is_empty()
+            {
+                return Err("shared accent lanes require a name and independent rhythms (no sources or Part references)".into());
+            }
+            lane.rhythm.validate(0)?;
+            if [lane.probability, lane.amount]
+                .iter()
+                .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+            {
+                return Err(format!(
+                    "shared accent {name:?}: probability and amount must be within 0..1"
+                ));
+            }
+        }
         let mut ids = std::collections::HashSet::new();
         let mut routes = std::collections::HashSet::new();
         let mut control_routes = std::collections::HashSet::new();
         for part in &self.parts {
             part.validate()
                 .map_err(|e| format!("Part {:?}: {e}", part.id))?;
+            let mut sources = std::collections::HashSet::new();
+            for name in &part.accent.sources {
+                if !self.accents.contains_key(name) || !sources.insert(name) {
+                    return Err(format!(
+                        "Part {:?}: missing or duplicate shared accent source {name:?}",
+                        part.id
+                    ));
+                }
+            }
             for output in part.output.controls.values() {
                 let channel = output.channel.unwrap_or(part.output.channel);
                 if !control_routes.insert((channel, output.cc)) {

@@ -246,6 +246,10 @@ const FILES: &[(&str, &str)] = &[
         "compositions/garage-touch.toml",
         include_str!("../../templates/project/compositions/garage-touch.toml"),
     ),
+    (
+        "compositions/accent-memory.toml",
+        include_str!("../../templates/project/compositions/accent-memory.toml"),
+    ),
     ("PARAMETERS.md", include_str!("../../docs/parameters.md")),
     ("ACCENTS.md", include_str!("../../docs/accents.md")),
     (

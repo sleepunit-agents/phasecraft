@@ -1,0 +1,31 @@
+# Prepared 909: a shared 7-step accent process feeds two accumulating cutoff responses.
+tempo = 132
+seed = 91827
+phrase_bars = 4
+
+[accents.drums]
+rhythm = { steps = 7, pulses = 3 }
+probability = 0.85
+amount = 0.8
+
+[parts.kick]
+use = "my.techno_kick"
+
+[parts.clap]
+use = "techno.clap"
+
+[parts.closed_hat]
+compose = ["techno.closed_hat", "kit.prepared.closed_hat"]
+accent.sources = ["drums"]
+accent.probability = 0.0
+profile.use = "accent.memory_punch"
+
+[parts.open_hat]
+use = "techno.open_hat"
+
+[parts.rim]
+compose = ["techno.rim", "kit.prepared.rim"]
+accent.sources = ["drums"]
+accent.probability = 0.0
+profile.use = "accent.memory_punch"
+profile.controls.cutoff.envelope.decay_beats = 3

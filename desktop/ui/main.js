@@ -300,6 +300,7 @@ function drawCard(view, trace) {
   const all = [
     ...rings(trace.trigger.rhythm),
     ...rings(trace.accent.rhythm, "Accent"),
+    ...(trace.shared_accents || []).flatMap(s => rings(s.decision.rhythm, `Shared ${human(s.name)}`)),
   ];
   const visible = all.length <= 3 ? all : [all[0], all[1], all[all.length - 1]];
   const cell = width / visible.length,
@@ -376,6 +377,7 @@ function renderDetail() {
   for (const [label, lane] of [
     ["Trigger", trace.trigger],
     ["Accent", trace.accent],
+    ...(trace.shared_accents || []).map(s => [`Shared accent: ${human(s.name)} (amount ${s.amount.toFixed(2)})`, s.decision]),
   ]) {
     const block = document.createElement("div");
     block.className = "lane-detail";
@@ -438,8 +440,9 @@ function renderDetail() {
         parameter.samples.filter((s) => s.tick <= tick).at(-1) ||
         parameter.samples[0];
       const detail = document.createElement("p");
+      const memory = sample.envelope ? ` · envelope ${sample.envelope.level.toFixed(3)} from ${sample.envelope.impulses} impulses` : "";
       const motion = sample.automation ? ` · segment ${sample.automation.segment}, cycle ${sample.automation.cycle + 1} (${human(sample.automation.curve)})` : "";
-      detail.textContent = `${human(parameter.name)} · base ${sample.base.toFixed(3)} · emphasis ${sample.emphasis.toFixed(3)} → ${sample.amount.toFixed(3)} · channel ${parameter.channel} CC ${parameter.cc}: ${sample.value}${motion}`;
+      detail.textContent = `${human(parameter.name)} · base ${sample.base.toFixed(3)} · emphasis ${sample.emphasis.toFixed(3)} → ${sample.amount.toFixed(3)} · channel ${parameter.channel} CC ${parameter.cc}: ${sample.value}${motion}${memory}`;
       block.append(detail);
     }
     const policy = document.createElement("p");

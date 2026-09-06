@@ -104,6 +104,22 @@ impl Groove {
         }
         Ok(())
     }
+    pub fn timing_jitter(&self, seed: u64, id: &str, step: u64, phrase_steps: u64) -> (f64, i64) {
+        let h = self.humanize.clone().unwrap_or_default();
+        let identity = match h.mode {
+            ProbabilityMode::PhraseLocked => step % phrase_steps,
+            ProbabilityMode::Continuous => step,
+        };
+        let roll = super::resolve::decision_roll(seed, id, "groove", identity, "humanize_timing");
+        (
+            roll,
+            ((roll * 2.0 - 1.0) * h.timing_ticks as f64).round() as i64,
+        )
+    }
+    pub fn onset_offset(&self, seed: u64, id: &str, step: u64, phrase_steps: u64) -> u64 {
+        (self.offset(step) as i64 + self.timing_jitter(seed, id, step, phrase_steps).1)
+            .clamp(0, super::STEP_TICKS as i64 - 2) as u64
+    }
     pub fn offset(&self, step: u64) -> u64 {
         self.delay_ticks
             + if step % 2 == 1 {

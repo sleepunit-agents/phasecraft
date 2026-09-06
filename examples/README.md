@@ -108,3 +108,6 @@ two-bar hold, repeating independently of the four-bar rhythm. Prepared 909 Set.
 
 `quickstart/garage-touch.toml`: compare with garage for identical source hits and
 accents, interpreted with offbeat/gap emphasis and bounded timing/velocity touch.
+
+`quickstart/accent-memory.toml`: shared semantic accent source and two finite-memory
+cutoff responses. Prepared 909 Set; watch/listen for accumulation and decay on rests.

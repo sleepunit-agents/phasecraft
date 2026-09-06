@@ -206,6 +206,17 @@ pub(super) fn expand_with_libraries(
     }
     imports(&mut root, base, &mut registry, &mut vec![], &mut loaded)?;
     super::syntax::keyed_parts(&mut root)?;
+    if let Some(accents) = root.get_mut("accents") {
+        let lanes = accents
+            .as_table_mut()
+            .ok_or("accents must be named tables")?;
+        for (name, lane) in lanes {
+            let fields = lane.as_table_mut().ok_or("shared accent must be a table")?;
+            if let Some(rhythm) = fields.get_mut("rhythm") {
+                super::syntax::rhythm(rhythm).map_err(|e| format!("accents.{name}: {e}"))?;
+            }
+        }
+    }
     if let Some(library) = root.remove("library") {
         registry.add(library)?;
     }

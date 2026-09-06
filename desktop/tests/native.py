@@ -93,7 +93,14 @@ with tempfile.TemporaryDirectory(prefix="phasecraft-native-") as work:
             driver.find_element(By.ID, "play").click()
             driver.find_element(By.CSS_SELECTOR, '[data-part="closed_hat"]').click()
             wait.until(lambda d: all(name in d.find_element(By.ID, "detail-body").text for name in ["cutoff", "level", "pan", "decay"]))
-            driver.close()  # Close during movement must restore kit defaults.
+            driver.find_element(By.ID, "stop").click()
+            wait.until(lambda d: "STOPPED" in d.find_element(By.ID, "state").text)
+            driver.find_elements(By.CSS_SELECTOR, "#compositions button")[10].click()
+            driver.find_element(By.ID, "play").click()
+            driver.find_element(By.CSS_SELECTOR, '[data-part="closed_hat"]').click()
+            wait.until(lambda d: "Shared accent: drums" in d.find_element(By.ID, "detail-body").text)
+            wait.until(lambda d: "envelope" in d.find_element(By.ID, "detail-body").text)
+            driver.close()  # Close during accent memory must restore kit defaults.
 
 
             print("Native player: open, repeated playback, watched error/recovery, selection and close passed")

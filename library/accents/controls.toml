@@ -8,3 +8,9 @@ boost = 0.65
 [profiles."accent.filter_punch".controls.envelope]
 base = 0.15
 boost = 0.55
+
+# A control envelope with memory, not a pitched TB-303 emulation.
+[profiles."accent.memory_punch"]
+base = 75
+boost = 15
+controls.cutoff = { base = 0.2, boost = 0.55, envelope = { decay_beats = 2, accumulation = 0.5 } }

@@ -109,6 +109,7 @@ fn emphasis_tracks_the_moving_base_and_stop_restores_start_value_without_kit_def
     p.profile.controls.insert(
         "cutoff".into(),
         phasecraft::music::accent::ControlResponse {
+            envelope: None,
             base: 0.9,
             boost: 0.5,
         },
@@ -142,6 +143,7 @@ fn timeline_changes_preserve_rhythm_and_use_actual_swung_note_boundaries() {
     changed.parts[0].profile.controls.insert(
         "cutoff".into(),
         phasecraft::music::accent::ControlResponse {
+            envelope: None,
             base: 0.0,
             boost: 0.2,
         },
@@ -281,6 +283,7 @@ fn stop_restores_kit_defaults_mid_ramp_after_gate_and_before_plain_composition()
     c.parts[0].profile.controls.insert(
         "cutoff".into(),
         phasecraft::music::accent::ControlResponse {
+            envelope: None,
             base: 0.0,
             boost: 0.1,
         },

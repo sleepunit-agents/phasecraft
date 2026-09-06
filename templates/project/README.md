@@ -70,3 +70,6 @@ It uses the same prepared Set; no additional mappings are needed.
 
 `garage-touch` preserves garage admissions while adding offbeat emphasis,
 gap response and independently seeded timing/velocity touch.
+
+`accent-memory` shares one polymetric accent lane across hat and rim, with
+accumulating cutoff responses that decay through rests. See ACCENTS.md.

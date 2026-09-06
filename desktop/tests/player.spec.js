@@ -99,6 +99,7 @@ async function boot(page) {
                         ? {
                             ...t,
                             event: null,
+                            shared_accents: [{ name: "drums", amount: 0.7, decision: t.accent }],
                             parameters: [
                               {
                                 name: "cutoff",
@@ -115,6 +116,7 @@ async function boot(page) {
                                   {
                                     tick: t.tick + 120,
                                     base: 0.7,
+                                    envelope: { level: 0.6, impulses: 2 },
                                     automation: { segment: 2, cycle: 1, curve: "smooth", progress: 0.4 },
                                     emphasis: 0,
                                     amount: 0.7,
@@ -322,4 +324,6 @@ test("parameter inspector advances through a rest without flashing a note", asyn
     "channel 15 CC 75: 89",
   );
   await expect(page.locator("#detail-body")).toContainText("segment 2, cycle 2 (smooth)");
+  await expect(page.locator("#detail-body")).toContainText("Shared accent: drums");
+  await expect(page.locator("#detail-body")).toContainText("envelope 0.600 from 2 impulses");
 });
