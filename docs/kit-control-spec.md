@@ -250,3 +250,23 @@ Do not generate an entire Live document from guessed XML or silently rewrite a
 user's existing Set. Reject unsupported fixture structures with useful errors.
 A version-specific starter template is the initial compatibility contract; more
 Live versions require their own opening/round-trip checks.
+
+## Output independence and first generated cutoff test
+
+See [output bindings](output-bindings.md): the Ableton note/CC layout is one
+replaceable kit definition. Channel-selected hardware voices use their own output
+channels and a configurable trigger/root note. No Ableton addressing is embedded
+in the rhythm engine.
+
+`tools/ableton/cutoff_template.py` now generates a cutoff-only test bundle from the
+two supplied Live 12.4.3 Sets. It retains existing filters, creates eight missing
+filters from the working rim example, and maps all sixteen pad cutoffs. Alternate
+pads extend the draft: note40/channel8, 41/9, 43/10, 45/11, 47/12, 48/13, 49/14,
+50/15, all CC20. The original eight voice assignments are unchanged. This fills
+all channels for this particular kit and supersedes the earlier unused-channel
+reservation for the test only. Direct filter parameter mappings are the prototype;
+new visible rack macros and the full eight-control voice are not implemented.
+
+The generated matching project keeps all routes in `kit.toml` and includes one
+isolated test composition per pad. Structural/Phasecraft validation passes; actual
+Live opening, mapping behavior and save/reopen validation are pending user testing.
