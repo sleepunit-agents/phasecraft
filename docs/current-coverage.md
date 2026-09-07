@@ -1,5 +1,10 @@
 # Current percussion coverage
 
+Next-direction proposal: [Generative systems](generative-systems.md). It prioritizes
+long-running interacting processes and parameter modification; live tempo, external
+clock following and unusual meter are explicitly in the icebox. Proposed syntax and
+capabilities in that document are not implemented by this coverage baseline.
+
 Updated 2026-09-06 after the unattended percussion checklist. This supersedes the
 status tables in `spec-audit.md`; that file remains a historical engineering record.
 The original 49-section handoff included future possibilities, not a mandate to

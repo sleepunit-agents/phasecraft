@@ -1,5 +1,9 @@
 # Source layout
 
+The proposed next phase is documented in [Generative systems](generative-systems.md):
+independent processes, typed modifiers, structural returns, authoring review and
+incremental delivery. It is a design proposal, not current runtime behavior.
+
 The source separates editing files, resolving musical decisions, and delivering
 MIDI. Musical definitions are grouped by what a musician wants to find.
 
