@@ -2,6 +2,7 @@ pub mod accent;
 pub mod arrangement;
 pub mod cycle;
 pub mod groove;
+pub mod notation;
 pub mod ornament;
 pub mod parameter;
 pub mod resolve;
