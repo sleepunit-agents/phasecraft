@@ -295,3 +295,157 @@ fn timing_starter_compositions_resolve_with_prepared_909_routes() {
         );
     }
 }
+
+#[test]
+fn ornament_trace_separates_gate_refusal_from_boundary_suppression() {
+    use phasecraft::music::ornament::SuppressionReason::{LowerBound, Probability, UpperBound};
+
+    let c = song("ornaments.ratchet={count=3}\nornaments.flam={spacing='1/64T'}");
+    let mut event = resolve_step(&song(""), 0).0.remove(0).event.unwrap();
+    event.tick = 120;
+    // Ratchet requests 120/200/280; 280 cannot close before exclusive upper 281.
+    // Flam requests 80, before lower 100. Both gates admitted independently.
+    let (hits, trace) = c.parts[0]
+        .ornaments
+        .expand(123, "hat", |_| 0, &event, 240, 100..281);
+    assert_eq!(hits.iter().map(|e| e.tick).collect::<Vec<_>>(), [120, 200]);
+    let r = trace.ratchet.unwrap();
+    let f = trace.flam.unwrap();
+    assert_eq!(
+        (r.probability, r.admitted_count, r.emitted_count),
+        (1.0, 3, 2)
+    );
+    assert_eq!(r.suppression_reason, Some(UpperBound));
+    assert_eq!(
+        (f.probability, f.admitted_count, f.emitted_count),
+        (1.0, 1, 0)
+    );
+    assert_eq!(f.suppression_reason, Some(LowerBound));
+    assert_eq!(trace.ratchet_count, 3);
+    assert!(!trace.flam_active);
+
+    // One more tick admits the last tail; equality with lower admits the grace.
+    let (hits, trace) = c.parts[0]
+        .ornaments
+        .expand(123, "hat", |_| 0, &event, 240, 80..282);
+    assert_eq!(
+        hits.iter().map(|e| e.tick).collect::<Vec<_>>(),
+        [80, 120, 200, 280]
+    );
+    assert_eq!(trace.ratchet.as_ref().unwrap().emitted_count, 3);
+    assert_eq!(trace.flam.as_ref().unwrap().emitted_count, 1);
+    assert!(trace.ratchet.unwrap().suppression_reason.is_none());
+    assert!(trace.flam.unwrap().suppression_reason.is_none());
+
+    let refused = song(
+        "ornaments.ratchet={count=3,probability=0}\nornaments.flam={spacing='1/64T',probability=0}",
+    );
+    let (hits, trace) = refused.parts[0]
+        .ornaments
+        .expand(123, "hat", |_| 0, &event, 240, 100..281);
+    assert_eq!(hits.len(), 1); // the source still sounds, outside either refused expansion
+    assert_eq!(trace.ratchet_count, 1);
+    assert!(!trace.flam_active);
+    for expansion in [trace.ratchet.unwrap(), trace.flam.unwrap()] {
+        assert_eq!(
+            (
+                expansion.probability,
+                expansion.admitted_count,
+                expansion.emitted_count
+            ),
+            (0.0, 0, 0)
+        );
+        assert_eq!(expansion.suppression_reason, Some(Probability));
+    }
+}
+
+#[test]
+fn downbeat_flam_trace_records_spent_attack_every_bar() {
+    use phasecraft::music::ornament::SuppressionReason::LowerBound;
+    let c = song("ornaments.flam={spacing='1/64T'}");
+    for step in [0, 16, 32, 48] {
+        let trace = resolve_step(&c, step).0.remove(0);
+        let ornaments = trace.ornaments.unwrap();
+        assert!(ornaments.ratchet.is_none());
+        let flam = ornaments.flam.unwrap();
+        assert_eq!((flam.admitted_count, flam.emitted_count), (1, 0));
+        assert_eq!(flam.suppression_reason, Some(LowerBound));
+        assert!(!ornaments.flam_active);
+        assert!(trace.extra_events.is_empty());
+        assert_eq!(trace.event.unwrap().tick, step * STEP_TICKS);
+    }
+    assert!(resolve_step(&song(""), 0).0[0].ornaments.is_none());
+    let muted = song("trigger.probability=0\nornaments.flam={spacing='1/64T'}");
+    assert!(resolve_step(&muted, 0).0[0].ornaments.is_none());
+}
+
+#[test]
+fn ornament_trace_samples_match_rolls_and_expansion_output() {
+    for probability in [0.0, 0.37, 1.0] {
+        let c = song(&format!(
+            "ornaments.ratchet={{count=3,probability={probability}}}\nornaments.flam={{spacing='1/64T',probability={probability}}}"
+        ));
+        for step in 0..64 {
+            let trace = resolve_step(&c, step).0.remove(0);
+            let ornaments = trace.ornaments.as_ref().unwrap();
+            let r = ornaments.ratchet.as_ref().unwrap();
+            let f = ornaments.flam.as_ref().unwrap();
+            assert_eq!(r.probability, probability);
+            assert_eq!(f.probability, probability);
+            assert_eq!(
+                r.admitted_count,
+                if ornaments.ratchet_roll.unwrap() < probability {
+                    3
+                } else {
+                    0
+                }
+            );
+            assert_eq!(
+                f.admitted_count,
+                u8::from(ornaments.flam_roll.unwrap() < probability)
+            );
+            // This straight-grid fixture has no coincident attacks to merge.
+            assert_eq!(
+                trace.extra_events.len() + usize::from(trace.event.is_some()),
+                usize::from(r.emitted_count.max(1) + f.emitted_count)
+            );
+            let json = serde_json::to_value(&trace).unwrap();
+            assert_eq!(json["ornaments"]["ratchet"]["probability"], probability);
+            if step == 0 && probability == 1.0 {
+                assert_eq!(
+                    json["ornaments"]["flam"]["suppression_reason"],
+                    "lower_bound"
+                );
+            }
+        }
+        balanced(&render(&c, 64));
+    }
+}
+
+#[test]
+fn ornament_trace_exposes_compiled_bar_and_next_onset_bounds() {
+    use phasecraft::music::ornament::SuppressionReason::UpperBound;
+    let late = song("groove.swing=0.75\ngroove.delay_ticks=60\nornaments.ratchet={count=3}");
+    let (traces, midi) = resolve_step(&late, 15);
+    let trace = &traces[0];
+    let ratchet = trace.ornaments.as_ref().unwrap().ratchet.as_ref().unwrap();
+    assert_eq!(trace.event.as_ref().unwrap().tick, 3780);
+    assert_eq!((ratchet.admitted_count, ratchet.emitted_count), (3, 1));
+    assert_eq!(ratchet.suppression_reason, Some(UpperBound));
+    assert_eq!(onsets(&midi), [3780]);
+
+    // The next source reserves its grace at 200, cutting the tail at 210 even
+    // though this source is nowhere near the bar end.
+    let dense = song("ornaments.ratchet={count=8}\nornaments.flam={spacing='1/64T'}");
+    let (traces, midi) = resolve_step(&dense, 0);
+    let ratchet = traces[0]
+        .ornaments
+        .as_ref()
+        .unwrap()
+        .ratchet
+        .as_ref()
+        .unwrap();
+    assert_eq!((ratchet.admitted_count, ratchet.emitted_count), (8, 7));
+    assert_eq!(ratchet.suppression_reason, Some(UpperBound));
+    assert_eq!(onsets(&midi), [0, 30, 60, 90, 120, 150, 180, 200]);
+}

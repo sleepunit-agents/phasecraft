@@ -56,8 +56,9 @@ Use `continuous` for evolving choices. They have independent seeded addresses:
 changing flam probability cannot change ratchet, trigger or accent admission.
 Ratchets and flams can coexist. Neighboring expanded attacks are resolved together:
 coincident attacks merge into the stronger one; the next attack terminates an older
-gate. The admitted ratchet count describes the requested expansion; bar limits can
-shorten it. Traces list the main event, `extra_events` and both probability rolls.
+gate. The admitted ratchet count describes the requested expansion; expansion
+bounds can reduce its emitted count. Traces list the main event, `extra_events`,
+both probability rolls and the decision diagnostics described below.
 `realize()` returns every actual attack in its requested tick window, including grace
 notes whose source is in a neighboring planning window.
 
@@ -117,3 +118,36 @@ Changing subdivision, Part topology, routing, tempo or phrase layout requires a 
 There is still **one musical output port per process**, fixed tempo and 4/4 meter.
 Different notes/channels/CC channels can share that port. This release adds no E16
 controls, melodic parts, clock following, multiport routing or performance recording.
+
+## Ornament decision diagnostics
+
+Each source trace with an admitted trigger and configured ornaments includes
+`ornaments.ratchet` and `ornaments.flam` decision records (an absent ornament is
+`null`). Each record carries the effective `probability` used by its gate,
+`admitted_count`, `emitted_count`, and `suppression_reason`. Probability is currently
+constant configuration; the trace stores the comparand itself rather than requiring
+the reader to reconstruct it from the piece. The existing `ratchet_roll` and
+`flam_roll` are the corresponding draws.
+
+A refused ornament has both counts zero and reason `"probability"`; its ordinary
+source hit still exists. An admitted ratchet counts its main hit and tails (2–8),
+while an admitted flam counts only its one grace hit. Thus structural attacks for
+one admitted source are `max(1, ratchet.admitted_count) + flam.admitted_count`, with
+an absent decision contributing zero. Boundary suppression does not reduce these
+admitted counts: they provide evidence for the future expanded-attack clock, not
+an implementation of that clock.
+
+`emitted_count` counts the output of ornament expansion **before** neighboring
+coincident attacks merge and before MIDI is divided into scheduling windows. It
+is not a final MIDI note count. `"upper_bound"` means ratchet attacks lacked room
+for their release before the exclusive expansion bound; this bound may be the
+bar/section end or the next source's reserved earliest onset. `"lower_bound"`
+means an admitted flam's grace preceded the allowed start (including tick-zero
+underflow). For example, a probability-1 downbeat flam reports admitted 1, emitted
+0, `"lower_bound"` on every bar. An intact expansion has a `null` reason.
+
+The previous fields retain their meanings: `ratchet_count` is the requested
+ratchet count or 1 after refusal, and `flam_active` says the grace survived the
+bounds check. Trigger rejection still produces no ornament decision. These
+fields are diagnostic output, not authored TOML keys; this addition changes
+neither the authored vocabulary nor playback.
