@@ -109,22 +109,35 @@ fn names(value: Value, field: &str) -> Result<Vec<String>, String> {
 /// kit fails where it is written, whether or not any voice ever binds to it. An alias cannot
 /// be checked here: it may name a behavior a later library declares, so the registry resolves
 /// every alias once it is complete (`Registry::check_aliases`).
+/// The shape-and-range check for an output table, with no alias alternative. A kit entry may
+/// be *declared* as a table or as a behavior name, but what an alias RESOLVES to is the output
+/// itself and can only be a table — so the resolved value is checked here rather than through
+/// `instrument`, whose string branch would read it as one more alias and drop it again.
+fn output_table(body: &Value) -> Result<Value, String> {
+    let Value::Table(output) = body else {
+        return Err(format!(
+            "an instrument output must be a table of output fields, not the {} {body}",
+            body.type_str()
+        ));
+    };
+    let mut holder = Table::new();
+    holder.insert("output".into(), Value::Table(output.clone()));
+    super::syntax::behavior(&mut holder)?;
+    let output = holder.remove("output").unwrap();
+    let typed: crate::music::Output = output
+        .clone()
+        .try_into()
+        .map_err(|e: toml::de::Error| e.to_string())?;
+    typed.validate()?;
+    Ok(output)
+}
+/// One kit entry as it is *written*: an output table, or the name of a behavior to resolve
+/// later (`check_aliases`). The table alternative is `output_table`; this adds the alias one.
 fn instrument(body: &Value) -> Result<Value, String> {
     match body {
         Value::String(behavior) if !behavior.trim().is_empty() => Ok(body.clone()),
         Value::String(_) => Err("an instrument alias must name a behavior".into()),
-        Value::Table(output) => {
-            let mut holder = Table::new();
-            holder.insert("output".into(), Value::Table(output.clone()));
-            super::syntax::behavior(&mut holder)?;
-            let output = holder.remove("output").unwrap();
-            let typed: crate::music::Output = output
-                .clone()
-                .try_into()
-                .map_err(|e: toml::de::Error| e.to_string())?;
-            typed.validate()?;
-            Ok(output)
-        }
+        Value::Table(_) => output_table(body),
         _ => Err("an instrument is an output table or the name of a behavior".into()),
     }
 }
@@ -200,8 +213,10 @@ impl Registry {
     /// declares. Resolving alone is not enough: `Registry::instrument` expands the behavior
     /// and returns its `output` untyped, so an alias to `output = {note = 200}` would
     /// survive a resolve-only check and a Part could then rescue it by overlaying its own
-    /// `note`. The error names the file the alias was written in, the entry, and either the
-    /// unresolved target or the bad value.
+    /// `note`. The check is `output_table` rather than `instrument` because at this point the
+    /// value IS the output: `instrument`'s alias branch would read `output = "anything"` as
+    /// one more name to resolve and let a non-table through. The error names the file the
+    /// alias was written in, the entry, and either the unresolved target or the bad value.
     fn check_aliases(&self) -> Result<(), String> {
         for (name, entry) in &self.kit {
             if let Value::String(_) = entry {
@@ -211,7 +226,7 @@ impl Registry {
                         .map_or(e.clone(), |origin| origin.attach(e))
                 };
                 let resolved = self.instrument(name, &mut vec![]).map_err(attach)?;
-                instrument(&resolved).map_err(|e| attach(format!("kit.{name}: {e}")))?;
+                output_table(&resolved).map_err(|e| attach(format!("kit.{name}: {e}")))?;
             }
         }
         Ok(())

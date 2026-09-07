@@ -737,6 +737,56 @@ fn an_alias_to_a_behavior_with_an_invalid_output_is_refused_where_it_is_written(
 }
 
 #[test]
+fn an_alias_to_a_behavior_whose_output_is_not_a_table_is_refused() {
+    // Mark's second reading of #11, at 8e0c702. The commit above closed the RANGE hole by
+    // running what an alias resolved to back through the free `instrument` helper — but that
+    // helper is the check for an entry as it is *written*, where a nonempty string is a legal
+    // alias to resolve later. A resolved output is not a declaration, so a behavior carrying
+    // `output = 'not-an-output-table'` matched the alias branch, returned Ok, and was dropped
+    // on the floor a second time. Ints and arrays were already refused (they reach the helper's
+    // catch-all arm); the string was the whole hole, and it is the shape half of the
+    // shape-and-range property the PR advertises.
+    let piece = |output: &str, bound: &str| {
+        format!(
+            "tempo=132\nseed=1\n[library.behaviors.'local.bad']\noutput={output}\n\
+             [library.kit]\nbad='local.bad'\n\
+             [part]\nid='x'\n{bound}compose=['std.backbeat','std.no_accent']\n\
+             [part.output]\nnote=36\n"
+        )
+    };
+
+    // 1. UNUSED: nothing binds `bad`, and it is refused where it is written, naming the value.
+    let e = Composition::parse(&piece("'not-an-output-table'", "")).unwrap_err();
+    assert!(
+        e.contains("kit.bad")
+            && e.contains("table of output fields")
+            && e.contains("not-an-output-table"),
+        "{e}"
+    );
+
+    // 2. BOUND AND OVERLAID: the Part's own `note = 36` must not rescue it. Without the check
+    //    it did — `merge` replaces a string base with the overlay table outright, so the voice
+    //    played on the Part's own output and the broken kit entry vanished silently.
+    let e = Composition::parse(&piece("'not-an-output-table'", "kit='bad'\n")).unwrap_err();
+    assert!(
+        e.contains("kit.bad") && e.contains("not-an-output-table"),
+        "{e}"
+    );
+
+    // 3. The other non-table shapes stay refused, and still name the offending value.
+    for output in ["5", "['a']", "true"] {
+        let e = Composition::parse(&piece(output, "")).unwrap_err();
+        assert!(
+            e.contains("kit.bad") && e.contains("table of output fields"),
+            "{output}: {e}"
+        );
+    }
+
+    // A behavior whose output IS a table still resolves through the alias, bound or not.
+    Composition::parse(&piece("{note=40,channel=3}", "kit='bad'\n")).unwrap();
+}
+
+#[test]
 fn an_invalid_alias_target_names_the_file_the_alias_was_written_in() {
     // The imported-file half of the case above: when the check runs on the complete registry
     // there is no call site left to name the file, so the entry's recorded origin must.
