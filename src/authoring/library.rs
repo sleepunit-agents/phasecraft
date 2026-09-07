@@ -192,19 +192,26 @@ impl Registry {
         }
         Ok(())
     }
-    /// Resolve every alias in the kit once the registry is complete. An alias is valid where
-    /// it is written whether or not a Part binds to it; it is checked here rather than in
-    /// `add` because libraries load in order (built-ins, `libraries`, imports, the
-    /// composition's own table) and an alias may name a behavior a later one declares. The
-    /// error names the file the alias was written in, the entry, and the unresolved target.
+    /// Resolve every alias in the kit once the registry is complete, then hold what it
+    /// resolved to to the same `Output::validate` an inline table is held to. An alias is
+    /// valid where it is written whether or not a Part binds to it; it is checked here
+    /// rather than in `add` because libraries load in order (built-ins, `libraries`,
+    /// imports, the composition's own table) and an alias may name a behavior a later one
+    /// declares. Resolving alone is not enough: `Registry::instrument` expands the behavior
+    /// and returns its `output` untyped, so an alias to `output = {note = 200}` would
+    /// survive a resolve-only check and a Part could then rescue it by overlaying its own
+    /// `note`. The error names the file the alias was written in, the entry, and either the
+    /// unresolved target or the bad value.
     fn check_aliases(&self) -> Result<(), String> {
         for (name, entry) in &self.kit {
             if let Value::String(_) = entry {
-                self.instrument(name, &mut vec![]).map_err(|e| {
+                let attach = |e: String| {
                     self.kit_origins
                         .get(name)
                         .map_or(e.clone(), |origin| origin.attach(e))
-                })?;
+                };
+                let resolved = self.instrument(name, &mut vec![]).map_err(attach)?;
+                instrument(&resolved).map_err(|e| attach(format!("kit.{name}: {e}")))?;
             }
         }
         Ok(())

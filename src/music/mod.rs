@@ -172,10 +172,10 @@ impl Output {
             ));
         }
         if self.gate_ticks == 0 || self.gate_ticks > PPQN * 6 {
-            return Err(
-                "gate_ticks must be 1..5760; gates are limited by the next rhythmic cell and bar"
-                    .into(),
-            );
+            return Err(format!(
+                "gate_ticks must be 1..5760; gates are limited by the next rhythmic cell and bar (gate_ticks {})",
+                self.gate_ticks
+            ));
         }
         Ok(())
     }

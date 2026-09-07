@@ -90,7 +90,9 @@ An output table is checked as the Part would check it — shape *and* range: cha
 bind to it cannot rescue it by overlaying its own `note`. An alias is resolved once
 every library has loaded (built-ins, the project's `libraries`, imports, then the
 composition's own table, in that order), so it may name a behavior a later file
-declares and is still refused if nothing ever does. The error names the entry, the
+declares and is still refused if nothing ever does — and what it resolves *to* is
+then held to that same shape-and-range check, so an alias to a behavior whose
+`output` carries `note = 200` is refused exactly as the inline table would be. The error names the entry, the
 bad value or the unresolved target, **and the file the entry was written in** — an
 imported kit's fault is reported against the kit file, not against the composition
 that imported it.

@@ -689,6 +689,76 @@ fn kit_errors_in_a_library_file_name_that_file_not_the_composition() {
 }
 
 #[test]
+fn an_alias_to_a_behavior_with_an_invalid_output_is_refused_where_it_is_written() {
+    // Mark's finding on #11 at cc51bca. Resolving an alias is not checking it: the registry's
+    // `instrument` expands the behavior and hands back its `output` untyped, so before this
+    // commit the two cases below both LOADED — the alias resolved, nothing range-checked what
+    // it resolved to, and the composition ran with note 200. The existing unused-alias tests
+    // only covered an unknown target and a target with no output at all.
+    let piece = |body: &str| format!("tempo=132\nseed=1\n{body}");
+    let bad_behavior =
+        "[library.behaviors.'local.bad']\noutput={note=200}\n[library.kit]\nbad='local.bad'\n";
+
+    // 1. UNUSED: no voice binds `bad`, and it is still refused where it is written.
+    let e = Composition::parse(&piece(&format!(
+        "{bad_behavior}[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n"
+    )))
+    .unwrap_err();
+    assert!(
+        e.contains("kit.bad") && e.contains("note 0..127") && e.contains("note 200"),
+        "{e}"
+    );
+
+    // 2. BOUND AND OVERLAID: the Part's own `note = 50` must not rescue it. This is the
+    //    alias twin of `a_voice_cannot_rescue_a_bad_kit_entry_by_overlaying_it`, which
+    //    covered only an inline table.
+    let e = Composition::parse(&piece(&format!(
+        "{bad_behavior}[part]\nid='low'\nkit='bad'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=50\n"
+    )))
+    .unwrap_err();
+    assert!(e.contains("kit.bad") && e.contains("note 200"), "{e}");
+
+    // 3. The range rule is the whole rule, not just `note`: a gate the bar cannot hold is
+    //    refused through an alias too, and the error carries the offending value.
+    let e = Composition::parse(&piece(
+        "[library.behaviors.'local.long']\noutput={note=40,gate_ticks=99999}\n[library.kit]\nlong='local.long'\n         [part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n",
+    ))
+    .unwrap_err();
+    assert!(
+        e.contains("kit.long") && e.contains("gate_ticks") && e.contains("99999"),
+        "{e}"
+    );
+
+    // A valid alias still loads, bound or not.
+    Composition::parse(&piece(
+        "[library.behaviors.'local.good']\noutput={note=40,channel=3}\n[library.kit]\ngood='local.good'\n         [part]\nid='x'\nkit='good'\ncompose=['std.backbeat','std.no_accent']\n",
+    ))
+    .unwrap();
+}
+
+#[test]
+fn an_invalid_alias_target_names_the_file_the_alias_was_written_in() {
+    // The imported-file half of the case above: when the check runs on the complete registry
+    // there is no call site left to name the file, so the entry's recorded origin must.
+    let temp = TempTree::new();
+    let canonical = temp.0.canonicalize().unwrap();
+    let lib = canonical.join("kits/local.toml").display().to_string();
+    temp.write(
+        "kits/local.toml",
+        "[library.behaviors.'local.bad']\noutput={note=200}\n[library.kit]\nbad='local.bad'\n",
+    );
+    let file = temp.write(
+        "piece.toml",
+        "tempo=132\nseed=1\nimports=['kits/local.toml']\n[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n",
+    );
+    let e = Composition::read(&file).unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("note 200"),
+        "{e}"
+    );
+}
+
+#[test]
 fn a_kit_alias_may_name_a_behavior_a_later_library_declares() {
     // Libraries load in order: built-ins, `libraries`, imports, then the composition's own
     // table. The alias below is written in an import and resolves to a behavior declared in
