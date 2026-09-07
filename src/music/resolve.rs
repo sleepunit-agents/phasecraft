@@ -1,6 +1,6 @@
 use super::rhythm::*;
 use super::{Composition, Part, ProbabilityMode, STEP_TICKS};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// Versioned, length-framed address: reproducible across platforms and builds.
@@ -18,12 +18,229 @@ pub fn decision_roll(seed: u64, part: &str, lane: &str, event: u64, decision: &s
     let bits = u64::from_le_bytes(bytes[..8].try_into().unwrap()) >> 11;
     bits as f64 / (1u64 << 53) as f64
 }
+
+/// The exact address one draw hashes: what a pin has to name to force it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Address {
+    pub part: String,
+    pub lane: String,
+    pub event: u64,
+    pub decision: String,
+}
+/// Where a pin lands, in the author's words: which dice (`roll`), whose (`voice`, or a shared
+/// `accent` lane), and when (`bar`, `slot`, both 1-based; the slot counts the owner's own grid).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PinAt {
+    pub roll: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
+    pub bar: u64,
+    pub slot: u64,
+}
+/// A forced draw: the dice at `at` returns `u` instead of the hash. The outcome is still the
+/// composition's to decide from `u`; a pin never names a result.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pin {
+    pub at: PinAt,
+    pub u: f64,
+    /// Resolved at load from `at` against the Part it names; never authored, never printed.
+    #[serde(skip)]
+    pub address: Address,
+}
+/// The dice a piece rolls with: its seed, and the pins consulted before the hash.
+#[derive(Clone, Copy)]
+pub struct Dice<'a> {
+    pub seed: u64,
+    pub pins: &'a [Pin],
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Draw {
+    pub u: f64,
+    pub pinned: bool,
+}
+impl Dice<'_> {
+    pub fn roll(&self, part: &str, lane: &str, event: u64, decision: &str) -> Draw {
+        let pinned = self.pins.iter().find(|pin| {
+            let a = &pin.address;
+            a.event == event && a.part == part && a.lane == lane && a.decision == decision
+        });
+        match pinned {
+            Some(pin) => Draw {
+                u: pin.u,
+                pinned: true,
+            },
+            None => Draw {
+                u: decision_roll(self.seed, part, lane, event, decision),
+                pinned: false,
+            },
+        }
+    }
+}
+const VOICE_DICE: [&str; 7] = [
+    "fire", "accent", "burst", "flam", "ghost", "timing", "velocity",
+];
+/// Turn every authored pin into the address its draw hashes. Errors name the pin by its shape.
+pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
+    let mut resolved: Vec<Pin> = Vec::with_capacity(pins.len());
+    for pin in pins {
+        let at = &pin.at;
+        let shape = || {
+            let owner = match (&at.voice, &at.accent) {
+                (Some(v), _) => format!("voice {v:?}"),
+                (None, Some(a)) => format!("accent {a:?}"),
+                (None, None) => "no owner".into(),
+            };
+            format!(
+                "pin {{ roll = {:?}, {owner}, bar = {}, slot = {} }}",
+                at.roll, at.bar, at.slot
+            )
+        };
+        if !pin.u.is_finite() || !(0.0..1.0).contains(&pin.u) {
+            return Err(format!(
+                "{}: u must be finite and within 0 <= u < 1",
+                shape()
+            ));
+        }
+        if at.bar == 0 || at.bar > 10_000_000 {
+            return Err(format!("{}: bar is 1-based and at most 10000000", shape()));
+        }
+        let address = match (&at.voice, &at.accent) {
+            (Some(_), Some(_)) | (None, None) => {
+                return Err(format!(
+                    "{}: name exactly one owner, voice = \"<part>\" or accent = \"<shared lane>\"",
+                    shape()
+                ));
+            }
+            (Some(voice), None) => {
+                let part = c
+                    .parts
+                    .iter()
+                    .find(|p| &p.id == voice)
+                    .ok_or_else(|| format!("{}: no Part {voice:?}", shape()))?;
+                let cell = part.subdivision.0;
+                let steps_per_bar = 16 * STEP_TICKS / cell;
+                if at.slot == 0 || at.slot > steps_per_bar {
+                    return Err(format!(
+                        "{}: slot is 1-based and {voice:?} has {steps_per_bar} slots per bar",
+                        shape()
+                    ));
+                }
+                let step = (at.bar - 1) * steps_per_bar + (at.slot - 1);
+                let g = &part.groove;
+                let (lane, decision, mode) = match at.roll.as_str() {
+                    "fire" => ("trigger", "admission", part.trigger.probability_mode),
+                    "accent" => ("accent", "admission", part.accent.probability_mode),
+                    "burst" => match &part.ornaments.ratchet {
+                        Some(r) => ("ratchet", "admission", r.probability_mode),
+                        None => {
+                            return Err(format!(
+                                "{}: {voice:?} has no ratchet to draw for",
+                                shape()
+                            ));
+                        }
+                    },
+                    "flam" => match &part.ornaments.flam {
+                        Some(f) => ("flam", "admission", f.probability_mode),
+                        None => {
+                            return Err(format!("{}: {voice:?} has no flam to draw for", shape()));
+                        }
+                    },
+                    "ghost" if !g.is_default() => ("groove", "ghost", g.ghost_mode),
+                    "timing" => (
+                        "groove",
+                        "humanize_timing",
+                        g.humanize
+                            .as_ref()
+                            .map_or(ProbabilityMode::PhraseLocked, |h| h.mode),
+                    ),
+                    "velocity" if g.humanize.is_some() => (
+                        "groove",
+                        "humanize_velocity",
+                        g.humanize.as_ref().unwrap().mode,
+                    ),
+                    "ghost" | "velocity" => {
+                        return Err(format!(
+                            "{}: {voice:?} has no groove that draws {:?}",
+                            shape(),
+                            at.roll
+                        ));
+                    }
+                    other => {
+                        return Err(format!(
+                            "{}: unknown dice {other:?}; a voice rolls one of {}",
+                            shape(),
+                            VOICE_DICE.join(", ")
+                        ));
+                    }
+                };
+                Address {
+                    part: voice.clone(),
+                    lane: lane.into(),
+                    event: decision_identity(c, cell, step, mode),
+                    decision: decision.into(),
+                }
+            }
+            (None, Some(accent)) => {
+                if at.roll != "accent" {
+                    return Err(format!(
+                        "{}: a shared accent lane rolls only \"accent\"",
+                        shape()
+                    ));
+                }
+                let lane = c
+                    .accents
+                    .get(accent)
+                    .ok_or_else(|| format!("{}: no shared accent {accent:?}", shape()))?;
+                if at.slot == 0 || at.slot > 16 {
+                    return Err(format!(
+                        "{}: slot is 1-based and a shared accent has 16 slots per bar",
+                        shape()
+                    ));
+                }
+                let sixteenth = (at.bar - 1) * 16 + (at.slot - 1);
+                Address {
+                    part: accent.clone(),
+                    lane: "shared_accent".into(),
+                    event: match lane.probability_mode {
+                        ProbabilityMode::PhraseLocked => sixteenth % c.phrase_steps(),
+                        ProbabilityMode::Continuous => sixteenth,
+                    },
+                    decision: "shared_admission".into(),
+                }
+            }
+        };
+        if let Some(twin) = resolved.iter().find(|p| p.address == address) {
+            return Err(format!(
+                "{} names the same dice as pin {{ roll = {:?}, bar = {}, slot = {} }}; one pin per draw",
+                shape(),
+                twin.at.roll,
+                twin.at.bar,
+                twin.at.slot
+            ));
+        }
+        resolved.push(Pin {
+            at: at.clone(),
+            u: pin.u,
+            address,
+        });
+    }
+    Ok(resolved)
+}
+fn is_false(v: &bool) -> bool {
+    !*v
+}
 #[derive(Clone, Debug, Serialize)]
 pub struct DecisionTrace {
     pub rhythm: RhythmTrace,
     pub event_identity: u64,
     pub probability: f64,
     pub roll: f64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pinned: bool,
     pub admitted: bool,
 }
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -110,13 +327,14 @@ fn admission(
         (step * cell % (c.phrase_steps() * STEP_TICKS)) / cell,
         reference,
     );
-    let roll = decision_roll(c.seed, part_id, name, event_identity, "admission");
-    let admitted = rhythm.active() && roll < probability;
+    let draw = c.dice().roll(part_id, name, event_identity, "admission");
+    let admitted = rhythm.active() && draw.u < probability;
     DecisionTrace {
         rhythm,
         event_identity,
         probability,
-        roll,
+        roll: draw.u,
+        pinned: draw.pinned,
         admitted,
     }
 }
@@ -168,16 +386,12 @@ fn resolve_part(
             let rhythm = lane
                 .rhythm
                 .evaluate(shared_step, c.phrase_steps(), &|_, _| false);
-            let roll = decision_roll(
-                c.seed,
-                name,
-                "shared_accent",
-                event_identity,
-                "shared_admission",
-            );
+            let draw = c
+                .dice()
+                .roll(name, "shared_accent", event_identity, "shared_admission");
             let admitted = (step * part.subdivision.0).is_multiple_of(STEP_TICKS)
                 && rhythm.active()
-                && roll < lane.probability;
+                && draw.u < lane.probability;
             SharedAccentTrace {
                 name: name.clone(),
                 amount: if admitted { lane.amount } else { 0.0 },
@@ -185,7 +399,8 @@ fn resolve_part(
                     rhythm,
                     event_identity,
                     probability: lane.probability,
-                    roll,
+                    roll: draw.u,
+                    pinned: draw.pinned,
                     admitted,
                 },
             }

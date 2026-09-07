@@ -1,7 +1,7 @@
 //! Bounded, independently admitted expansions of a source hit.
 use super::{
     ProbabilityMode,
-    resolve::{MusicalEvent, decision_roll},
+    resolve::{Dice, MusicalEvent},
     time::NoteValue,
 };
 use serde::{Deserialize, Serialize};
@@ -105,7 +105,7 @@ impl Ornaments {
     }
     pub fn expand(
         &self,
-        seed: u64,
+        dice: Dice,
         id: &str,
         identity: impl Fn(ProbabilityMode) -> u64,
         event: &MusicalEvent,
@@ -113,7 +113,7 @@ impl Ornaments {
         bounds: std::ops::Range<u64>,
     ) -> (Vec<MusicalEvent>, OrnamentTrace) {
         let (lower, upper) = (bounds.start, bounds.end);
-        let roll = |lane, mode| decision_roll(seed, id, lane, identity(mode), "admission");
+        let roll = |lane, mode| dice.roll(id, lane, identity(mode), "admission").u;
         let ratchet_roll = self
             .ratchet
             .as_ref()

@@ -177,3 +177,23 @@ are checked, and the existing musical golden traces remain in the suite.
   conflicting mappings. All 64 generated isolation compositions validate.
 - New level/pan/decay response and round-trip Set opening still require Live on the
   music machine. Existing cutoff response was confirmed by Jonathan.
+
+## Pins — forced draws by address (2026-09-07)
+
+- 171 Rust tests pass (four new in `tests/engine.rs`): a phrase-locked pin lands on every
+  phrase repeat and changes no other draw at any of 640 steps, byte-for-byte on the trace;
+  a continuous pin lands once and survives an `expand`-style round trip through TOML; pins
+  reach a shared accent lane, a ratchet (forced to fire and forced to not fire) and a
+  `1/16T` Part's 24-slot grid; thirteen malformed shapes are rejected with the shape in the
+  message, including two shapes that resolve to one dice under a phrase lock — and the same
+  two accepted once the lane is continuous. Original 35-bar provenance is byte-identical:
+  `pinned` is only written when true.
+- `phasecraft validate`, `expand` and `inspect` were run on a pinned composition:
+  `expand` carries the pin's shape and validates when read back; `inspect` shows
+  `pinned` on the forced decision (JSONL and `--human`). Root clippy passes with
+  warnings denied.
+- Not established here: the pins the folder writes against dice that are not yet in the
+  engine — `door` (the returns-clocked router, PR #7), `mutate` (retained patterns, M1.5),
+  `step` and `target` (lanes, M1.4). Each lands as one arm in `resolve_pins` when its
+  draw does. No audio was rendered; pins change one number per address and the event
+  list is the evidence.

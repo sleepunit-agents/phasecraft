@@ -237,3 +237,187 @@ fn decision_v1_golden_value_survives_build_and_platform_changes() {
 fn resolve(c: &Composition, step: u64) -> StepTrace {
     phasecraft::music::resolve::resolve(c, &c.parts[0], step)
 }
+
+// Pins: a forced draw at one address, consulted before the hash; everything else unchanged.
+fn pinned(part: &str, pins: &str) -> Result<Composition, String> {
+    Composition::parse(&format!(
+        "tempo=132\nseed=91827\nphrase_bars=4\n[parts.hat]\nuse='techno.closed_hat'\n{part}\n{pins}"
+    ))
+}
+const HAT: &str = "trigger.rhythm={steps=16,pulses=7}\ntrigger.probability=0.85\ntrigger.probability_mode='phrase_locked'\naccent.rhythm={steps=7,pulses=3}\naccent.probability=0.75";
+#[test]
+fn a_pin_forces_one_draw_and_leaves_every_other_draw_alone() {
+    let plain = pinned(HAT, "").unwrap();
+    // The first written hit in bar 2 (steps 16..32), named as bar 2 slot n; phrase-locked,
+    // so the same dice is rolled again every 64 steps.
+    let target = (16..32)
+        .find(|s| resolve(&plain, *s).trigger.rhythm.active())
+        .unwrap();
+    let c = pinned(
+        HAT,
+        &format!(
+            "[[pins]]\nat={{roll='fire',voice='hat',bar=2,slot={}}}\nu=0.99",
+            target - 16 + 1
+        ),
+    )
+    .unwrap();
+    assert_eq!(c.pins.len(), 1);
+    let mut hits = 0;
+    for step in 0..640 {
+        let a = resolve(&plain, step);
+        let b = resolve(&c, step);
+        if step % 64 == target {
+            hits += 1;
+            assert!(b.trigger.pinned, "step {step}");
+            assert_eq!(b.trigger.roll, 0.99);
+            assert!(!b.trigger.admitted, "0.99 never clears an 0.85 gate");
+            assert_ne!(a.trigger.roll, 0.99);
+            // The pin reaches one dice: the accent draw at the same step is untouched.
+            assert_eq!(
+                serde_json::to_string(&a.accent).unwrap(),
+                serde_json::to_string(&b.accent).unwrap()
+            );
+            assert!(!serde_json::to_string(&a).unwrap().contains("pinned"));
+        } else {
+            assert_eq!(
+                serde_json::to_string(&a).unwrap(),
+                serde_json::to_string(&b).unwrap(),
+                "step {step}"
+            );
+        }
+    }
+    assert_eq!(hits, 10);
+}
+#[test]
+fn a_continuous_pin_lands_on_one_step_and_survives_a_round_trip() {
+    let part = HAT.replace("'phrase_locked'", "'continuous'");
+    let c = pinned(
+        &part,
+        "[[pins]]\nat={roll='fire',voice='hat',bar=2,slot=3}\nu=0.0",
+    )
+    .unwrap();
+    for step in 0..640 {
+        let t = resolve(&c, step);
+        assert_eq!(t.trigger.pinned, step == 18, "step {step}");
+        if step == 18 {
+            assert_eq!(t.trigger.roll, 0.0);
+            // u = 0 clears any gate; the written rhythm still decides whether there is a hit.
+            assert_eq!(t.trigger.admitted, t.trigger.rhythm.active());
+        }
+    }
+    // The expanded snapshot carries the shape, not the resolved address; reading it back
+    // resolves again to the same dice.
+    let text = toml::to_string(&c).unwrap();
+    assert!(text.contains("[[pins]]"));
+    assert!(!text.contains("address"));
+    let again = Composition::parse(&text).unwrap();
+    assert_eq!(again.pins, c.pins);
+    assert_eq!(
+        serde_json::to_string(&resolve(&again, 18)).unwrap(),
+        serde_json::to_string(&resolve(&c, 18)).unwrap()
+    );
+}
+#[test]
+fn pins_reach_shared_accents_ratchets_and_a_subdivided_grid() {
+    let c = Composition::parse(
+        "tempo=132\nseed=99\nphrase_bars=4\n[accents.drums]\nrhythm={steps=1,pulses=1}\nprobability=0.5\namount=0.7\n[parts.hat]\nuse='techno.closed_hat'\ntrigger.rhythm={steps=1,pulses=1}\ntrigger.probability=1.0\naccent.sources=['drums']\naccent.probability=0.0\nornaments.ratchet={count=3,probability=0.4}\n[[pins]]\nat={roll='accent',accent='drums',bar=1,slot=1}\nu=0.0\n[[pins]]\nat={roll='burst',voice='hat',bar=1,slot=2}\nu=0.0\n[[pins]]\nat={roll='burst',voice='hat',bar=1,slot=3}\nu=0.95",
+    )
+    .unwrap();
+    for step in [0, 64] {
+        let t = resolve(&c, step);
+        assert!(t.shared_accents[0].decision.pinned);
+        assert_eq!(t.shared_accents[0].decision.roll, 0.0);
+        assert!(t.shared_accents[0].decision.admitted);
+    }
+    assert!(!resolve(&c, 1).shared_accents[0].decision.pinned);
+    let forced = resolve(&c, 1).ornaments.unwrap();
+    assert_eq!((forced.ratchet_roll, forced.ratchet_count), (Some(0.0), 3));
+    let denied = resolve(&c, 2).ornaments.unwrap();
+    assert_eq!((denied.ratchet_roll, denied.ratchet_count), (Some(0.95), 1));
+    // A triplet-sixteenth Part has 24 slots per bar; slot 24 is its step 23.
+    let triplet = format!("subdivision='1/16T'\n{HAT}");
+    assert!(
+        pinned(
+            &triplet,
+            "[[pins]]\nat={roll='fire',voice='hat',bar=1,slot=25}\nu=0.5"
+        )
+        .unwrap_err()
+        .contains("24 slots per bar")
+    );
+    let c = pinned(
+        &triplet,
+        "[[pins]]\nat={roll='fire',voice='hat',bar=1,slot=24}\nu=0.5",
+    )
+    .unwrap();
+    // resolve_step is indexed by sixteenth; find the triplet cell by its own tick.
+    let cell = c.parts[0].subdivision.0;
+    let at = |tick: u64| {
+        (0..16)
+            .flat_map(|s| resolve_step(&c, s).0)
+            .find(|t| t.tick == tick)
+            .unwrap()
+    };
+    assert!(at(23 * cell).trigger.pinned);
+    assert!(!at(22 * cell).trigger.pinned);
+}
+#[test]
+fn pins_that_name_no_draw_are_rejected_by_shape() {
+    for (pins, expected) in [
+        (
+            "at={roll='door',voice='hat',bar=1,slot=1}\nu=0.5",
+            "unknown dice",
+        ),
+        (
+            "at={roll='fire',voice='kick',bar=1,slot=1}\nu=0.5",
+            "no Part \"kick\"",
+        ),
+        (
+            "at={roll='fire',voice='hat',bar=1,slot=17}\nu=0.5",
+            "16 slots per bar",
+        ),
+        (
+            "at={roll='fire',voice='hat',bar=0,slot=1}\nu=0.5",
+            "bar is 1-based",
+        ),
+        (
+            "at={roll='fire',voice='hat',bar=1,slot=1}\nu=1.0",
+            "0 <= u < 1",
+        ),
+        (
+            "at={roll='fire',voice='hat',bar=1,slot=1}\nu=nan",
+            "0 <= u < 1",
+        ),
+        (
+            "at={roll='burst',voice='hat',bar=1,slot=1}\nu=0.5",
+            "no ratchet",
+        ),
+        (
+            "at={roll='ghost',voice='hat',bar=1,slot=1}\nu=0.5",
+            "no groove",
+        ),
+        (
+            "at={roll='fire',voice='hat',accent='x',bar=1,slot=1}\nu=0.5",
+            "exactly one owner",
+        ),
+        ("at={roll='fire',bar=1,slot=1}\nu=0.5", "exactly one owner"),
+        (
+            "at={roll='accent',accent='drums',bar=1,slot=1}\nu=0.5",
+            "no shared accent",
+        ),
+        (
+            "at={roll='fire',voice='hat',bar=1,slot=1,tick=4}\nu=0.5",
+            "unknown field `tick`",
+        ),
+        // Two shapes, one dice: bar 5 slot 3 is bar 1 slot 3 again under a four-bar phrase lock.
+        (
+            "at={roll='fire',voice='hat',bar=1,slot=3}\nu=0.5\n[[pins]]\nat={roll='fire',voice='hat',bar=5,slot=3}\nu=0.6",
+            "names the same dice",
+        ),
+    ] {
+        let err = pinned(HAT, &format!("[[pins]]\n{pins}")).unwrap_err();
+        assert!(err.contains(expected), "{pins}: {err}");
+    }
+    // The same two shapes are two dice once the lane is continuous.
+    let part = HAT.replace("'phrase_locked'", "'continuous'");
+    assert!(pinned(&part, "[[pins]]\nat={roll='fire',voice='hat',bar=1,slot=3}\nu=0.5\n[[pins]]\nat={roll='fire',voice='hat',bar=5,slot=3}\nu=0.6").is_ok());
+}
