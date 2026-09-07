@@ -85,6 +85,15 @@ enum Command {
         lookahead_ms: Option<u64>,
     },
 }
+/// `expand` and `inspect` read the draft: a kit gap is listed on stderr and the draft goes
+/// on without those controls. Playback goes through `project::load`, which refuses it.
+fn read_draft(file: &std::path::Path) -> Result<Composition, String> {
+    let loaded = phasecraft::authoring::project::load_draft(file)?;
+    for gap in &loaded.gaps {
+        eprintln!("Gap {gap}");
+    }
+    Ok(loaded.composition)
+}
 pub fn run() -> Result<(), String> {
     match Cli::parse().command {
         Command::Version { json } => {
@@ -122,8 +131,21 @@ pub fn run() -> Result<(), String> {
                 for error in &report.errors {
                     eprintln!("{error}");
                 }
+                for gap in &report.gaps {
+                    println!("Gap {gap}");
+                }
                 if report.valid {
-                    println!("Valid ({} compositions)", report.files.len());
+                    println!(
+                        "Valid ({} compositions{})",
+                        report.files.len(),
+                        match report.gaps.len() {
+                            0 => String::new(),
+                            n => format!(
+                                ", {n} gap{} — not playable until the kit declares them",
+                                if n == 1 { "" } else { "s" }
+                            ),
+                        }
+                    );
                 }
             }
             if report.valid {
@@ -140,7 +162,7 @@ pub fn run() -> Result<(), String> {
             Ok(())
         }
         Command::Expand { file } => {
-            let c = Composition::read(&file)?;
+            let c = read_draft(&file)?;
             write!(
                 io::stdout().lock(),
                 "{}",
@@ -154,7 +176,7 @@ pub fn run() -> Result<(), String> {
             start,
             human,
         } => {
-            let c = Composition::read(&file)?;
+            let c = read_draft(&file)?;
             let end = start
                 .checked_add(steps)
                 .filter(|end| *end <= u64::MAX / STEP_TICKS)

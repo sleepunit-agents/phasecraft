@@ -453,3 +453,197 @@ fn alternate_seed_changes_probability_without_moving_fixed_kick() {
         assert_eq!(hits(&a), hits(&b));
     }
 }
+
+// ---- M1.7: the kit is read, not re-typed (until-stop TO-PHASECRAFT § E, rows B18 B19) ----
+
+/// A project in the shape until-stop will take: the prepared kit imported verbatim, plus a
+/// local kit file that names the piece's instruments — aliases into the prepared table, and
+/// one instrument (`sub`) phasecraft has never heard of.
+fn kit_project(temp: &TempTree, voice: &str) -> PathBuf {
+    let prepared =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates/project/kits/909-prepared.toml");
+    temp.write(
+        "kits/909-prepared.toml",
+        &std::fs::read_to_string(prepared).unwrap(),
+    );
+    temp.write(
+        "kits/until-stop.toml",
+        r#"
+[library.kit]
+kick       = "kit.prepared.kick"
+snare      = "kit.prepared.snare"
+closed_hat = "kit.prepared.closed_hat"
+metal      = "kit.prepared.ride"
+[library.kit.sub]
+note = 48
+channel = 2
+"#,
+    );
+    temp.write("config/midi.toml", "port='Phasecraft'\n");
+    temp.write(
+        "phasecraft.toml",
+        "name='until-stop'\ndefault='until-stop.toml'\ncompositions=['until-stop.toml']\nlibraries=['kits/909-prepared.toml','kits/until-stop.toml']\nmidi='config/midi.toml'\n",
+    );
+    temp.write(
+        "until-stop.toml",
+        &format!("tempo=126\nseed=91827\n{voice}"),
+    )
+}
+#[test]
+fn kit_binds_a_voice_to_the_imported_prepared_table_verbatim() {
+    let temp = TempTree::new();
+    let file = kit_project(
+        &temp,
+        "[parts.hat]\nkit='closed_hat'\ncompose=['std.backbeat','std.no_accent']\n[parts.hat.parameters.decay]\nvalue=0.5\n\
+         [parts.metal]\nkit='metal'\ncompose=['std.backbeat','std.no_accent']\n[parts.metal.output]\ngate='1/16'\n\
+         [parts.sub]\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n",
+    );
+    let loaded = phasecraft::authoring::project::load(&file).unwrap();
+    assert!(loaded.gaps.is_empty());
+    let part = |id: &str| {
+        loaded
+            .composition
+            .parts
+            .iter()
+            .find(|p| p.id == id)
+            .unwrap()
+    };
+    // The alias reads the prepared table: nothing was re-typed, so every field is the template's.
+    let hat = part("hat");
+    assert_eq!((hat.output.note, hat.output.channel), (42, 10));
+    let decay = &hat.output.controls["decay"];
+    assert_eq!((decay.cc, decay.channel), (76, Some(15)));
+    assert_eq!(decay.default, Some(0.7007874015748031));
+    assert_eq!(hat.output.controls.len(), 4);
+    // The piece's word for the ride is `metal`; the binding is the ride's, the gate is the voice's.
+    let metal = part("metal");
+    assert_eq!((metal.output.note, metal.output.channel), (51, 10));
+    assert_eq!(metal.output.controls["cutoff"].cc, 83);
+    assert_eq!(metal.output.gate_ticks, 240);
+    // An instrument declared locally, with no controls at all — and nothing here asks for one.
+    let sub = part("sub");
+    assert_eq!((sub.output.note, sub.output.channel), (48, 2));
+    assert!(sub.output.controls.is_empty());
+    // A composition-level read is the same read.
+    assert_eq!(Composition::read(&file).unwrap().parts.len(), 3);
+}
+#[test]
+fn kit_replaces_a_composed_output_and_the_voice_may_overlay_it() {
+    let base = "tempo=132\nseed=1\n[library.kit.sub]\nnote=48\nchannel=2\n[library.kit]\nclap='kit.909.clap'\n";
+    // A composed behavior brought a snare binding; the kit is the binding and replaces it whole.
+    let c = Composition::parse(&format!(
+        "{base}[part]\nid='low'\ncompose=['std.backbeat','std.no_accent','kit.909.snare']\nkit='sub'\n"
+    ))
+    .unwrap();
+    assert_eq!((c.parts[0].output.note, c.parts[0].output.channel), (48, 2));
+    // The voice's own output fields overlay the kit's: a pitched voice moves the note.
+    let c = Composition::parse(&format!(
+        "{base}[part]\nid='low'\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=50\n"
+    ))
+    .unwrap();
+    assert_eq!((c.parts[0].output.note, c.parts[0].output.channel), (50, 2));
+    // An alias into the built-in 909 reads its note.
+    let c = Composition::parse(&format!(
+        "{base}[part]\nid='clap'\nkit='clap'\ncompose=['std.backbeat','std.no_accent']\n"
+    ))
+    .unwrap();
+    assert_eq!(c.parts[0].output.note, 39);
+}
+#[test]
+fn kit_errors_name_the_instrument_and_the_place() {
+    let base = "tempo=132\nseed=1\n[library.kit.sub]\nnote=48\nchannel=2\n[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n";
+    let err = |source: String| Composition::parse(&source).unwrap_err();
+    // Unknown instrument: the error lists what the kit does declare (check.py's refusal).
+    let e = err(format!("{base}kit='amen'\n"));
+    assert!(
+        e.contains("unknown instrument \"amen\"") && e.contains("\"sub\""),
+        "{e}"
+    );
+    // A kit entry is checked where it is written, not at the first voice that uses it.
+    let e = err("tempo=132\nseed=1\n[library.kit.bad]\nnote=300\nchannel=2\n[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n".into());
+    assert!(e.contains("kit.bad"), "{e}");
+    let e = err("tempo=132\nseed=1\n[library.kit.bad]\nnote=48\nchannel=2\nnotes=1\n[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n".into());
+    assert!(e.contains("kit.bad") && e.contains("notes"), "{e}");
+    // An alias to a behavior that has no output, or that does not exist.
+    let e = err(format!("{base}kit='b'\n[library.kit]\nb='std.backbeat'\n"));
+    assert!(e.contains("has no output"), "{e}");
+    let e = err(format!("{base}kit='b'\n[library.kit]\nb='kit.nowhere'\n"));
+    assert!(e.contains("unknown behavior \"kit.nowhere\""), "{e}");
+    // A profile is not a Part.
+    let e = err(format!("{base}[part.profile]\nkit='sub'\n"));
+    assert!(e.contains("kit binds a Part"), "{e}");
+    // Two kit files may not both declare an instrument.
+    let e = err(format!(
+        "{base}[library.kit]\nsub2='kit.909.kick'\n[library.kit.sub2]\nnote=1\n"
+    ));
+    assert!(e.contains("duplicate"), "{e}");
+    // A declared controls table still refuses a name it does not list — that is the error half
+    // of B19 and it did not move: the gap mode is only for an instrument that declares nothing.
+    let e = err(format!(
+        "{base}kit='k2'\n[library.kit.k2]\nnote=1\ncontrols.level={{cc=22}}\n[part.parameters.cutoff]\nvalue=0.5\n"
+    ));
+    assert!(
+        e.contains("parameter \"cutoff\" requires an output.controls mapping"),
+        "{e}"
+    );
+}
+#[test]
+fn an_instrument_that_declares_nothing_is_a_listed_gap_that_never_plays() {
+    use phasecraft::authoring::project;
+    let temp = TempTree::new();
+    // `sub` declares no controls; the voice follows one and sets a profile response on another.
+    let file = kit_project(
+        &temp,
+        "[parts.sub]\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n[parts.sub.parameters.cutoff]\nvalue=0.5\n[parts.sub.profile.controls.level]\nboost=0.2\n\
+         [parts.hat]\nkit='closed_hat'\ncompose=['std.backbeat','std.no_accent']\n[parts.hat.parameters.decay]\nvalue=0.5\n",
+    );
+    // The draft reads: the unbound controls are listed once, by name, and set aside.
+    let draft = project::load_draft(&file).unwrap();
+    assert_eq!(draft.gaps.len(), 1, "{:?}", draft.gaps);
+    let gap = &draft.gaps[0];
+    assert_eq!((gap.part.as_str(), gap.instrument.as_str()), ("sub", "sub"));
+    assert_eq!(gap.controls, ["cutoff", "level"]);
+    let sub = draft
+        .composition
+        .parts
+        .iter()
+        .find(|p| p.id == "sub")
+        .unwrap();
+    assert!(sub.parameters.is_empty() && sub.profile.controls.is_empty());
+    // The hat's declared binding is untouched by the sub's gap.
+    let hat = draft
+        .composition
+        .parts
+        .iter()
+        .find(|p| p.id == "hat")
+        .unwrap();
+    assert_eq!(hat.parameters.len(), 1);
+    // `validate` stays valid and carries the gap, with the file it belongs to.
+    let report = project::validate(&file);
+    assert!(
+        report.valid && report.errors.is_empty(),
+        "{:?}",
+        report.errors
+    );
+    assert_eq!(report.gaps.len(), 1);
+    assert!(
+        report.gaps[0].contains("until-stop.toml") && report.gaps[0].contains("cutoff, level"),
+        "{}",
+        report.gaps[0]
+    );
+    // Every playback door refuses it: the project load, the composition read, the string parse.
+    for result in [
+        project::load(&file).map(|_| ()),
+        Composition::read(&file).map(|_| ()),
+        Composition::parse("tempo=132\nseed=1\n[library.kit.sub]\nnote=48\nchannel=2\n[part]\nid='sub'\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n[part.parameters.cutoff]\nvalue=0.5\n").map(|_| ()),
+    ] {
+        let e = result.unwrap_err();
+        assert!(e.contains("unbound control") && e.contains("\"sub\"") && e.contains("cutoff"), "{e}");
+    }
+    // An explicit, empty controls table is a declaration, and it declares no `cutoff`: error, not gap.
+    let e = Composition::parse("tempo=132\nseed=1\n[library.kit.sub]\nnote=48\nchannel=2\ncontrols={}\n[part]\nid='sub'\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n[part.parameters.cutoff]\nvalue=0.5\n").unwrap_err();
+    assert!(e.contains("requires an output.controls mapping"), "{e}");
+    // The voice may close its own gap by declaring the control on its output.
+    let ok = Composition::parse("tempo=132\nseed=1\n[library.kit.sub]\nnote=48\nchannel=2\n[part]\nid='sub'\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n[part.output.controls.cutoff]\ncc=74\n[part.parameters.cutoff]\nvalue=0.5\n").unwrap();
+    assert_eq!(ok.parts[0].output.controls["cutoff"].cc, 74);
+}

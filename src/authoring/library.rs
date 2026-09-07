@@ -1,14 +1,65 @@
 //! Authoring-only expansion. The scheduler receives a validated concrete model.
+use serde::Serialize;
 use std::{
-    collections::BTreeMap,
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 use toml::{Table, Value};
+
+/// A voice whose instrument declared nothing, listed so the draft can still be inspected.
+///
+/// `[library.kit.<instrument>]` may declare an output with no `controls` table at all. That
+/// instrument has declared nothing about what it can hear, so a Part bound to it through
+/// `kit = "<instrument>"` that still carries parameter lanes or profile controls lands them
+/// nowhere. That is a gap, not an error: `validate` and `inspect` list it and go on without
+/// those controls; every playback door refuses the piece while one exists (`refuse`). A kit
+/// entry that *does* declare a `controls` table, even an empty one, keeps today's refusal
+/// for a name it does not list.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct Gap {
+    pub part: String,
+    pub instrument: String,
+    pub controls: Vec<String>,
+}
+impl std::fmt::Display for Gap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Part {:?}: instrument {:?} declares no controls, so {} lands nowhere",
+            self.part,
+            self.instrument,
+            self.controls.join(", ")
+        )
+    }
+}
+/// A gap never authorises playback: the draft can be read, not sounded.
+pub fn refuse(gaps: &[Gap]) -> Result<(), String> {
+    if gaps.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{} unbound control{}; inspect or validate the draft, or declare the controls in the kit before playing: {}",
+        gaps.len(),
+        if gaps.len() == 1 { "" } else { "s" },
+        gaps.iter()
+            .map(Gap::to_string)
+            .collect::<Vec<_>>()
+            .join("; ")
+    ))
+}
+/// An expanded composition together with the gaps its kit left open.
+pub struct Draft {
+    pub value: Value,
+    pub gaps: Vec<Gap>,
+}
 
 #[derive(Default)]
 struct Registry {
     behaviors: BTreeMap<String, Value>,
     profiles: BTreeMap<String, Value>,
+    /// The kit: instrument name -> an output table, or the name of a behavior whose output it is.
+    kit: BTreeMap<String, Value>,
 }
 
 fn table(value: &Value) -> Result<&Table, String> {
@@ -27,6 +78,26 @@ fn names(value: Value, field: &str) -> Result<Vec<String>, String> {
                 .ok_or_else(|| format!("{field} entries must be strings"))
         })
         .collect()
+}
+/// A kit entry is a behavior name or an output table; the table is checked as an output here,
+/// so a mistyped kit fails where it is written rather than at the first voice that uses it.
+fn instrument(body: &Value) -> Result<Value, String> {
+    match body {
+        Value::String(behavior) if !behavior.trim().is_empty() => Ok(body.clone()),
+        Value::String(_) => Err("an instrument alias must name a behavior".into()),
+        Value::Table(output) => {
+            let mut holder = Table::new();
+            holder.insert("output".into(), Value::Table(output.clone()));
+            super::syntax::behavior(&mut holder)?;
+            let output = holder.remove("output").unwrap();
+            let _: crate::music::Output = output
+                .clone()
+                .try_into()
+                .map_err(|e: toml::de::Error| e.to_string())?;
+            Ok(output)
+        }
+        _ => Err("an instrument is an output table or the name of a behavior".into()),
+    }
 }
 pub(super) fn merge(base: &mut Value, overlay: Value) {
     if let (Value::Table(a), Value::Table(b)) = (&mut *base, &overlay) {
@@ -63,25 +134,72 @@ impl Registry {
             let target = match kind.as_str() {
                 "behaviors" => &mut self.behaviors,
                 "profiles" => &mut self.profiles,
+                "kit" => &mut self.kit,
                 _ => return Err(format!("unknown library section {kind:?}")),
             };
             for (name, body) in table(entries)? {
                 if name.trim().is_empty() {
                     return Err("library names cannot be empty".into());
                 }
-                table(body)?;
-                if target.insert(name.clone(), body.clone()).is_some() {
+                let body = if kind == "kit" {
+                    instrument(body).map_err(|e| format!("kit.{name}: {e}"))?
+                } else {
+                    table(body)?;
+                    body.clone()
+                };
+                if target.insert(name.clone(), body).is_some() {
                     return Err(format!("duplicate library definition {kind}.{name}"));
                 }
             }
         }
         Ok(())
     }
+    /// The output table an instrument name binds to. A string entry names a behavior and
+    /// takes its `output` as-is, so an imported kit is read, never re-typed.
+    fn instrument(&self, name: &str, stack: &mut Vec<String>) -> Result<Value, String> {
+        let entry = self.kit.get(name).ok_or_else(|| {
+            format!(
+                "unknown instrument {name:?}; the kit declares {}",
+                if self.kit.is_empty() {
+                    "nothing".to_owned()
+                } else {
+                    self.kit
+                        .keys()
+                        .map(|k| format!("{k:?}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+            )
+        })?;
+        match entry {
+            Value::String(behavior) => {
+                let definition = self
+                    .behaviors
+                    .get(behavior)
+                    .ok_or_else(|| format!("kit.{name} names unknown behavior {behavior:?}"))?;
+                if stack.len() >= 32 || stack.contains(behavior) {
+                    return Err(format!(
+                        "library dependency cycle or excessive depth: {} -> {behavior}",
+                        stack.join(" -> ")
+                    ));
+                }
+                stack.push(behavior.clone());
+                let expanded = self.expand(definition, false, stack, &mut None)?;
+                stack.pop();
+                table(&expanded)?
+                    .get("output")
+                    .cloned()
+                    .ok_or_else(|| format!("kit.{name}: behavior {behavior:?} has no output"))
+            }
+            output => Ok(output.clone()),
+        }
+    }
     fn expand(
         &self,
         value: &Value,
         profile: bool,
         stack: &mut Vec<String>,
+        kit: &mut Option<String>,
     ) -> Result<Value, String> {
         let mut local = table(value)?.clone();
         if !profile {
@@ -89,6 +207,12 @@ impl Registry {
         }
         let used = local.remove("use");
         let composed = local.remove("compose");
+        let bound = match local.remove("kit") {
+            Some(_) if profile => return Err("kit binds a Part, not a profile".into()),
+            Some(Value::String(name)) => Some(name),
+            Some(_) => return Err("kit must name an instrument".into()),
+            None => None,
+        };
         let refs = match (used, composed) {
             (Some(_), Some(_)) => return Err("choose use or compose, not both".into()),
             (Some(value), None) => vec![value.as_str().ok_or("use must be a name")?.to_owned()],
@@ -115,9 +239,19 @@ impl Registry {
                 )
             })?;
             stack.push(name);
-            let expanded = self.expand(definition, profile, stack)?;
+            let expanded = self.expand(definition, profile, stack, kit)?;
             stack.pop();
             merge(&mut result, expanded);
+        }
+        // The kit is the binding: it replaces any composed output outright, and only the
+        // Part's own `output` fields may then overlay it (a gate, a note for a pitched voice).
+        if let Some(name) = bound {
+            let output = self.instrument(&name, stack)?;
+            result
+                .as_table_mut()
+                .unwrap()
+                .insert("output".into(), output);
+            *kit = Some(name);
         }
         merge(&mut result, Value::Table(local));
         Ok(result)
@@ -181,15 +315,18 @@ fn imports(
     Ok(())
 }
 
+/// Expand a composition that must be complete: a kit gap is refused here.
 pub fn expand(source: &str, base: Option<&Path>) -> Result<Value, String> {
-    expand_with_libraries(source, base, &[])
+    let draft = expand_with_libraries(source, base, &[])?;
+    refuse(&draft.gaps)?;
+    Ok(draft.value)
 }
 
 pub(super) fn expand_with_libraries(
     source: &str,
     base: Option<&Path>,
     libraries: &[PathBuf],
-) -> Result<Value, String> {
+) -> Result<Draft, String> {
     let mut registry = Registry::default();
     for source in [
         include_str!("../../library/drums/common.toml"),
@@ -211,9 +348,19 @@ pub(super) fn expand_with_libraries(
     if let Some(library) = root.remove("library") {
         registry.add(library)?;
     }
-    super::phrases::expand(root, &|root| expand_flat(&registry, root))
+    // Every phrase expands the same Parts, so the same gap is found once per phrase.
+    let gaps = RefCell::new(BTreeSet::new());
+    let value = super::phrases::expand(root, &|root| expand_flat(&registry, root, &gaps))?;
+    Ok(Draft {
+        value,
+        gaps: gaps.into_inner().into_iter().collect(),
+    })
 }
-fn expand_flat(registry: &Registry, mut root: Table) -> Result<Value, String> {
+fn expand_flat(
+    registry: &Registry,
+    mut root: Table,
+    gaps: &RefCell<BTreeSet<Gap>>,
+) -> Result<Value, String> {
     super::syntax::keyed_parts(&mut root)?;
     if let Some(accents) = root.get_mut("accents") {
         let lanes = accents
@@ -226,17 +373,54 @@ fn expand_flat(registry: &Registry, mut root: Table) -> Result<Value, String> {
             }
         }
     }
-    fn part(registry: &Registry, value: &Value) -> Result<Value, String> {
-        let mut expanded = registry.expand(value, false, &mut vec![])?;
+    fn part(
+        registry: &Registry,
+        value: &Value,
+        gaps: &RefCell<BTreeSet<Gap>>,
+    ) -> Result<Value, String> {
+        let mut kit = None;
+        let mut expanded = registry.expand(value, false, &mut vec![], &mut kit)?;
         // Identity belongs to the composition, never a reusable definition.
         let id = table(value)?
             .get("id")
             .ok_or("every Part instance needs its own id")?
             .clone();
         let fields = expanded.as_table_mut().unwrap();
-        fields.insert("id".into(), id);
+        fields.insert("id".into(), id.clone());
         if let Some(profile) = fields.get_mut("profile") {
-            *profile = registry.expand(profile, true, &mut vec![])?;
+            *profile = registry.expand(profile, true, &mut vec![], &mut None)?;
+        }
+        // An instrument read from the kit with no `controls` table has declared nothing:
+        // the controls this Part addresses are listed as a gap and set aside, so the draft
+        // still validates and inspects. An output that declares controls keeps the refusal
+        // below for any name it does not list.
+        if let Some(instrument) = kit
+            && !fields
+                .get("output")
+                .and_then(Value::as_table)
+                .is_some_and(|o| o.contains_key("controls"))
+        {
+            let mut unbound = vec![];
+            if let Some(lanes) = fields.get_mut("parameters").and_then(Value::as_table_mut) {
+                unbound.extend(lanes.keys().cloned());
+                lanes.clear();
+            }
+            if let Some(controls) = fields
+                .get_mut("profile")
+                .and_then(Value::as_table_mut)
+                .and_then(|p| p.get_mut("controls"))
+                .and_then(Value::as_table_mut)
+            {
+                unbound.extend(controls.keys().cloned());
+                controls.clear();
+            }
+            if !unbound.is_empty() {
+                gaps.borrow_mut().insert(Gap {
+                    part: id.as_str().unwrap_or("?").to_owned(),
+                    instrument,
+                    controls: unbound,
+                });
+            }
         }
         let _: crate::music::Part = expanded
             .clone()
@@ -248,15 +432,16 @@ fn expand_flat(registry: &Registry, mut root: Table) -> Result<Value, String> {
         value.get("id").and_then(Value::as_str).unwrap_or("?")
     }
     if let Some(value) = root.get_mut("part") {
-        *value = part(registry, value).map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
+        *value =
+            part(registry, value, gaps).map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
     }
     if let Some(value) = root.get_mut("parts") {
         let parts = value
             .as_array_mut()
             .ok_or("parts must be an array of tables")?;
         for value in parts {
-            *value =
-                part(registry, value).map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
+            *value = part(registry, value, gaps)
+                .map_err(|e| format!("parts.{}: {e}", fields_id(value)))?;
         }
     }
     Ok(Value::Table(root))
