@@ -67,7 +67,15 @@ pub(super) fn expand(
     mut root: Table,
     flat: &dyn Fn(Table) -> Result<Value, String>,
 ) -> Result<Value, String> {
-    let definitions = root.remove("phrases").unwrap_or(Value::Table(Table::new()));
+    // A scene is a phrase: the author's word for the same diff over the voices.
+    let definitions = match (root.remove("phrases"), root.remove("scenes")) {
+        (Some(_), Some(_)) => {
+            return Err(
+                "use [scenes] or [phrases], not both; they are one table under two names".into(),
+            );
+        }
+        (phrases, scenes) => phrases.or(scenes).unwrap_or(Value::Table(Table::new())),
+    };
     let definitions = definitions
         .as_table()
         .ok_or("phrases must be named tables")?;
@@ -75,11 +83,21 @@ pub(super) fn expand(
         return Err("phrases requires at most 64 nonempty names".into());
     }
     let sequence = root.remove("arrangement");
+    let router = root.remove("router");
+    let start = root.remove("start");
+    if sequence.is_some() && router.is_some() {
+        return Err("a piece has either an arrangement or a router, never both".into());
+    }
+    if start.is_some() && router.is_none() {
+        return Err("start names the scene a router begins in; there is no [router]".into());
+    }
     let base = Value::Table(root.clone());
     // Validate every definition, even if a sequence does not use it yet.
     let mut phrases = std::collections::BTreeMap::new();
     for name in definitions.keys() {
-        let raw = derive(name, definitions, &base, &mut vec![])?;
+        let mut raw = derive(name, definitions, &base, &mut vec![])?;
+        // Return groups belong to the piece; a scene inherits the voices, not the clocks.
+        raw.as_table_mut().unwrap().remove("returns");
         let value =
             flat(raw.as_table().unwrap().clone()).map_err(|e| format!("phrase {name:?}: {e}"))?;
         let _: crate::music::Composition = value
@@ -148,6 +166,53 @@ pub(super) fn expand(
                 ("sections".into(), Value::Array(sections)),
             ])),
         );
+    }
+    if let Some(router) = router {
+        let mut router = router.as_table().ok_or("router must be a table")?.clone();
+        // `start` at the root is the author's spelling; the expanded form keeps it in the router.
+        match (start, router.contains_key("start")) {
+            (Some(_), true) => {
+                return Err("write start once: at the root, or in the expanded router".into());
+            }
+            (Some(start), false) => {
+                router.insert("start".into(), start);
+            }
+            _ => {}
+        }
+        let scenes = match router.remove("scenes") {
+            // The expanded form: every scene already carries its composition.
+            Some(Value::Array(scenes)) => scenes
+                .into_iter()
+                .map(|scene| {
+                    let mut scene = scene
+                        .as_table()
+                        .ok_or("router.scenes entries must be tables")?
+                        .clone();
+                    let composition = scene
+                        .remove("composition")
+                        .and_then(|c| c.as_table().cloned())
+                        .ok_or("router.scenes entries need a composition table")?;
+                    scene.insert("composition".into(), flat(composition)?);
+                    Ok(Value::Table(scene))
+                })
+                .collect::<Result<Vec<_>, String>>()?,
+            Some(_) => return Err("router.scenes must be an array".into()),
+            // The authored form: the [scenes] table, in the order it was written.
+            None => definitions
+                .keys()
+                .map(|name| {
+                    Value::Table(Table::from_iter([
+                        ("name".into(), Value::String(name.clone())),
+                        ("composition".into(), phrases[name].clone()),
+                    ]))
+                })
+                .collect(),
+        };
+        router.insert("scenes".into(), Value::Array(scenes));
+        result
+            .as_table_mut()
+            .unwrap()
+            .insert("router".into(), Value::Table(router));
     }
     Ok(result)
 }

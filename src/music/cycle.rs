@@ -47,9 +47,10 @@ fn expression(
         Expression::Part { id, .. } => lcm(references[id.as_str()], Some(cell)),
     }
 }
-fn alignment(c: &Composition, p: &Part) -> Option<u64> {
+/// Every Part's trigger period in ticks, in evaluation order so references resolve first.
+fn trigger_periods(c: &Composition) -> Result<BTreeMap<&str, Option<u64>>, String> {
     let mut refs = BTreeMap::new();
-    for part in c.evaluation_order().expect("validated composition") {
+    for part in c.evaluation_order()? {
         let cycle = expression(
             &part.trigger.rhythm,
             c.phrase_steps() * STEP_TICKS,
@@ -58,6 +59,23 @@ fn alignment(c: &Composition, p: &Part) -> Option<u64> {
         );
         refs.insert(part.id.as_str(), cycle);
     }
+    Ok(refs)
+}
+/// The structural period of one Part's trigger stream in ticks; None past u64.
+pub fn trigger_period_ticks(c: &Composition, p: &Part) -> Result<Option<u64>, String> {
+    Ok(trigger_periods(c)?[p.id.as_str()])
+}
+/// The structural period of one Part's own accent stream in ticks; None past u64.
+pub fn accent_period_ticks(c: &Composition, p: &Part) -> Result<Option<u64>, String> {
+    Ok(expression(
+        &p.accent.rhythm,
+        c.phrase_steps() * STEP_TICKS,
+        p.subdivision.0,
+        &trigger_periods(c)?,
+    ))
+}
+fn alignment(c: &Composition, p: &Part) -> Option<u64> {
+    let refs = trigger_periods(c).expect("validated composition");
     let mut cycle = lcm(
         refs[p.id.as_str()],
         expression(
@@ -90,6 +108,18 @@ pub fn spans(c: &Composition, part_id: &str, start: u64, end: u64) -> Vec<CycleS
                 s.section.composition.as_ref(),
                 step - s.musical_step,
                 (s.start_step + u64::from(s.section.bars) * 16).min(end),
+            )
+        } else if let Some(r) = &c.router {
+            // Every visit continues the transport's phase; the window closes at the next return.
+            let period = r.period_ticks(c).expect("validated composition");
+            let visit = r.visit_at(c.seed, period, step * STEP_TICKS);
+            (
+                r.scene(&visit.scene)
+                    .expect("validated router")
+                    .composition
+                    .as_ref(),
+                0,
+                (visit.next_tick / STEP_TICKS).min(end),
             )
         } else {
             (c, 0, end)

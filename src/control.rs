@@ -241,7 +241,10 @@ impl Live {
         self.view_at(part, Instant::now())
     }
     fn view_at(&self, part: &str, now: Instant) -> View {
-        let editable = self.base.as_ref().is_some_and(|c| c.arrangement.is_none());
+        let editable = self
+            .base
+            .as_ref()
+            .is_some_and(|c| c.arrangement.is_none() && c.router.is_none());
         let desired = if editable {
             self.edited.get(part).or_else(|| {
                 self.base
@@ -261,7 +264,7 @@ impl Live {
             .or(self.applied.as_ref());
         let applied = Self::values(
             audible
-                .filter(|c| c.arrangement.is_none())
+                .filter(|c| c.arrangement.is_none() && c.router.is_none())
                 .and_then(|c| c.parts.iter().find(|p| p.id == part)),
         );
         for (v, a) in values.iter_mut().zip(applied) {

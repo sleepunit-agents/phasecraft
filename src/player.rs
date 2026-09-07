@@ -310,7 +310,7 @@ impl Player {
                     .unwrap_or_default()
             });
         let visible = self.composition.as_ref().map(|c| {
-            if c.arrangement.is_some() {
+            if c.arrangement.is_some() || c.router.is_some() {
                 Arc::new(c.at_step(step.unwrap_or(0)).clone())
             } else {
                 c.clone()

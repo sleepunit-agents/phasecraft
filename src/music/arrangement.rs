@@ -1,5 +1,5 @@
 //! A bounded sequence of procedural snapshots. Nothing here reads files or stores MIDI scores.
-use super::Composition;
+use super::{Composition, STEP_TICKS};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -131,17 +131,38 @@ impl Composition {
             .map(Arrangement::steps)
     }
     pub fn at_step(&self, step: u64) -> &Composition {
+        if let Some(r) = &self.router {
+            let period = r.period_ticks(self).expect("validated composition");
+            let visit = r.visit_at(self.seed, period, step * STEP_TICKS);
+            return r
+                .scene(&visit.scene)
+                .expect("validated router")
+                .composition
+                .as_ref();
+        }
         self.arrangement
             .as_ref()
             .and_then(|a| a.locate(step))
             .map_or(self, |s| s.section.composition.as_ref())
     }
+    /// Arrangement or router: the structural layout a watched edit may not change.
     pub fn same_arrangement_layout(&self, other: &Self) -> bool {
-        match (&self.arrangement, &other.arrangement) {
+        let sections = match (&self.arrangement, &other.arrangement) {
             (None, None) => true,
             (Some(a), Some(b)) => a.same_layout(b),
             _ => false,
-        }
+        };
+        // The log is a function of the seed, the rows and the period: all three are layout.
+        let routes = match (&self.router, &other.router) {
+            (None, None) => true,
+            (Some(a), Some(b)) => {
+                a.same_layout(b)
+                    && self.seed == other.seed
+                    && a.period_ticks(self).ok() == b.period_ticks(other).ok()
+            }
+            _ => false,
+        };
+        sections && routes
     }
 }
 /// Reset declared active outputs before the next section initializes its values.

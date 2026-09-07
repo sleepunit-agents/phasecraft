@@ -83,6 +83,8 @@ pub struct StepTrace {
     pub shared_accents: Vec<SharedAccentTrace>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub section: Option<super::arrangement::SectionPosition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene: Option<super::router::Visit>,
     pub event: Option<MusicalEvent>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<super::parameter::ParameterTrace>,
@@ -240,6 +242,7 @@ fn resolve_part(
         parameters: Vec::new(),
         shared_accents,
         section: None,
+        scene: None,
         trigger,
         accent,
         event,

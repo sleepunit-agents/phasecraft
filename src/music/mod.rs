@@ -7,6 +7,7 @@ pub mod ornament;
 pub mod parameter;
 pub mod resolve;
 pub mod rhythm;
+pub mod router;
 pub mod time;
 use rhythm::Expression;
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,10 @@ pub struct Composition {
     pub accents: std::collections::BTreeMap<String, AccentLane>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub arrangement: Option<arrangement::Arrangement>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub returns: std::collections::BTreeMap<String, router::ReturnGroup>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub router: Option<router::Router>,
 }
 // Accept the original single-Part file without changing its musical identity.
 #[derive(Deserialize)]
@@ -43,6 +48,10 @@ struct CompositionFile {
     accents: std::collections::BTreeMap<String, AccentLane>,
     #[serde(default)]
     arrangement: Option<arrangement::Arrangement>,
+    #[serde(default)]
+    returns: std::collections::BTreeMap<String, router::ReturnGroup>,
+    #[serde(default)]
+    router: Option<router::Router>,
 }
 impl TryFrom<CompositionFile> for Composition {
     type Error = String;
@@ -64,6 +73,8 @@ impl TryFrom<CompositionFile> for Composition {
             parts,
             accents: file.accents,
             arrangement: file.arrangement,
+            returns: file.returns,
+            router: file.router,
         };
         c.validate()?;
         Ok(c)
@@ -293,6 +304,23 @@ impl Composition {
         self.evaluation_order()?;
         if let Some(arrangement) = &self.arrangement {
             arrangement.validate(self.tempo)?;
+        }
+        if self.returns.len() > router::MAX_GROUPS {
+            return Err(format!(
+                "at most {} return groups are supported",
+                router::MAX_GROUPS
+            ));
+        }
+        for (name, group) in &self.returns {
+            group.validate(name)?;
+            // The engine checks the period rather than trusting a comment beside the list.
+            group.period_ticks(self, name)?;
+        }
+        if let Some(router) = &self.router {
+            if self.arrangement.is_some() {
+                return Err("a piece has either an arrangement or a router, never both".into());
+            }
+            router.validate(self)?;
         }
         Ok(())
     }
