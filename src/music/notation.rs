@@ -561,7 +561,8 @@ const MAX_EVENTS: u64 = 4096;
 /// patterns a consumer could render once and keep: dropping the leaf to `(340,340)` spends 0.3%
 /// of the budget and leaves room for stacked alternations. With nine it renders at the same
 /// ~35 ms and repeats every 223,092,870 cycles; with sixteen of distinct prime lengths
-/// `period_cycles()` returns `None` — no u64 period at all, same per-cycle cost. Anything
+/// `period_cycles()` returns `None` — no u64 period at all, and no index measured cheaper
+/// (medians 34.3-35.3 ms at indices 0, 1, 7, 223_092_869, 10^12 and `u64::MAX`). Anything
 /// putting this leaf on a transport deadline needs its own answer for the cycle it does not
 /// have rendered yet; caching and a tighter cap are two shapes that answer, not the only ones
 /// — see t-494.
@@ -1263,15 +1264,18 @@ mod tests {
     fn an_expensive_leaf_can_outlive_any_u64_period() {
         // The escape hatch a work cap invites is "render each cycle once and keep it". It does
         // not close here: the cap is a per-cycle budget, and a pattern can sit near it *and*
-        // have no cycle index to key a cache on. `(340,340)` spends 0.3% less than the cap the
-        // saturated `(341,341)` leaf spends, and the change buys room for the whole tail below.
+        // have no u64-representable period for an exhaustive repeating-cycle cache. The absolute
+        // index is always available to key on — the last case below renders cycle(999_999_999_999)
+        // — but there is no period to reduce it against, so a bounded cache cannot promise a
+        // prepared answer. `(340,340)` spends 0.3% less than the cap the saturated `(341,341)`
+        // leaf spends, and the change buys room for the whole tail below.
         let alt = |len: usize| format!(" <x{}>", " ~".repeat(len - 1));
         let primes = [
             2usize, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53,
         ];
         let tail = |n: usize| primes[..n].iter().map(|&l| alt(l)).collect::<String>();
 
-        // nine alternations: a period that exists and is useless as a cache domain
+        // nine alternations: a period that exists and is far too large to prewarm
         let p = parse(&format!("[~(1024,1024)](340,340){}", tail(9)));
         assert_eq!(p.period_cycles(), Some(223_092_870));
 

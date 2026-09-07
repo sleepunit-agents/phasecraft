@@ -125,9 +125,13 @@ could render once and keep: `[~(1024,1024)](340,340)` spends 0.3% of the budget 
 for nine stacked alternations, renders at the same ~35 ms, and repeats only every 223,092,870
 cycles — with sixteen alternations of distinct prime lengths (2 through 53) the period has no
 `u64` representation at all, so `period_cycles()` returns `None` while per-cycle work stays
-under the cap and every cycle still costs ~35 ms. A consumer putting this leaf on a transport
-deadline therefore needs an answer for the cycle it does *not* have rendered yet — cold start, seek, an edit invalidating prepared work, or a producer falling
-behind. Caching and a tighter cap are two shapes that answer; a cheaper renderer is another.
+under the cap. Measured cycles of that pattern cost ~35 ms wherever they are sampled: medians
+34.3-35.3 ms at indices 0, 1, 7, 223,092,869, 10^12 and `u64::MAX`, which is what the structure
+predicts — the expensive silent leaf is traversed identically on every cycle and the alternation
+tail adds nothing measurable. Sampled indices are not all indices, but no index is cheap in the
+sample. A consumer putting this leaf on a transport deadline therefore needs an answer for the
+cycle it does *not* have rendered yet — cold start, seek, an edit invalidating prepared work, or
+a producer falling behind. Caching and a tighter cap are two shapes that answer; a cheaper renderer is another.
 That question is open as t-494 and is not settled by this bound.
 
 A number literal that overflows `f64` to infinity is a parse error too, for the same family of
