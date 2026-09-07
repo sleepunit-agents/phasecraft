@@ -598,6 +598,107 @@ fn kit_errors_name_the_instrument_and_the_place() {
         "{e}"
     );
 }
+
+// ---- M1.7 follow-up (t-504, t-505): every kit entry is valid where it is written ----
+
+#[test]
+fn kit_entries_are_checked_where_written_whether_or_not_a_voice_uses_them() {
+    // A composition whose one voice never binds to the kit: the entries below are UNUSED.
+    let piece = |kit: &str| {
+        format!(
+            "tempo=132\nseed=1\n{kit}[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n"
+        )
+    };
+    let err = |kit: &str| Composition::parse(&piece(kit)).unwrap_err();
+    // Range, not just shape: `note = 200` and `channel = 99` are both valid u8s.
+    let e = err("[library.kit.bad]\nnote=200\n");
+    assert!(
+        e.contains("kit.bad") && e.contains("note 0..127") && e.contains("note 200"),
+        "{e}"
+    );
+    let e = err("[library.kit.bad]\nnote=36\nchannel=99\n");
+    assert!(e.contains("kit.bad") && e.contains("channel 99"), "{e}");
+    let e = err("[library.kit.bad]\nnote=36\ngate_ticks=0\n");
+    assert!(e.contains("kit.bad") && e.contains("gate_ticks"), "{e}");
+    // An unused alias must still resolve, and the error names the entry and its target.
+    let e = err("[library.kit]\nbad='kit.nowhere'\n");
+    assert!(
+        e.contains("kit.bad") && e.contains("unknown behavior \"kit.nowhere\""),
+        "{e}"
+    );
+    let e = err("[library.kit]\nbad='std.backbeat'\n");
+    assert!(e.contains("kit.bad") && e.contains("has no output"), "{e}");
+    // The good entries still load, used or not.
+    Composition::parse(&piece(
+        "[library.kit.sub]\nnote=48\nchannel=2\n[library.kit]\nclap='kit.909.clap'\n",
+    ))
+    .unwrap();
+}
+
+#[test]
+fn a_voice_cannot_rescue_a_bad_kit_entry_by_overlaying_it() {
+    // Before t-504 this loaded: the Part's own `output.note = 50` overlaid the kit's 200 and
+    // only the merged output was ever checked. The entry is now refused where it is written.
+    let e = Composition::parse(
+        "tempo=132\nseed=1\n[library.kit.sub]\nnote=200\nchannel=2\n[part]\nid='low'\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=50\n",
+    )
+    .unwrap_err();
+    assert!(e.contains("kit.sub") && e.contains("note 200"), "{e}");
+}
+
+#[test]
+fn kit_errors_in_a_library_file_name_that_file_not_the_composition() {
+    let temp = TempTree::new();
+    let piece = "tempo=132\nseed=1\nimports=['kits/local.toml']\n[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n";
+    let read = |kit: &str| {
+        temp.write("kits/local.toml", kit);
+        let file = temp.write("piece.toml", piece);
+        Composition::read(&file)
+    };
+    let lib = temp.0.join("kits/local.toml").display().to_string();
+    // A shape error raised while the file is being added (t-505's first class).
+    let e = read("[library.kit.bad]\nnote='not a number'\n").unwrap_err();
+    assert!(e.contains(&lib) && e.contains("kit.bad"), "{e}");
+    // A range error, where it is written.
+    let e = read("[library.kit.bad]\nnote=200\n").unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("note 200"),
+        "{e}"
+    );
+    // An alias checked after the registry is complete, when no call site is left to name
+    // the file: the entry's recorded origin names it (t-505's second class).
+    let e = read("[library.kit]\nbad='kit.nowhere'\n").unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("kit.nowhere"),
+        "{e}"
+    );
+    // A duplicate names the file that declared the second copy.
+    temp.write("kits/first.toml", "[library.kit.thud]\nnote=40\n");
+    temp.write("kits/second.toml", "[library.kit.thud]\nnote=41\n");
+    let file = temp.write(
+        "twice.toml",
+        "tempo=132\nseed=1\nimports=['kits/first.toml','kits/second.toml']\n[part]\nid='x'\nkit='thud'\ncompose=['std.backbeat','std.no_accent']\n",
+    );
+    let e = Composition::read(&file).unwrap_err();
+    let second = temp.0.join("kits/second.toml").display().to_string();
+    assert!(e.contains(&second) && e.contains("duplicate"), "{e}");
+}
+
+#[test]
+fn a_kit_alias_may_name_a_behavior_a_later_library_declares() {
+    // Libraries load in order: built-ins, `libraries`, imports, then the composition's own
+    // table. The alias below is written in an import and resolves to a behavior declared in
+    // the composition, so an eager check at add time would refuse a valid kit. The check runs
+    // once, on the complete registry.
+    let temp = TempTree::new();
+    temp.write("kits/local.toml", "[library.kit]\nthud='local.thud'\n");
+    let file = temp.write(
+        "piece.toml",
+        "tempo=132\nseed=1\nimports=['kits/local.toml']\n[library.behaviors.'local.thud']\noutput={note=40,channel=3}\n[part]\nid='x'\nkit='thud'\ncompose=['std.backbeat','std.no_accent']\n",
+    );
+    let c = Composition::read(&file).unwrap();
+    assert_eq!((c.parts[0].output.note, c.parts[0].output.channel), (40, 3));
+}
 #[test]
 fn an_instrument_that_declares_nothing_is_a_listed_gap_that_never_plays() {
     use phasecraft::authoring::project;

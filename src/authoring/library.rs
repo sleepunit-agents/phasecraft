@@ -54,12 +54,37 @@ pub struct Draft {
     pub gaps: Vec<Gap>,
 }
 
+/// Where a library section was written, so an entry that fails is reported against its own
+/// file and not against the composition that happened to load it (t-505).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Origin {
+    /// One of the libraries compiled into the binary, by its path in the source tree.
+    BuiltIn(&'static str),
+    /// A library file on disk: an import, or a project's `libraries` entry.
+    File(PathBuf),
+    /// The composition's own `[library]` table. Its errors carry no prefix here: the caller
+    /// that loaded the composition names its path, as it does for every other error in it.
+    Composition,
+}
+impl Origin {
+    fn attach(&self, error: String) -> String {
+        match self {
+            Origin::BuiltIn(path) => format!("built-in library {path}: {error}"),
+            Origin::File(path) => format!("{}: {error}", path.display()),
+            Origin::Composition => error,
+        }
+    }
+}
+
 #[derive(Default)]
 struct Registry {
     behaviors: BTreeMap<String, Value>,
     profiles: BTreeMap<String, Value>,
     /// The kit: instrument name -> an output table, or the name of a behavior whose output it is.
     kit: BTreeMap<String, Value>,
+    /// Where each kit entry was written, for the alias check that runs once the registry is
+    /// complete and so has no call site left to name the file.
+    kit_origins: BTreeMap<String, Origin>,
 }
 
 fn table(value: &Value) -> Result<&Table, String> {
@@ -79,8 +104,11 @@ fn names(value: Value, field: &str) -> Result<Vec<String>, String> {
         })
         .collect()
 }
-/// A kit entry is a behavior name or an output table; the table is checked as an output here,
-/// so a mistyped kit fails where it is written rather than at the first voice that uses it.
+/// A kit entry is a behavior name or an output table. The table is checked as an output
+/// here — shape *and* range, by the same `Output::validate` a Part is held to — so a mistyped
+/// kit fails where it is written, whether or not any voice ever binds to it. An alias cannot
+/// be checked here: it may name a behavior a later library declares, so the registry resolves
+/// every alias once it is complete (`Registry::check_aliases`).
 fn instrument(body: &Value) -> Result<Value, String> {
     match body {
         Value::String(behavior) if !behavior.trim().is_empty() => Ok(body.clone()),
@@ -90,10 +118,11 @@ fn instrument(body: &Value) -> Result<Value, String> {
             holder.insert("output".into(), Value::Table(output.clone()));
             super::syntax::behavior(&mut holder)?;
             let output = holder.remove("output").unwrap();
-            let _: crate::music::Output = output
+            let typed: crate::music::Output = output
                 .clone()
                 .try_into()
                 .map_err(|e: toml::de::Error| e.to_string())?;
+            typed.validate()?;
             Ok(output)
         }
         _ => Err("an instrument is an output table or the name of a behavior".into()),
@@ -129,7 +158,13 @@ pub(super) fn merge(base: &mut Value, overlay: Value) {
     *base = overlay;
 }
 impl Registry {
-    fn add(&mut self, library: Value) -> Result<(), String> {
+    /// Add one `[library]` table. Every error raised here names `origin`: the file the entry
+    /// was written in, not the composition that loaded it.
+    fn add(&mut self, library: Value, origin: &Origin) -> Result<(), String> {
+        self.add_entries(library, origin)
+            .map_err(|e| origin.attach(e))
+    }
+    fn add_entries(&mut self, library: Value, origin: &Origin) -> Result<(), String> {
         for (kind, entries) in table(&library)? {
             let target = match kind.as_str() {
                 "behaviors" => &mut self.behaviors,
@@ -150,6 +185,26 @@ impl Registry {
                 if target.insert(name.clone(), body).is_some() {
                     return Err(format!("duplicate library definition {kind}.{name}"));
                 }
+                if kind == "kit" {
+                    self.kit_origins.insert(name.clone(), origin.clone());
+                }
+            }
+        }
+        Ok(())
+    }
+    /// Resolve every alias in the kit once the registry is complete. An alias is valid where
+    /// it is written whether or not a Part binds to it; it is checked here rather than in
+    /// `add` because libraries load in order (built-ins, `libraries`, imports, the
+    /// composition's own table) and an alias may name a behavior a later one declares. The
+    /// error names the file the alias was written in, the entry, and the unresolved target.
+    fn check_aliases(&self) -> Result<(), String> {
+        for (name, entry) in &self.kit {
+            if let Value::String(_) = entry {
+                self.instrument(name, &mut vec![]).map_err(|e| {
+                    self.kit_origins
+                        .get(name)
+                        .map_or(e.clone(), |origin| origin.attach(e))
+                })?;
             }
         }
         Ok(())
@@ -287,7 +342,7 @@ fn load_library(
         loaded,
     )?;
     if let Some(library) = file.remove("library") {
-        registry.add(library)?;
+        registry.add(library, &Origin::File(path.clone()))?;
     }
     if !file.is_empty() {
         return Err(format!(
@@ -328,16 +383,39 @@ pub(super) fn expand_with_libraries(
     libraries: &[PathBuf],
 ) -> Result<Draft, String> {
     let mut registry = Registry::default();
-    for source in [
-        include_str!("../../library/drums/common.toml"),
-        include_str!("../../library/drums/techno.toml"),
-        include_str!("../../library/drums/dnb.toml"),
-        include_str!("../../library/accents/velocity.toml"),
-        include_str!("../../library/accents/controls.toml"),
-        include_str!("../../library/kits/909.toml"),
-        include_str!("../../library/grooves/drums.toml"),
+    for (path, source) in [
+        (
+            "library/drums/common.toml",
+            include_str!("../../library/drums/common.toml"),
+        ),
+        (
+            "library/drums/techno.toml",
+            include_str!("../../library/drums/techno.toml"),
+        ),
+        (
+            "library/drums/dnb.toml",
+            include_str!("../../library/drums/dnb.toml"),
+        ),
+        (
+            "library/accents/velocity.toml",
+            include_str!("../../library/accents/velocity.toml"),
+        ),
+        (
+            "library/accents/controls.toml",
+            include_str!("../../library/accents/controls.toml"),
+        ),
+        (
+            "library/kits/909.toml",
+            include_str!("../../library/kits/909.toml"),
+        ),
+        (
+            "library/grooves/drums.toml",
+            include_str!("../../library/grooves/drums.toml"),
+        ),
     ] {
-        registry.add(toml::from_str(source).map_err(|e| format!("built-in library: {e}"))?)?;
+        let origin = Origin::BuiltIn(path);
+        let library = toml::from_str(source).map_err(|e| origin.attach(e.to_string()))?;
+        registry.add(library, &origin)?;
     }
     let mut root: Table = toml::from_str(source).map_err(|e| e.to_string())?;
     let mut loaded = vec![];
@@ -346,8 +424,10 @@ pub(super) fn expand_with_libraries(
     }
     imports(&mut root, base, &mut registry, &mut vec![], &mut loaded)?;
     if let Some(library) = root.remove("library") {
-        registry.add(library)?;
+        registry.add(library, &Origin::Composition)?;
     }
+    // The registry is complete: every alias must now resolve, used or not (t-504).
+    registry.check_aliases()?;
     // Every phrase expands the same Parts, so the same gap is found once per phrase.
     let gaps = RefCell::new(BTreeSet::new());
     let value = super::phrases::expand(root, &|root| expand_flat(&registry, root, &gaps))?;
