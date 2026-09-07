@@ -120,9 +120,15 @@ its 4,194,304 innermost slot visits.
 **The work cap bounds termination, not latency.** A cycle at the cap is not fast: rendering
 `[~(1024,1024)](341,341)` measured ~34 ms per cycle, and the 12k dense baseline ~340 µs
 (release build, the art LXC, 2026-09-07 — host-local observations, not a benchmark). Nothing
-here promises sub-millisecond rendering. A consumer putting this leaf on a transport deadline
-must cache the cycle or set its own tighter cap; that question is open as t-494 and is not
-settled by this bound.
+here promises sub-millisecond rendering. And that cost is not confined to patterns a consumer
+could render once and keep: `[~(1024,1024)](340,340)` spends 0.3% of the budget to leave room
+for nine stacked alternations, renders at the same ~35 ms, and repeats only every 223,092,870
+cycles — with sixteen alternations of distinct prime lengths (2 through 53) the period has no
+`u64` representation at all, so `period_cycles()` returns `None` while per-cycle work stays
+under the cap and every cycle still costs ~35 ms. A consumer putting this leaf on a transport
+deadline therefore needs an answer for the cycle it does *not* have rendered yet — cold start, seek, an edit invalidating prepared work, or a producer falling
+behind. Caching and a tighter cap are two shapes that answer; a cheaper renderer is another.
+That question is open as t-494 and is not settled by this bound.
 
 A number literal that overflows `f64` to infinity is a parse error too, for the same family of
 reason: a value consumer cannot tell an inherited infinity from a number it was given.

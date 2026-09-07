@@ -557,8 +557,14 @@ const MAX_EVENTS: u64 = 4096;
 /// This bound guarantees termination, not latency. A cycle at the cap is not fast: rendering
 /// `[~(1024,1024)](341,341)` measured ~34 ms per `cycle()` (release build, the art LXC,
 /// 2026-09-07), and the dense 12k baseline ~340 us. Those are host-local observations, not a
-/// benchmark, and no sub-millisecond promise is made or implied. Anything putting this leaf on
-/// a transport deadline must cache the cycle or set its own tighter cap — see t-494.
+/// benchmark, and no sub-millisecond promise is made or implied. Nor is that cost confined to
+/// patterns a consumer could render once and keep: dropping the leaf to `(340,340)` spends 0.3%
+/// of the budget and leaves room for stacked alternations. With nine it renders at the same
+/// ~35 ms and repeats every 223,092,870 cycles; with sixteen of distinct prime lengths
+/// `period_cycles()` returns `None` — no u64 period at all, same per-cycle cost. Anything
+/// putting this leaf on a transport deadline needs its own answer for the cycle it does not
+/// have rendered yet; caching and a tighter cap are two shapes that answer, not the only ones
+/// — see t-494.
 const MAX_WORK: u64 = 1 << 20;
 
 struct Parser<'a> {
@@ -1251,6 +1257,31 @@ mod tests {
         );
         // an alternation inside an alternation still reads cycle k
         assert_eq!(parse("<x <x ~ x>>").period_cycles(), Some(6));
+    }
+
+    #[test]
+    fn an_expensive_leaf_can_outlive_any_u64_period() {
+        // The escape hatch a work cap invites is "render each cycle once and keep it". It does
+        // not close here: the cap is a per-cycle budget, and a pattern can sit near it *and*
+        // have no cycle index to key a cache on. `(340,340)` spends 0.3% less than the cap the
+        // saturated `(341,341)` leaf spends, and the change buys room for the whole tail below.
+        let alt = |len: usize| format!(" <x{}>", " ~".repeat(len - 1));
+        let primes = [
+            2usize, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53,
+        ];
+        let tail = |n: usize| primes[..n].iter().map(|&l| alt(l)).collect::<String>();
+
+        // nine alternations: a period that exists and is useless as a cache domain
+        let p = parse(&format!("[~(1024,1024)](340,340){}", tail(9)));
+        assert_eq!(p.period_cycles(), Some(223_092_870));
+
+        // sixteen: the lcm leaves u64 entirely, while per-cycle work stays under the cap
+        let p = parse(&format!("[~(1024,1024)](340,340){}", tail(16)));
+        assert_eq!(p.period_cycles(), None);
+        assert_eq!(p.cycle(999_999_999_999).len(), 5);
+
+        // and one more step of the same leaf is refused, so the headroom really is that thin
+        assert!(Pattern::parse(&format!("[~(1024,1024)](341,341){}", tail(9))).is_err());
     }
 
     #[test]
