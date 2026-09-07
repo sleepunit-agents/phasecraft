@@ -29,7 +29,10 @@ These particular addresses match the closed hat in our compact-v1 prepared Ablet
 kit. Hardware can provide another channel/CC binding without changing the ramp.
 A kit may declare unused output mappings; only active parameter lanes and accent
 responses emit MIDI. Each active name must have a binding, with at most eight
-bindings per Part and one owner per channel/CC across the composition.
+bindings per Part and one owner per channel/CC across the composition. A Part
+bound through `kit = "<name>"` to an instrument that declares no controls at all
+is a listed gap rather than an error — readable, never playable — see
+[output bindings](output-bindings.md#the-kit-instruments-read-by-name).
 
 ## Shared intent and independent emphasis
 

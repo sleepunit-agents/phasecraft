@@ -62,6 +62,9 @@ compose = ["my.backbeat", "my.shifting_accent", "kit.909.clap"]
 use = "my.soft_punch"
 ```
 
+A voice names its instrument with `kit = "closed_hat"`, resolved through the
+project's `[library.kit]` table — see [output bindings](output-bindings.md#the-kit-instruments-read-by-name).
+
 Components merge left to right; local fields win. Tables merge recursively.
 A change of rhythm kind replaces the old expression completely, including when
 kind is inferred from shorthand. Arrays replace, not append. `use` selects a

@@ -38,6 +38,9 @@ impl Default for MidiSettings {
 pub struct Loaded {
     pub composition: Composition,
     pub midi: MidiSettings,
+    /// Controls the kit left unbound (see `library::Gap`). Empty from `load`; `load_draft`
+    /// tolerates them so a piece can be validated and inspected before its kit is written.
+    pub gaps: Vec<super::library::Gap>,
 }
 fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
     let source = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -94,7 +97,14 @@ fn locate(path: &Path) -> Result<(PathBuf, Option<PathBuf>), String> {
         .find(|p| p.is_file());
     Ok((path, project))
 }
+/// Load for playback: a kit gap is refused here, at the one door every player uses.
 pub fn load(path: &Path) -> Result<Loaded, String> {
+    let loaded = load_draft(path)?;
+    super::library::refuse(&loaded.gaps)?;
+    Ok(loaded)
+}
+/// Load for reading: gaps are listed on the result, not refused.
+pub fn load_draft(path: &Path) -> Result<Loaded, String> {
     let (selected, project) = locate(path)?;
     let (file, libraries, midi) = if let Some(project) = project {
         let m = manifest(&project)?;
@@ -124,10 +134,17 @@ pub fn load(path: &Path) -> Result<Loaded, String> {
         (selected, vec![], MidiSettings::default())
     };
     let source = fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let composition = super::library::expand_with_libraries(&source, file.parent(), &libraries)
-        .and_then(|value| value.try_into().map_err(|e: toml::de::Error| e.to_string()))
+    let draft = super::library::expand_with_libraries(&source, file.parent(), &libraries)
         .map_err(|e| format!("{}: {e}", file.display()))?;
-    Ok(Loaded { composition, midi })
+    let composition = draft
+        .value
+        .try_into()
+        .map_err(|e: toml::de::Error| format!("{}: {e}", file.display()))?;
+    Ok(Loaded {
+        composition,
+        midi,
+        gaps: draft.gaps,
+    })
 }
 
 #[derive(Serialize)]
@@ -135,12 +152,16 @@ pub struct Validation {
     pub valid: bool,
     pub files: Vec<String>,
     pub errors: Vec<String>,
+    /// Kit gaps, listed per file. They do not make the report invalid: the draft reads;
+    /// it is playback that refuses them.
+    pub gaps: Vec<String>,
 }
 pub fn validate(path: &Path) -> Validation {
     let mut report = Validation {
         valid: true,
         files: vec![],
         errors: vec![],
+        gaps: vec![],
     };
     let paths = (|| {
         let (selected, project) = locate(path)?;
@@ -159,8 +180,14 @@ pub fn validate(path: &Path) -> Validation {
         Ok(paths) => {
             for path in paths {
                 report.files.push(path.display().to_string());
-                if let Err(e) = load(&path) {
-                    report.errors.push(e);
+                match load_draft(&path) {
+                    Err(e) => report.errors.push(e),
+                    Ok(loaded) => report.gaps.extend(
+                        loaded
+                            .gaps
+                            .iter()
+                            .map(|gap| format!("{}: {gap}", path.display())),
+                    ),
                 }
             }
         }
