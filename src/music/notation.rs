@@ -194,8 +194,9 @@ impl Pattern {
         if p.pos < text.len() {
             return p.fail(&format!("unexpected {}", p.here()));
         }
+        let mut events: u64 = 0;
         for seq in &stack {
-            check_bounds(seq, 1)?;
+            events = add_events(events, check_bounds(seq, 1)?)?;
         }
         Ok(Self { stack })
     }
@@ -216,14 +217,25 @@ impl Pattern {
         out
     }
     /// Cycle `k` on the tick grid: `tick = k * cycle_ticks + floor(cycle_ticks * onset)`.
-    pub fn ticks(&self, k: u64, cycle_ticks: u64) -> Vec<TickEvent> {
-        let base = k.saturating_mul(cycle_ticks);
-        self.cycle(k)
+    ///
+    /// Fails when cycle `k` is not representable — i.e. when `(k + 1) * cycle_ticks` exceeds
+    /// `u64`. Every event of a cycle satisfies `onset + span <= 1`, so that one check proves
+    /// no tick, span or tail below can overflow. Refusing is the contract: a saturated tick is
+    /// a mistimed event that no consumer can tell from a real one.
+    pub fn ticks(&self, k: u64, cycle_ticks: u64) -> Result<Vec<TickEvent>, String> {
+        let base = k
+            .checked_mul(cycle_ticks)
+            .and_then(|base| base.checked_add(cycle_ticks).map(|_| base))
+            .ok_or_else(|| {
+                format!("cycle {k} at {cycle_ticks} ticks per cycle is past the end of the u64 tick grid")
+            })?;
+        let events = self
+            .cycle(k)
             .into_iter()
             .map(|e| {
                 let onset = e.onset.ticks(cycle_ticks);
                 let span_ticks = (e.onset + e.span).ticks(cycle_ticks).saturating_sub(onset);
-                let tick = base.saturating_add(onset);
+                let tick = base + onset;
                 let n = u64::from(e.ratchet).max(1);
                 let tails = (1..n)
                     .map(|i| tick + span_ticks / n * i + span_ticks % n * i / n)
@@ -237,7 +249,8 @@ impl Pattern {
                     tails,
                 }
             })
-            .collect()
+            .collect();
+        Ok(events)
     }
     pub fn kinds(&self) -> TokenKinds {
         let mut kinds = TokenKinds::default();
@@ -315,45 +328,79 @@ fn weights(steps: &[Step]) -> Option<(Vec<u128>, u128)> {
     }
     (total > 0).then_some((shares, total))
 }
-/// Prove no reachable onset or span needs a denominator past u64, so rendering cannot panic.
-fn check_bounds(steps: &[Step], acc: u64) -> Result<(), String> {
+/// Prove no reachable onset or span needs a denominator past u64, so rendering cannot panic,
+/// and return the worst-case number of events one cycle of the sequence renders.
+///
+/// The two limits are independent. Denominator representability bounds how *fine* a position
+/// can be; the event count bounds how *much work* a cycle is. `[[x(1024,1024)](1024,1024)]…`
+/// stays far inside u64 on every denominator and still asks for a billion events, so a
+/// pattern that passes one check can exhaust the process on the other.
+fn check_bounds(steps: &[Step], acc: u64) -> Result<u64, String> {
     let (_, total) = weights(steps).ok_or_else(|| "step weights overflow".to_string())?;
     let total = u64::try_from(total).map_err(|_| "step weights overflow".to_string())?;
     let acc = mul_bound(acc, total)?;
+    let mut events: u64 = 0;
     for s in steps {
-        check_step_bounds(s, acc)?;
+        events = add_events(events, check_step_bounds(s, acc)?)?;
     }
-    Ok(())
+    Ok(events)
 }
-fn check_step_bounds(step: &Step, acc: u64) -> Result<(), String> {
+fn check_step_bounds(step: &Step, acc: u64) -> Result<u64, String> {
     let acc = match step.euclid {
         Some(e) => mul_bound(acc, e.steps)?,
         None => acc,
     };
-    match &step.atom {
-        Atom::Rest | Atom::Token(_) => {}
+    let events = match &step.atom {
+        Atom::Rest => 0,
+        Atom::Token(_) => 1,
+        // Every stacked sequence renders over the same span: they add.
         Atom::Stack(seqs) => {
+            let mut events: u64 = 0;
             for q in seqs {
-                check_bounds(q, acc)?;
+                events = add_events(events, check_bounds(q, acc)?)?;
             }
+            events
         }
+        // One element plays per cycle; the worst cycle is the widest element.
         Atom::Alt(elems) => {
+            let mut worst: u64 = 0;
             for e in elems {
-                check_step_bounds(e, acc)?;
+                worst = worst.max(check_step_bounds(e, acc)?);
             }
+            worst
         }
+        // `per_cycle` cells per cycle, each holding one element of the sequence.
         Atom::Poly { steps, per_cycle } => {
             let acc = mul_bound(acc, *per_cycle)?;
+            let mut worst: u64 = 0;
             for e in steps {
-                check_step_bounds(e, acc)?;
+                worst = worst.max(check_step_bounds(e, acc)?);
             }
+            mul_events(worst, *per_cycle)?
         }
+    };
+    // A euclid repeats its atom once per pulse.
+    match step.euclid {
+        Some(e) => mul_events(events, e.pulses),
+        None => Ok(events),
     }
-    Ok(())
 }
 fn mul_bound(acc: u64, factor: u64) -> Result<u64, String> {
     acc.checked_mul(factor)
         .ok_or_else(|| "pattern subdivides too finely for exact u64 positions".to_string())
+}
+fn add_events(a: u64, b: u64) -> Result<u64, String> {
+    a.checked_add(b)
+        .filter(|&n| n <= MAX_EVENTS)
+        .ok_or_else(too_many_events)
+}
+fn mul_events(a: u64, b: u64) -> Result<u64, String> {
+    a.checked_mul(b)
+        .filter(|&n| n <= MAX_EVENTS)
+        .ok_or_else(too_many_events)
+}
+fn too_many_events() -> String {
+    format!("pattern renders more than {MAX_EVENTS} events in one cycle")
 }
 
 fn render_seq(
@@ -424,6 +471,11 @@ fn render_atom(atom: &Atom, start: Ratio, span: Ratio, k: u64, inh: Inherit, out
 
 const MAX_DEPTH: usize = 8;
 const MAX_STEPS: u64 = 1024;
+/// Worst-case events one cycle may render. Nesting is multiplicative — depth 8 of
+/// `(1024,1024)` alone reaches 2^100 — so the depth and step limits do not bound the work;
+/// this does, at parse time, before a consumer ever asks for a cycle. 4096 is four times the
+/// widest single construct the grammar allows and past any grid a Part can validate against.
+const MAX_EVENTS: u64 = 4096;
 
 struct Parser<'a> {
     src: &'a str,
@@ -684,6 +736,11 @@ impl Parser<'_> {
         let value: f64 = text
             .parse()
             .map_err(|_| format!("at byte {start}: {text} is not a number"))?;
+        if !value.is_finite() {
+            // `f64::from_str` returns `inf` for an overflowing literal rather than an error;
+            // an infinity that gets past here is inherited by every value consumer downstream.
+            return Err(format!("at byte {start}: {text} is not a finite number"));
+        }
         Ok(Atom::Token(Token::Number(value)))
     }
     fn word(&mut self) -> Result<Atom, String> {
@@ -1036,6 +1093,7 @@ mod tests {
     fn ticks_place_plain_hits_and_a_draw() {
         let got: Vec<(u64, Draw)> = parse("x x x [x x?]")
             .ticks(0, 3840)
+            .unwrap()
             .into_iter()
             .map(|e| (e.tick, e.draw))
             .collect();
@@ -1053,7 +1111,7 @@ mod tests {
 
     #[test]
     fn ticks_place_ratchet_tails() {
-        let got = parse("~ x ~ [x x*3?]").ticks(0, 3840);
+        let got = parse("~ x ~ [x x*3?]").ticks(0, 3840).unwrap();
         assert_eq!(
             got.iter().map(|e| e.tick).collect::<Vec<_>>(),
             vec![960, 2880, 3360]
@@ -1066,7 +1124,7 @@ mod tests {
 
     #[test]
     fn ticks_place_a_six_way_ratchet() {
-        let got = parse("~ 12*6").ticks(0, 3840);
+        let got = parse("~ 12*6").ticks(0, 3840).unwrap();
         assert_eq!(got.len(), 1);
         assert_eq!((got[0].tick, got[0].span_ticks), (1920, 1920));
         let expected: Vec<u64> = (1..6).map(|i| 1920 + 1920 * i / 6).collect();
@@ -1076,7 +1134,7 @@ mod tests {
 
     #[test]
     fn ticks_offset_by_the_cycle_index() {
-        let got = parse("x x x [x x?]").ticks(2, 3840);
+        let got = parse("x x x [x x?]").ticks(2, 3840).unwrap();
         assert_eq!(
             got.iter().map(|e| e.tick).collect::<Vec<_>>(),
             vec![7680, 8640, 9600, 10560, 11040]
@@ -1085,7 +1143,7 @@ mod tests {
 
     #[test]
     fn ticks_floor_a_seven_tuplet() {
-        let got = parse("x x x x x x x").ticks(0, 3840);
+        let got = parse("x x x x x x x").ticks(0, 3840).unwrap();
         assert_eq!(
             got.iter().map(|e| e.tick).collect::<Vec<_>>(),
             vec![0, 548, 1097, 1645, 2194, 2742, 3291]
@@ -1179,6 +1237,48 @@ mod tests {
                 "{text} should not have parsed"
             );
         }
+    }
+
+    #[test]
+    fn refuses_a_pattern_whose_expansion_is_unbounded() {
+        // Nesting is multiplicative and the depth/step limits do not bound it: this parses to
+        // a request for 1024^3 events, every denominator comfortably inside u64.
+        let bomb = "[[x(1024,1024)](1024,1024)](1024,1024)";
+        let err = Pattern::parse(bomb).expect_err("expansion bomb should not have parsed");
+        assert!(err.contains("more than 4096 events"), "{err}");
+        // The check is on the whole cycle, so a stack of merely-large parts is caught too.
+        assert!(
+            Pattern::parse("[x(1024,1024),x(1024,1024),x(1024,1024),x(1024,1024),x(1024,1024)]")
+                .is_err()
+        );
+        // …and what the pieces actually write is nowhere near it.
+        assert_eq!(parse("x(1024,1024)").cycle(0).len(), 1024);
+        assert_eq!(parse("{x ~ x x ~ x ~}%16").cycle(0).len(), 9);
+    }
+
+    #[test]
+    fn refuses_a_number_that_overflows_to_infinity() {
+        // `f64::from_str` returns `inf` for an overflowing literal, not an error.
+        let text = "9".repeat(400);
+        let err = Pattern::parse(&text).expect_err("an infinite literal should not have parsed");
+        assert!(err.contains("not a finite number"), "{err}");
+        assert!(Pattern::parse(&format!("x {} x", "9".repeat(400))).is_err());
+        // The largest finite literal is still fine.
+        assert!(Pattern::parse("179769313486231570000000000000000000000").is_ok());
+    }
+
+    #[test]
+    fn refuses_a_cycle_past_the_end_of_the_tick_grid() {
+        let p = parse("x*2");
+        assert!(p.ticks(u64::MAX, 3840).is_err());
+        assert!(p.ticks(u64::MAX / 3840, 3840).is_err());
+        // The last representable cycle works, and its tails are on the grid, not saturated.
+        let last = u64::MAX / 3840 - 1;
+        let got = p
+            .ticks(last, 3840)
+            .expect("the last whole cycle is representable");
+        assert_eq!(got[0].tick, last * 3840);
+        assert_eq!(got[0].tails, vec![last * 3840 + 1920]);
     }
 
     #[test]

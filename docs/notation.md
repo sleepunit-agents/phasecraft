@@ -60,14 +60,37 @@ so the consumer can refuse a mismatch at load with the string and the offending 
 Positions are exact rationals over the cycle (numerator/denominator in `u64`, reduced), never
 floats. The cycle is `cycle_bars` bars, default 1 bar = 3840 ticks at 960 PPQN. An onset at
 fraction `p/q` of a cycle that starts at tick `T0` lands at `T0 + floor(cycle_ticks · p / q)`,
-computed in integer arithmetic. **Rounding rule: floor.** Every position reachable by `[ ]`
-subdivision of a bar into 2, 3, 4, 5, 6, 8, 12, 16, 24, 32, 48, 64 parts and their products is
-exact at 3840 ticks; the rule only matters for 7-, 9-, 11-tuplets, and it is stated so nobody
-has to guess.
+computed in integer arithmetic. **Rounding rule: floor.**
 
-A step's **span** is the interval it occupies. Ratchet tail attack *i* (1-based, `i < n`) is at
-`onset + floor(span_ticks · i / n)` — integer division from the origin, no accumulated rounding,
-the same rule as `Ornaments::expand`.
+**Which positions are exact.** An onset `p/q`, reduced, is exact when `q` divides `cycle_ticks`
+and floored otherwise. There is no list of safe subdivisions: 3840 = 2⁸ · 3 · 5, so `q` is exact
+iff it is a divisor of that — up to 256 halvings, one factor of 3, one of 5. Products are *not*
+closed under it. `[[x x]…]` nested to 64 × 64 needs `q` = 4096 and floors; so does anything
+needing a second 3 (a 9-tuplet is 3 × 3), a second 5, or a 7 or 11. The exact/floored line is a
+property of the reduced denominator, not of how the pattern was written.
+
+A step's **span** is the interval it occupies, and on the grid `span_ticks = floor(end) −
+floor(start)` — the difference of two floored positions, not the floor of the difference. That
+is why seven floored steps still tile 3840 ticks exactly with no step lost or doubled.
+
+Ratchet tail attack *i* (1-based, `i < n`) is at `onset + floor(span_ticks · i / n)` — integer
+division from the origin, no accumulated rounding, the same rule as `Ornaments::expand`.
+
+**Two limits, and they are not the same limit.** Nesting depth is 8 and any single `( )` or `%`
+count is ≤ 1024, but neither bounds the work: nesting is multiplicative, so
+`[[x(1024,1024)](1024,1024)](1024,1024)` sits well inside every denominator and still asks for
+2³⁰ events. So the parser also refuses any pattern whose worst-case cycle renders **more than
+4096 events**, computed at parse time — stacks add, alternations take the widest element,
+polymeter multiplies by its `%n`, euclid by its pulse count. Denominator representability is the
+other limit and is checked separately. A number literal that overflows `f64` to infinity is a
+parse error too, for the same reason: a value consumer cannot tell an inherited infinity from a
+number it was given.
+
+**The tick grid ends.** `ticks(k, cycle_ticks)` fails rather than saturating when cycle `k` is
+not representable — when `(k + 1) · cycle_ticks` exceeds `u64`. Every event satisfies
+`onset + span ≤ 1`, so that single check proves no tick, span or tail inside the cycle can
+overflow. A clamped tick would be a mistimed event no consumer could distinguish from a real
+one, which is the reason the contract is a refusal and not a clamp.
 
 ## The leaf in the engine
 

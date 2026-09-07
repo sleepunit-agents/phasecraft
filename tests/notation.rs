@@ -56,7 +56,7 @@ fn every_pattern_renders_a_finite_cycle_and_a_tick_grid() {
         assert!(period >= 1, "{text:?}");
         for k in 0..period.min(8) {
             let events = p.cycle(k);
-            let ticks = p.ticks(k, 3840);
+            let ticks = p.ticks(k, 3840).unwrap();
             assert_eq!(events.len(), ticks.len(), "{text:?} cycle {k}");
             // onsets are sorted, inside the cycle, and land on the grid the spec floors to
             let mut previous = None;
@@ -117,7 +117,12 @@ fn kinds_let_a_consumer_refuse_a_mismatch() {
 #[test]
 fn the_sixteen_slot_slice_row_places_every_index() {
     let p = Pattern::parse("1 2 3 ~ 5 ~ 7 8 1 ~ 3 4 ~ 6 7 ~").expect("parses");
-    let ticks: Vec<u64> = p.ticks(0, 3840).into_iter().map(|e| e.tick).collect();
+    let ticks: Vec<u64> = p
+        .ticks(0, 3840)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.tick)
+        .collect();
     assert_eq!(
         ticks,
         vec![0, 240, 480, 960, 1440, 1680, 1920, 2400, 2640, 3120, 3360]
