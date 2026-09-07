@@ -194,9 +194,9 @@ impl Pattern {
         if p.pos < text.len() {
             return p.fail(&format!("unexpected {}", p.here()));
         }
-        let mut events: u64 = 0;
+        let mut cost = Cost::ZERO;
         for seq in &stack {
-            events = add_events(events, check_bounds(seq, 1)?)?;
+            cost = cost.add(check_bounds(seq, 1)?)?;
         }
         Ok(Self { stack })
     }
@@ -328,61 +328,112 @@ fn weights(steps: &[Step]) -> Option<(Vec<u128>, u128)> {
     }
     (total > 0).then_some((shares, total))
 }
+/// The worst-case price of rendering one cycle: the events it emits, and the render steps it
+/// takes to emit them. Both are *upper bounds*, never exact counts — an alternation is charged
+/// its widest element though only one plays per cycle, and a polymeter its widest element `%n`
+/// times though its cells hold different elements. A refusal therefore says a pattern *may*
+/// cost this much, not that it does.
+#[derive(Clone, Copy)]
+struct Cost {
+    events: u64,
+    work: u64,
+}
+impl Cost {
+    const ZERO: Cost = Cost { events: 0, work: 0 };
+    /// A leaf that emits nothing and still costs the visit that discovers it.
+    const SILENT: Cost = Cost { events: 0, work: 1 };
+    const EVENT: Cost = Cost { events: 1, work: 1 };
+    /// Material rendered side by side: both prices add.
+    fn add(self, other: Cost) -> Result<Cost, String> {
+        Ok(Cost {
+            events: add_events(self.events, other.events)?,
+            work: add_work(self.work, other.work)?,
+        })
+    }
+    /// `n` renderings of the same material.
+    fn times(self, n: u64) -> Result<Cost, String> {
+        Ok(Cost {
+            events: mul_events(self.events, n)?,
+            work: mul_work(self.work, n)?,
+        })
+    }
+    /// Work with no events: a loop that visits slots without rendering them.
+    fn plus_work(self, work: u64) -> Result<Cost, String> {
+        self.add(Cost { events: 0, work })
+    }
+    /// The `render_step`/`render_atom` call that reached this material.
+    fn visit(self) -> Result<Cost, String> {
+        self.plus_work(1)
+    }
+    /// Independent maxima over branches only one of which plays. Conservative: the widest
+    /// branch and the most expensive branch need not be the same branch.
+    fn worst(self, other: Cost) -> Cost {
+        Cost {
+            events: self.events.max(other.events),
+            work: self.work.max(other.work),
+        }
+    }
+}
+
 /// Prove no reachable onset or span needs a denominator past u64, so rendering cannot panic,
-/// and return the worst-case number of events one cycle of the sequence renders.
+/// and return the worst-case cost of one cycle of the sequence.
 ///
-/// The two limits are independent. Denominator representability bounds how *fine* a position
-/// can be; the event count bounds how *much work* a cycle is. `[[x(1024,1024)](1024,1024)]…`
-/// stays far inside u64 on every denominator and still asks for a billion events, so a
-/// pattern that passes one check can exhaust the process on the other.
-fn check_bounds(steps: &[Step], acc: u64) -> Result<u64, String> {
+/// The three limits are independent and a pattern that passes any two can still be refused by
+/// the third. Denominator representability bounds how *fine* a position can be.
+/// `MAX_EVENTS` bounds how much a cycle *emits*. `MAX_WORK` bounds how much a cycle *does* —
+/// which is not the same thing, because silence is not free: `[[~(1024,1024)](1024,1024)]…`
+/// emits nothing at any nesting and still walks 2^30 slots to emit it. Anything that only
+/// counts output will accept it and then hang the renderer.
+fn check_bounds(steps: &[Step], acc: u64) -> Result<Cost, String> {
     let (_, total) = weights(steps).ok_or_else(|| "step weights overflow".to_string())?;
     let total = u64::try_from(total).map_err(|_| "step weights overflow".to_string())?;
     let acc = mul_bound(acc, total)?;
-    let mut events: u64 = 0;
+    let mut cost = Cost::ZERO;
     for s in steps {
-        events = add_events(events, check_step_bounds(s, acc)?)?;
+        cost = cost.add(check_step_bounds(s, acc)?)?;
     }
-    Ok(events)
+    Ok(cost)
 }
-fn check_step_bounds(step: &Step, acc: u64) -> Result<u64, String> {
+fn check_step_bounds(step: &Step, acc: u64) -> Result<Cost, String> {
     let acc = match step.euclid {
         Some(e) => mul_bound(acc, e.steps)?,
         None => acc,
     };
-    let events = match &step.atom {
-        Atom::Rest => 0,
-        Atom::Token(_) => 1,
+    let atom = match &step.atom {
+        Atom::Rest => Cost::SILENT,
+        Atom::Token(_) => Cost::EVENT,
         // Every stacked sequence renders over the same span: they add.
         Atom::Stack(seqs) => {
-            let mut events: u64 = 0;
+            let mut cost = Cost::ZERO;
             for q in seqs {
-                events = add_events(events, check_bounds(q, acc)?)?;
+                cost = cost.add(check_bounds(q, acc)?)?;
             }
-            events
+            cost
         }
         // One element plays per cycle; the worst cycle is the widest element.
         Atom::Alt(elems) => {
-            let mut worst: u64 = 0;
+            let mut worst = Cost::ZERO;
             for e in elems {
-                worst = worst.max(check_step_bounds(e, acc)?);
+                worst = worst.worst(check_step_bounds(e, acc)?);
             }
             worst
         }
         // `per_cycle` cells per cycle, each holding one element of the sequence.
         Atom::Poly { steps, per_cycle } => {
             let acc = mul_bound(acc, *per_cycle)?;
-            let mut worst: u64 = 0;
+            let mut worst = Cost::ZERO;
             for e in steps {
-                worst = worst.max(check_step_bounds(e, acc)?);
+                worst = worst.worst(check_step_bounds(e, acc)?);
             }
-            mul_events(worst, *per_cycle)?
+            worst.times(*per_cycle)?
         }
-    };
-    // A euclid repeats its atom once per pulse.
+    }
+    .visit()?;
+    // A euclid renders its atom once per pulse — and visits every slot, pulse or not. The
+    // slot loop is the work a silent or zero-pulse branch still costs.
     match step.euclid {
-        Some(e) => mul_events(events, e.pulses),
-        None => Ok(events),
+        Some(e) => atom.times(e.pulses)?.plus_work(e.steps)?.visit(),
+        None => atom.visit(),
     }
 }
 fn mul_bound(acc: u64, factor: u64) -> Result<u64, String> {
@@ -399,8 +450,21 @@ fn mul_events(a: u64, b: u64) -> Result<u64, String> {
         .filter(|&n| n <= MAX_EVENTS)
         .ok_or_else(too_many_events)
 }
+fn add_work(a: u64, b: u64) -> Result<u64, String> {
+    a.checked_add(b)
+        .filter(|&n| n <= MAX_WORK)
+        .ok_or_else(too_much_work)
+}
+fn mul_work(a: u64, b: u64) -> Result<u64, String> {
+    a.checked_mul(b)
+        .filter(|&n| n <= MAX_WORK)
+        .ok_or_else(too_much_work)
+}
 fn too_many_events() -> String {
-    format!("pattern renders more than {MAX_EVENTS} events in one cycle")
+    format!("pattern may render more than {MAX_EVENTS} events in one cycle")
+}
+fn too_much_work() -> String {
+    format!("pattern may take more than {MAX_WORK} render steps in one cycle")
 }
 
 fn render_seq(
@@ -472,10 +536,21 @@ fn render_atom(atom: &Atom, start: Ratio, span: Ratio, k: u64, inh: Inherit, out
 const MAX_DEPTH: usize = 8;
 const MAX_STEPS: u64 = 1024;
 /// Worst-case events one cycle may render. Nesting is multiplicative — depth 8 of
-/// `(1024,1024)` alone reaches 2^100 — so the depth and step limits do not bound the work;
+/// `(1024,1024)` alone reaches 2^100 — so the depth and step limits do not bound the output;
 /// this does, at parse time, before a consumer ever asks for a cycle. 4096 is four times the
 /// widest single construct the grammar allows and past any grid a Part can validate against.
+/// Provisional: it is a policy cap on output, and a real piece may argue it up.
 const MAX_EVENTS: u64 = 4096;
+/// Worst-case render steps one cycle may take — every `render_step`, every `render_atom`, and
+/// every euclid slot the loop visits whether or not it pulses. `MAX_EVENTS` does not imply
+/// this one: a rest emits nothing, a zero-pulse euclid emits nothing, and either can sit under
+/// three nested 1024-slot euclids and cost 2^30 visits for an output of zero. This is not a
+/// policy cap but a practicality one, so it is set well clear of anything writable: the most
+/// expensive pattern that stays inside `MAX_EVENTS` costs about 12k steps, and the widest
+/// single construct the grammar allows — a 1024-slot euclid — costs about 3k. A million is
+/// ~80x the first and past any nesting a Part has reason to write, while a cycle that reaches
+/// it still renders in well under a millisecond.
+const MAX_WORK: u64 = 1 << 20;
 
 struct Parser<'a> {
     src: &'a str,
@@ -649,7 +724,7 @@ impl Parser<'_> {
             0
         };
         self.expect(b')')?;
-        if steps == 0 || steps > MAX_STEPS || pulses > steps {
+        if pulses == 0 || steps == 0 || steps > MAX_STEPS || pulses > steps {
             return self.fail("expected euclid 1 <= pulses <= steps <= 1024");
         }
         if rotate > MAX_STEPS {
@@ -1254,6 +1329,59 @@ mod tests {
         // …and what the pieces actually write is nowhere near it.
         assert_eq!(parse("x(1024,1024)").cycle(0).len(), 1024);
         assert_eq!(parse("{x ~ x x ~ x ~}%16").cycle(0).len(), 9);
+    }
+
+    #[test]
+    fn refuses_expansion_that_is_silent_and_still_enormous() {
+        // Mark's finding on PR #6: an event bound is not a work bound. Both of these emit
+        // nothing, so any check that counts output accepts them — and then the renderer walks
+        // 1024^3 slots to emit the nothing. Measured at this branch's parent (61bf6ba): both
+        // parsed clean, and rendering the first had not finished after 20 seconds.
+        let silent = "[[~(1024,1024)](1024,1024)](1024,1024)";
+        let err = Pattern::parse(silent).expect_err("a silent bomb should not have parsed");
+        assert!(err.contains("render steps"), "{err}");
+        // A euclid's slot loop runs whether or not the slot pulses, so one live pulse under
+        // the same nesting is the same cost with an event count of 1024 — inside MAX_EVENTS.
+        let one_pulse = "[[x(1,1024)](1024,1024)](1024,1024)";
+        let err = Pattern::parse(one_pulse).expect_err("a sparse bomb should not have parsed");
+        assert!(err.contains("render steps"), "{err}");
+        // The zero-pulse form of the same trick never reaches the bound check: the euclid
+        // guard always claimed `1 <= pulses` and now enforces it.
+        assert!(Pattern::parse("x(0,1024)").is_err());
+        assert!(Pattern::parse("x(0,8)").is_err());
+        // Silence itself stays cheap and legal — the refusal is of the traversal, not the rest.
+        assert_eq!(parse("~(1024,1024)").cycle(0).len(), 0);
+        assert_eq!(parse("[~(64,64)](64,64)").cycle(0).len(), 0);
+        // The most expensive pattern still inside MAX_EVENTS is nowhere near MAX_WORK.
+        assert_eq!(parse("[x(64,64)](64,64)").cycle(0).len(), 4096);
+    }
+
+    #[test]
+    fn every_accepted_pattern_renders_promptly() {
+        // The bound is proved at parse, so `cycle` stays infallible. This is the property that
+        // buys: the worst thing that parses is still fast, measured rather than argued.
+        let worst = [
+            "[x(64,64)](64,64)",
+            // ~787k render steps for zero events: the most silent traversal that is still
+            // accepted, and the case that says the work bound is what admits it, not the
+            // output. One more nesting factor of four and it is refused.
+            "[~(1024,1024)](256,256)",
+            "x(1024,1024)",
+            "<[x(32,32)](32,32) [~(512,512)](2,512)>",
+            "{[x(16,16)](16,16)}%16",
+        ];
+        let start = std::time::Instant::now();
+        for text in worst {
+            let p = Pattern::parse(text).unwrap_or_else(|e| panic!("{text}: {e}"));
+            for k in 0..4 {
+                assert!(p.cycle(k).len() as u64 <= MAX_EVENTS);
+            }
+        }
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "accepted patterns took {:?}",
+            start.elapsed()
+        );
     }
 
     #[test]

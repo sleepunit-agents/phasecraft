@@ -36,7 +36,7 @@ INT       := DIGITS
 | `*n` | **ratchet**: the step is one main event plus `n−1` tail attacks, spaced `span / n` from the step's onset. `*` never means "n sequential steps". n in 2..=8 |
 | `@w` | weight: the step takes `w` shares of the enclosing span instead of 1. w is a positive number |
 | `?` | a **draw** at the step's own address. On a plain step: the event sounds only if the draw admits it. On a `*n` step: the main event always sounds and the draw gates the *tail* — one draw per main event. `?` is a marker; the chance it is rolled against belongs to the consumer (`trigger.admit`, `ratchet.gate`), never to the string |
-| `x(p,s[,r])` | euclid: the step becomes `s` equal sub-steps with `p` pulses by the engine's balanced-modular rule (`(i·p) mod s < p`, first pulse at 0), rotated right by `r` (default 0). Same convention as `Expression::Euclidean` |
+| `x(p,s[,r])` | euclid: the step becomes `s` equal sub-steps with `p` pulses by the engine's balanced-modular rule (`(i·p) mod s < p`, first pulse at 0), rotated right by `r` (default 0). `1 ≤ p ≤ s ≤ 1024`; write `~` for silence, not `x(0,s)`. Same convention as `Expression::Euclidean` |
 | `{ }%n` | polymeter: the braces hold a sequence of *m* steps played **n steps per cycle**. Step *j* of cycle *k* (0-based) plays element `(k·n + j) mod m`. The sequence does not restart at the cycle line; its own period is `lcm(m,n)/n` cycles |
 | `,` | **stack**: simultaneity. `[1,3,5]` is a chord; `[1 3 5]` is an arpeggio. Each stacked sequence spans the same interval; events at equal onsets are simultaneous |
 
@@ -64,7 +64,7 @@ computed in integer arithmetic. **Rounding rule: floor.**
 
 **Which positions are exact.** An onset `p/q`, reduced, is exact when `q` divides `cycle_ticks`
 and floored otherwise. There is no list of safe subdivisions: 3840 = 2⁸ · 3 · 5, so `q` is exact
-iff it is a divisor of that — up to 256 halvings, one factor of 3, one of 5. Products are *not*
+iff it is a divisor of that — up to eight halvings (denominator 256), one factor of 3, one of 5. Products are *not*
 closed under it. `[[x x]…]` nested to 64 × 64 needs `q` = 4096 and floors; so does anything
 needing a second 3 (a 9-tuplet is 3 × 3), a second 5, or a 7 or 11. The exact/floored line is a
 property of the reduced denominator, not of how the pattern was written.
@@ -76,15 +76,34 @@ is why seven floored steps still tile 3840 ticks exactly with no step lost or do
 Ratchet tail attack *i* (1-based, `i < n`) is at `onset + floor(span_ticks · i / n)` — integer
 division from the origin, no accumulated rounding, the same rule as `Ornaments::expand`.
 
-**Two limits, and they are not the same limit.** Nesting depth is 8 and any single `( )` or `%`
-count is ≤ 1024, but neither bounds the work: nesting is multiplicative, so
+**Three limits, and no one of them implies another.** Nesting depth is 8 and any single `( )`
+or `%` count is ≤ 1024, but neither bounds anything that matters: nesting is multiplicative, so
 `[[x(1024,1024)](1024,1024)](1024,1024)` sits well inside every denominator and still asks for
-2³⁰ events. So the parser also refuses any pattern whose worst-case cycle renders **more than
-4096 events**, computed at parse time — stacks add, alternations take the widest element,
-polymeter multiplies by its `%n`, euclid by its pulse count. Denominator representability is the
-other limit and is checked separately. A number literal that overflows `f64` to infinity is a
-parse error too, for the same reason: a value consumer cannot tell an inherited infinity from a
-number it was given.
+2³⁰ events. The parser proves all three at parse time, before a consumer ever asks for a cycle.
+
+1. **Denominator representability** — no reachable onset or span needs a denominator past
+   `u64`, so rendering cannot panic. This bounds how *fine* a position can be.
+2. **Output: at most 4096 events per cycle.** Stacks add, alternations take the widest element,
+   polymeter multiplies by its `%n`, euclid by its pulse count. This bounds how much a cycle
+   *emits*.
+3. **Work: at most 2²⁰ render steps per cycle.** Every `render_step`, every `render_atom`, and
+   every euclid slot the loop visits — pulse or no pulse. This bounds how much a cycle *does*,
+   which is a different quantity, because **silence is not free**.
+   `[[~(1024,1024)](1024,1024)](1024,1024)` emits zero events at every nesting and still walks
+   2³⁰ slots to emit them; measured against a build with only limits 1 and 2, it parses clean
+   and has not finished rendering after 20 seconds. A limit that counts output accepts it.
+
+Limits 2 and 3 are **conservative upper bounds, not counts**. An alternation is charged its
+widest element though only one plays per cycle, and a polymeter its widest element `%n` times
+though its cells hold different elements — so `{x ~ x x ~ x ~}%16` is charged 16 events and
+renders 9. A refusal therefore says a pattern *may* cost that much, never that it does; the
+error messages say "may" for that reason. 4096 is a provisional policy cap on output that a
+real piece may argue up. 2²⁰ is a practicality cap, set clear of anything writable: the most
+expensive pattern that stays inside 4096 events costs about 12k steps, and the widest single
+construct the grammar allows costs about 3k.
+
+A number literal that overflows `f64` to infinity is a parse error too, for the same family of
+reason: a value consumer cannot tell an inherited infinity from a number it was given.
 
 **The tick grid ends.** `ticks(k, cycle_ticks)` fails rather than saturating when cycle `k` is
 not representable — when `(k + 1) · cycle_ticks` exceeds `u64`. Every event satisfies
