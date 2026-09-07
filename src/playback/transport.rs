@@ -191,7 +191,24 @@ pub fn run_with_controls<S: MidiOutput + 'static>(
                     events.sort_by_key(crate::music::resolve::midi_order);
                 }
             }
+            if let (Some(r), Some((previous_step, previous))) = (&c.router, &last_scheduled) {
+                let period = r.period_ticks(&c).expect("validated composition");
+                let current = r.visit_at(c.seed, period, step * STEP_TICKS);
+                let old = previous.router.as_ref().map(|r| {
+                    let period = r.period_ticks(previous).expect("validated composition");
+                    r.visit_at(previous.seed, period, *previous_step * STEP_TICKS)
+                });
+                if old.as_ref().is_some_and(|old| old.scene != current.scene) {
+                    events.retain(|e| !e.boundary_reset);
+                    events.extend(crate::music::arrangement::resets(
+                        previous.at_step(*previous_step),
+                        step * STEP_TICKS,
+                    ));
+                    events.sort_by_key(crate::music::resolve::midi_order);
+                }
+            }
             if c.arrangement.is_none()
+                && c.router.is_none()
                 && let Some((_, previous)) = &last_scheduled
                 && !Arc::ptr_eq(previous, &visual_composition)
             {

@@ -187,6 +187,20 @@ pub fn run() -> Result<(), String> {
                                 )
                             })
                             .unwrap_or_else(|| "rest".into());
+                        if let Some(visit) = &trace.scene {
+                            write!(
+                                out,
+                                "[{} return {} bar {}{}] ",
+                                visit.scene,
+                                visit.index,
+                                (trace.tick - visit.start_tick) / (STEP_TICKS * 16) + 1,
+                                visit
+                                    .from
+                                    .as_ref()
+                                    .map_or(String::new(), |from| format!(" from {from}")),
+                            )
+                            .map_err(|e| e.to_string())?;
+                        }
                         if let Some(section) = &trace.section {
                             write!(
                                 out,

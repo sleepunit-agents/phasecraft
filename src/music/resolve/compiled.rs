@@ -7,6 +7,9 @@ pub struct Compiled {
     indices: std::collections::BTreeMap<String, usize>,
     raw: std::collections::BTreeMap<u64, std::sync::Arc<Vec<StepTrace>>>,
     sections: Vec<Compiled>,
+    scenes: Vec<Compiled>,
+    period: u64,
+    moves: Vec<crate::music::router::Move>,
     cell_keys: std::collections::VecDeque<(usize, u64, u64, u64)>,
     cells: std::collections::BTreeMap<(usize, u64, u64, u64), StepTrace>,
 }
@@ -34,6 +37,15 @@ impl Compiled {
                     .collect()
             })
             .unwrap_or_default();
+        let scenes = c
+            .router
+            .as_ref()
+            .map(|r| r.scenes.iter().map(|s| Self::new(&s.composition)).collect())
+            .unwrap_or_default();
+        let period = c
+            .router
+            .as_ref()
+            .map_or(0, |r| r.period_ticks(c).expect("validated composition"));
         Self {
             composition: c.clone(),
             order,
@@ -42,7 +54,22 @@ impl Compiled {
             cells: Default::default(),
             cell_keys: Default::default(),
             sections,
+            scenes,
+            period,
+            moves: Vec::new(),
         }
+    }
+    /// The router's move log through the return that `tick` falls in.
+    pub fn moves_through(&mut self, tick: u64) -> &[crate::music::router::Move] {
+        if let Some(r) = &self.composition.router {
+            r.extend_moves(
+                self.composition.seed,
+                self.period,
+                &mut self.moves,
+                tick / self.period,
+            );
+        }
+        &self.moves
     }
     fn raw_at(&mut self, tick: u64) -> std::sync::Arc<Vec<StepTrace>> {
         if let Some(traces) = self.raw.get(&tick) {
@@ -73,6 +100,39 @@ impl Compiled {
         traces
     }
     pub fn resolve_step(&mut self, step: u64) -> (Vec<StepTrace>, Vec<MidiEvent>) {
+        if let Some(r) = &self.composition.router {
+            // Every visit continues the transport's phase: no shift, no restart. The window
+            // opens where this run of the scene was entered and closes at the next return.
+            let tick = step * STEP_TICKS;
+            r.extend_moves(
+                self.composition.seed,
+                self.period,
+                &mut self.moves,
+                tick / self.period,
+            );
+            let visit = r.locate(self.period, tick, &self.moves);
+            let index = r
+                .scenes
+                .iter()
+                .position(|s| s.name == visit.scene)
+                .expect("validated router");
+            // A move resets the outgoing scene's declared controls; a stay resets nothing.
+            let previous = (tick == visit.entered_tick && visit.index > 0)
+                .then(|| {
+                    let from = visit.from.as_deref()?;
+                    let scene = r.scene(from)?;
+                    Some(crate::music::arrangement::resets(&scene.composition, tick))
+                })
+                .flatten();
+            let (mut traces, mut midi) =
+                self.scenes[index].window(step, visit.entered_tick, visit.next_tick);
+            for t in &mut traces {
+                t.scene = Some(visit.clone());
+            }
+            midi.extend(previous.into_iter().flatten());
+            midi.sort_by_key(midi_order);
+            return (traces, midi);
+        }
         if let Some(a) = &self.composition.arrangement {
             let Some(located) = a.locate(step) else {
                 return (vec![], vec![]);

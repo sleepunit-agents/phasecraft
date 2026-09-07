@@ -1,5 +1,9 @@
 # Procedural phrases and sections
 
+A piece that moves between its phrases by dice rather than by a list uses a router instead of
+an arrangement: see [Return groups and the router](router.md). A composition has one or the
+other, never both.
+
 A composition still loops forever unless it declares an arrangement. Parts at the
 root are the shared starting point. Named phrases contain only their differences;
 `use` derives one phrase from another. They remain rhythmic systems with stable
