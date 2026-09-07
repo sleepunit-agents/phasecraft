@@ -89,10 +89,14 @@ onset. `humanize.velocity` requests symmetric base-velocity variation up to 0.5
 trigger probability and accents. `mode` selects phrase-locked or continuous
 occurrences. Changing unrelated Parts does not scramble the rolls.
 
-Timing remains inside the source step. A negative offset is clipped to zero;
-choose a small `delay_ticks` if you want room on both sides of a straight onset.
-The existing swing/delay bounds plus jitter leave a positive gate, which may be
-shortened to end before the next step. These are musical ticks, not fixed ms.
+Jitter is two-sided by itself: a straight onset with `timing_ticks = 20` plays
+anywhere from 20 ticks early to 20 ticks late, with no `delay_ticks` required.
+Asking for humanize opens the same anticipation window a negative delay does (a
+quarter of the subdivision), and the combined delay, swing and jitter are clipped
+to it. Bar ownership still holds: a bar's first hit never reaches back into the
+previous bar, so at that position a requested advance is clipped to zero. The
+resulting gate stays positive and may be shortened to end before the next step.
+These are musical ticks, not fixed ms.
 The inspector reports the requested jitter, actual offset, meter/gap factors and
 velocity-touch factor. Setting a velocity factor to zero still keeps the admitted
 note at MIDI velocity 1; probability controls omission.

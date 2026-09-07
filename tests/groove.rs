@@ -314,3 +314,40 @@ fn touch_parameters_reject_invalid_ranges_and_garage_comparison_preserves_notes(
         }
     }
 }
+
+#[test]
+fn humanize_jitter_reaches_both_sides_of_a_straight_onset() {
+    // A groove that asks for symmetric jitter gets it without also setting a negative
+    // delay. Every requested displacement is emitted, except where bar ownership clips
+    // an advance at the bar's first hit.
+    use phasecraft::music::groove::Humanize;
+    for delay in [0, 10] {
+        let mut c = song();
+        c.parts[0].groove.delay_ticks = delay;
+        c.parts[0].groove.humanize = Some(Humanize {
+            timing_ticks: 20,
+            ..Default::default()
+        });
+        let (mut early, mut late) = (0, 0);
+        for step in 0..64 {
+            let trace = resolve_step(&c, step).0.remove(0);
+            let event = trace.event.expect("every step triggers");
+            let groove = event.groove.as_ref().unwrap();
+            let requested = groove.touch.as_ref().unwrap().requested_jitter_ticks + delay;
+            let emitted = groove.offset_ticks as i64 - groove.advance_ticks as i64;
+            let expected = if step % 16 == 0 {
+                requested.max(0)
+            } else {
+                requested
+            };
+            assert_eq!(emitted, expected, "step {step}: requested {requested}");
+            assert_eq!(event.tick as i64, (step * STEP_TICKS) as i64 + emitted);
+            early += usize::from(emitted < 0);
+            late += usize::from(emitted > 0);
+        }
+        assert!(
+            early > 0 && late > 0,
+            "delay {delay}: early {early}, late {late}"
+        );
+    }
+}
