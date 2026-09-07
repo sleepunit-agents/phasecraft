@@ -64,9 +64,10 @@ notes whose source is in a neighboring planning window.
 ## Groove and boundaries
 
 `groove.delay_ticks` accepts -60 through 60. Negative values anticipate; the effective
-advance is limited to a quarter of the Part's subdivision. Positive timing keeps its
-previous behavior, including clipping humanization at the source onset. A negative
-delay allows jitter on either side of that earlier onset. Swing acts on pairs of the
+advance is limited to a quarter of the Part's subdivision. `humanize.timing_ticks`
+opens the same window: its jitter lands on either side of the grooved onset whether
+the delay is negative, zero or positive. Without a negative delay or humanize, timing
+never moves a hit earlier than its source onset. Swing acts on pairs of the
 Part's subdivisions; after-gap and run-contour lengths count local source positions.
 Offbeat emphasis and parameter automation remain tied to absolute musical time.
 

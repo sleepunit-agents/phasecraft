@@ -336,11 +336,13 @@ fn all_packaged_examples_have_ordered_complete_midi_pairs() {
             continue;
         }
         let c = Composition::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        // Pairs are complete across the run, not per window: an anticipated hit (negative
+        // delay, or humanize jitter) opens in one sixteenth and closes in the next.
+        let mut active = std::collections::HashMap::new();
+        let mut controls = std::collections::HashMap::new();
         for step in 0..64 {
             let (_, events) = resolve_step(&c, step);
             assert!(events.windows(2).all(|e| e[0].tick <= e[1].tick));
-            let mut active = std::collections::HashMap::new();
-            let mut controls = std::collections::HashMap::new();
             for e in events {
                 if e.parameter {
                     assert_eq!(e.bytes[0] & 0xf0, 0xb0);
@@ -364,9 +366,18 @@ fn all_packaged_examples_have_ordered_complete_midi_pairs() {
                     assert!(e.tick > on && e.tick < on + 240);
                 }
             }
-            assert!(active.is_empty());
-            assert!(controls.is_empty());
         }
+        // Only hits anticipated from the first unrendered step may still be open.
+        assert!(
+            active.values().all(|&on| on >= 63 * 240),
+            "{}",
+            path.display()
+        );
+        assert!(
+            controls.values().all(|&(on, _)| on >= 63 * 240),
+            "{}",
+            path.display()
+        );
     }
 }
 #[test]

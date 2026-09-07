@@ -277,7 +277,7 @@ impl Compiled {
                 trace.trigger.admitted = false;
                 part_traces.insert(0, trace);
             }
-            if cell != STEP_TICKS || !part.ornaments.is_default() || part.groove.delay_ticks < 0 {
+            if cell != STEP_TICKS || !part.ornaments.is_default() || anticipates(&part) {
                 part_traces[0].sounding = Some(audible);
             }
             part_traces[0].parameters = parameters;
@@ -473,13 +473,25 @@ fn offset(part: &Part, c: &Composition, step: u64) -> i64 {
         .timing_jitter_identity(c.seed, &part.id, decision_identity(c, cell, step, mode))
         .1;
     (part.groove.delay_ticks + swing + jitter).clamp(
-        if part.groove.delay_ticks < 0 {
+        if anticipates(part) {
             -(cell as i64 / 4)
         } else {
             0
         },
         cell as i64 - 2,
     )
+}
+/// A groove that asks to move early opens the anticipation window (a quarter of the
+/// subdivision): a negative delay, or humanize jitter, which is two-sided by contract.
+/// Without either, the floor stays at the source onset. Bar ownership still applies
+/// on top of this: a bar's first hit never reaches back into the previous bar.
+fn anticipates(part: &Part) -> bool {
+    part.groove.delay_ticks < 0
+        || part
+            .groove
+            .humanize
+            .as_ref()
+            .is_some_and(|h| h.timing_ticks > 0)
 }
 
 #[cfg(test)]
