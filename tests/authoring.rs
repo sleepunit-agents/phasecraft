@@ -655,7 +655,11 @@ fn kit_errors_in_a_library_file_name_that_file_not_the_composition() {
         let file = temp.write("piece.toml", piece);
         Composition::read(&file)
     };
-    let lib = temp.0.join("kits/local.toml").display().to_string();
+    // `load_library` canonicalizes the path it names, so the expectation must too: on Windows
+    // that is the `\\?\C:\…` form, and on macOS `/var/…` becomes `/private/var/…` — where a
+    // bare `temp_dir()` path would still pass by substring, which is not the same as passing.
+    let canonical = temp.0.canonicalize().unwrap();
+    let lib = canonical.join("kits/local.toml").display().to_string();
     // A shape error raised while the file is being added (t-505's first class).
     let e = read("[library.kit.bad]\nnote='not a number'\n").unwrap_err();
     assert!(e.contains(&lib) && e.contains("kit.bad"), "{e}");
@@ -680,7 +684,7 @@ fn kit_errors_in_a_library_file_name_that_file_not_the_composition() {
         "tempo=132\nseed=1\nimports=['kits/first.toml','kits/second.toml']\n[part]\nid='x'\nkit='thud'\ncompose=['std.backbeat','std.no_accent']\n",
     );
     let e = Composition::read(&file).unwrap_err();
-    let second = temp.0.join("kits/second.toml").display().to_string();
+    let second = canonical.join("kits/second.toml").display().to_string();
     assert!(e.contains(&second) && e.contains("duplicate"), "{e}");
 }
 
