@@ -97,10 +97,32 @@ Limits 2 and 3 are **conservative upper bounds, not counts**. An alternation is 
 widest element though only one plays per cycle, and a polymeter its widest element `%n` times
 though its cells hold different elements — so `{x ~ x x ~ x ~}%16` is charged 16 events and
 renders 9. A refusal therefore says a pattern *may* cost that much, never that it does; the
-error messages say "may" for that reason. 4096 is a provisional policy cap on output that a
-real piece may argue up. 2²⁰ is a practicality cap, set clear of anything writable: the most
-expensive pattern that stays inside 4096 events costs about 12k steps, and the widest single
-construct the grammar allows costs about 3k.
+error messages say "may" for that reason.
+
+Limit 3's unit is a **charged work unit, not a call**. A leaf is charged 1 when it is priced
+and 1 more for each of the two visits that reach it, so a plain `x` costs 3 units against 2
+named calls. The overcount is deliberate and safe in the only direction that matters — it can
+refuse a pattern the renderer would have survived, never admit one it would not.
+
+4096 is a provisional policy cap on output that a real piece may argue up; it carries no claim
+about Part grids, since the leaf is not wired to a Part yet. 2²⁰ is a practicality cap with
+headroom over the dense patterns a piece is likely to write: the event-saturating
+`[x(64,64)](64,64)` costs about 12k steps, and the widest single construct the grammar allows
+costs about 3k.
+
+The work cap is **not** the most a pattern inside the event cap can cost — the two bounds are
+independent in both directions. Silence is cheap in events and dear in work, so
+`[~(1024,1024)](256,256)` emits nothing, costs about 787k, and is accepted;
+`[~(1024,1024)](341,341)` is accepted at exactly 2²⁰. In the other direction
+`[[x(1,1024)](64,64)](64,64)` is exactly 4096 events — inside the output cap — and refused for
+its 4,194,304 innermost slot visits.
+
+**The work cap bounds termination, not latency.** A cycle at the cap is not fast: rendering
+`[~(1024,1024)](341,341)` measured ~34 ms per cycle, and the 12k dense baseline ~340 µs
+(release build, the art LXC, 2026-09-07 — host-local observations, not a benchmark). Nothing
+here promises sub-millisecond rendering. A consumer putting this leaf on a transport deadline
+must cache the cycle or set its own tighter cap; that question is open as t-494 and is not
+settled by this bound.
 
 A number literal that overflows `f64` to infinity is a parse error too, for the same family of
 reason: a value consumer cannot tell an inherited infinity from a number it was given.

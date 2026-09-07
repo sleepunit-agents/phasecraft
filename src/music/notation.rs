@@ -538,18 +538,27 @@ const MAX_STEPS: u64 = 1024;
 /// Worst-case events one cycle may render. Nesting is multiplicative — depth 8 of
 /// `(1024,1024)` alone reaches 2^100 — so the depth and step limits do not bound the output;
 /// this does, at parse time, before a consumer ever asks for a cycle. 4096 is four times the
-/// widest single construct the grammar allows and past any grid a Part can validate against.
-/// Provisional: it is a policy cap on output, and a real piece may argue it up.
+/// widest single construct the grammar allows. Provisional: it is a policy cap on output, and a
+/// real piece may argue it up. It carries no claim about Part grids — `Expression::Literal` is
+/// not wired to a Part yet, and `cycle_bars` is unbounded in the spec, so how fine a grid a Part
+/// can validate against is not a quantity this code can currently check.
 const MAX_EVENTS: u64 = 4096;
 /// Worst-case render steps one cycle may take — every `render_step`, every `render_atom`, and
 /// every euclid slot the loop visits whether or not it pulses. `MAX_EVENTS` does not imply
 /// this one: a rest emits nothing, a zero-pulse euclid emits nothing, and either can sit under
 /// three nested 1024-slot euclids and cost 2^30 visits for an output of zero. This is not a
-/// policy cap but a practicality one, so it is set well clear of anything writable: the most
-/// expensive pattern that stays inside `MAX_EVENTS` costs about 12k steps, and the widest
-/// single construct the grammar allows — a 1024-slot euclid — costs about 3k. A million is
-/// ~80x the first and past any nesting a Part has reason to write, while a cycle that reaches
-/// it still renders in well under a millisecond.
+/// policy cap but a practicality one, set with headroom over the dense patterns a piece is
+/// likely to write: the event-saturating `[x(64,64)](64,64)` costs about 12k steps, and the
+/// widest single construct the grammar allows — a 1024-slot euclid — costs about 3k. A million
+/// is ~80x that dense baseline. It is **not** the most a pattern inside `MAX_EVENTS` can cost:
+/// silence is cheap in events and not in work, so `[~(1024,1024)](256,256)` emits nothing and
+/// costs about 787k, and `[~(1024,1024)](341,341)` is accepted at exactly 2^20.
+///
+/// This bound guarantees termination, not latency. A cycle at the cap is not fast: rendering
+/// `[~(1024,1024)](341,341)` measured ~34 ms per `cycle()` (release build, the art LXC,
+/// 2026-09-07), and the dense 12k baseline ~340 us. Those are host-local observations, not a
+/// benchmark, and no sub-millisecond promise is made or implied. Anything putting this leaf on
+/// a transport deadline must cache the cycle or set its own tighter cap — see t-494.
 const MAX_WORK: u64 = 1 << 20;
 
 struct Parser<'a> {
@@ -1341,10 +1350,23 @@ mod tests {
         let err = Pattern::parse(silent).expect_err("a silent bomb should not have parsed");
         assert!(err.contains("render steps"), "{err}");
         // A euclid's slot loop runs whether or not the slot pulses, so one live pulse under
-        // the same nesting is the same cost with an event count of 1024 — inside MAX_EVENTS.
-        let one_pulse = "[[x(1,1024)](1024,1024)](1024,1024)";
+        // the same nesting costs the same. This is the case that proves the bounds are
+        // independent: 1 x 64 x 64 = 4096 events, exactly at MAX_EVENTS and so accepted by the
+        // output bound, while its 1024 x 64 x 64 = 4,194,304 innermost slot visits are not.
+        // (An earlier version of this test used `[[x(1,1024)](1024,1024)](1024,1024)` and
+        // called it "an event count of 1024". That was wrong — Mark, reviewing 2a8eb8f: the
+        // pattern is 1,048,576 events and violates *both* bounds, so it demonstrates nothing
+        // about independence. The check aborts mid-accumulation and 1024 is the running count
+        // where it stopped, not the pattern's cost.)
+        let one_pulse = "[[x(1,1024)](64,64)](64,64)";
         let err = Pattern::parse(one_pulse).expect_err("a sparse bomb should not have parsed");
         assert!(err.contains("render steps"), "{err}");
+        // The event half of that claim, checked rather than asserted: same shape and same event
+        // count with a cheap innermost euclid parses, and emits exactly MAX_EVENTS.
+        assert_eq!(
+            parse("[[x(1,1)](64,64)](64,64)").cycle(0).len() as u64,
+            MAX_EVENTS
+        );
         // The zero-pulse form of the same trick never reaches the bound check: the euclid
         // guard always claimed `1 <= pulses` and now enforces it.
         assert!(Pattern::parse("x(0,1024)").is_err());
@@ -1352,20 +1374,31 @@ mod tests {
         // Silence itself stays cheap and legal — the refusal is of the traversal, not the rest.
         assert_eq!(parse("~(1024,1024)").cycle(0).len(), 0);
         assert_eq!(parse("[~(64,64)](64,64)").cycle(0).len(), 0);
-        // The most expensive pattern still inside MAX_EVENTS is nowhere near MAX_WORK.
+        // The densest *event-saturating* pattern is nowhere near MAX_WORK — which is not the
+        // same as being the most expensive pattern inside MAX_EVENTS. See below: a silent one
+        // costs 60x more and is still admitted.
         assert_eq!(parse("[x(64,64)](64,64)").cycle(0).len(), 4096);
     }
 
     #[test]
-    fn every_accepted_pattern_renders_promptly() {
-        // The bound is proved at parse, so `cycle` stays infallible. This is the property that
-        // buys: the worst thing that parses is still fast, measured rather than argued.
+    fn every_accepted_pattern_terminates() {
+        // The bound is proved at parse, so `cycle` stays infallible. What this test establishes
+        // is *termination*: nothing that parses walks the 2^30-slot traversal that hung the
+        // renderer at 61bf6ba. It is not a latency test. The two-second budget is a batch
+        // ceiling over six patterns and four cycles each; it is not a per-cycle maximum and it
+        // makes no sub-millisecond claim — at the cap a single cycle takes tens of milliseconds
+        // on this host (see MAX_WORK, and t-494 for the transport-deadline question). The
+        // budget is a hang detector with room to spare, not a threshold anyone tuned: the batch
+        // measured 339 ms in a debug build on the art LXC, 2026-09-07.
         let worst = [
             "[x(64,64)](64,64)",
-            // ~787k render steps for zero events: the most silent traversal that is still
-            // accepted, and the case that says the work bound is what admits it, not the
-            // output. One more nesting factor of four and it is refused.
+            // Zero events, ~787k render steps: a silent traversal admitted by a wide margin on
+            // output and a narrow one on work, which is the case that says the work bound is
+            // what admits it. Not the most expensive accepted pattern — `(341,341)` here costs
+            // exactly 2^20 — just the one this suite has always carried.
             "[~(1024,1024)](256,256)",
+            // The most expensive pattern the grammar admits at all: exactly MAX_WORK.
+            "[~(1024,1024)](341,341)",
             "x(1024,1024)",
             "<[x(32,32)](32,32) [~(512,512)](2,512)>",
             "{[x(16,16)](16,16)}%16",
