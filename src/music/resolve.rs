@@ -80,11 +80,21 @@ impl Dice<'_> {
         }
     }
 }
+/// One bar of 4/4 in ticks; the slot grid a pin's `bar` is counted against.
+const BAR_TICKS: u64 = 16 * STEP_TICKS;
+/// The most pins one composition may carry, enforced on the authored list at load.
+pub const MAX_PINS: usize = 256;
 const VOICE_DICE: [&str; 7] = [
     "fire", "accent", "burst", "flam", "ghost", "timing", "velocity",
 ];
 /// Turn every authored pin into the address its draw hashes. Errors name the pin by its shape.
 pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
+    // The authored length, before this allocates for it and before the quadratic duplicate check
+    // walks it. `Composition::validate` runs with `pins` still empty, so its own copy of this
+    // bound never sees the file's pins; checking here is what makes the limit real.
+    if pins.len() > MAX_PINS {
+        return Err(format!("at most {MAX_PINS} pins are supported"));
+    }
     let mut resolved: Vec<Pin> = Vec::with_capacity(pins.len());
     for pin in pins {
         let at = &pin.at;
@@ -122,14 +132,22 @@ pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
                     .find(|p| &p.id == voice)
                     .ok_or_else(|| format!("{}: no Part {voice:?}", shape()))?;
                 let cell = part.subdivision.0;
-                let steps_per_bar = 16 * STEP_TICKS / cell;
-                if at.slot == 0 || at.slot > steps_per_bar {
+                // The grid is continuous across bars: step n is at tick n*cell, and a cell that
+                // does not divide a bar (`1/8.`, `1/4.`) neither starts on the bar line nor holds
+                // the same number of onsets in every bar. So the slot is counted inside this bar's
+                // own tick interval. Multiplying a truncated per-bar count instead walks the
+                // address into an earlier bar and rejects a slot that exists (Mark, #9 review).
+                let bar_start = (at.bar - 1) * BAR_TICKS;
+                let first = bar_start.div_ceil(cell);
+                let slots = (bar_start + BAR_TICKS - 1) / cell - first + 1;
+                if at.slot == 0 || at.slot > slots {
                     return Err(format!(
-                        "{}: slot is 1-based and {voice:?} has {steps_per_bar} slots per bar",
-                        shape()
+                        "{}: slot is 1-based and {voice:?} has {slots} slots in bar {}",
+                        shape(),
+                        at.bar
                     ));
                 }
-                let step = (at.bar - 1) * steps_per_bar + (at.slot - 1);
+                let step = first + (at.slot - 1);
                 let g = &part.groove;
                 let (lane, decision, mode) = match at.roll.as_str() {
                     "fire" => ("trigger", "admission", part.trigger.probability_mode),
@@ -150,23 +168,26 @@ pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
                         }
                     },
                     "ghost" if !g.is_default() => ("groove", "ghost", g.ghost_mode),
-                    "timing" => (
-                        "groove",
-                        "humanize_timing",
-                        g.humanize
-                            .as_ref()
-                            .map_or(ProbabilityMode::PhraseLocked, |h| h.mode),
-                    ),
-                    "velocity" if g.humanize.is_some() => (
-                        "groove",
-                        "humanize_velocity",
-                        g.humanize.as_ref().unwrap().mode,
-                    ),
-                    "ghost" | "velocity" => {
+                    // `humanize_timing` needs no eligibility guard: `compiled::offset` draws it on
+                    // every admitted event and again for the next-onset reservation, outside the
+                    // touch closure and with no groove required. `touch_mode` is the mode that
+                    // call site hashes under.
+                    "timing" => ("groove", "humanize_timing", g.touch_mode()),
+                    // `humanize_velocity` is drawn exactly when the touch closure runs, which any
+                    // one of offbeat gain, gap response or humanize opens.
+                    "velocity" if g.draws_touch() => {
+                        ("groove", "humanize_velocity", g.touch_mode())
+                    }
+                    "ghost" => {
                         return Err(format!(
-                            "{}: {voice:?} has no groove that draws {:?}",
-                            shape(),
-                            at.roll
+                            "{}: {voice:?} has no groove that draws \"ghost\"",
+                            shape()
+                        ));
+                    }
+                    "velocity" => {
+                        return Err(format!(
+                            "{}: {voice:?} has no groove that draws \"velocity\"; one of                              groove.offbeat_gain, groove.after_gap or groove.humanize is what                              draws it",
+                            shape()
                         ));
                     }
                     other => {

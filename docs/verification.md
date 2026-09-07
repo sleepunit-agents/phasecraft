@@ -192,8 +192,10 @@ are checked, and the existing musical golden traces remain in the suite.
   `expand` carries the pin's shape and validates when read back; `inspect` shows
   `pinned` on the forced decision (JSONL and `--human`). Root clippy passes with
   warnings denied.
-- Not established here: the pins the folder writes against dice that are not yet in the
-  engine — `door` (the returns-clocked router, PR #7), `mutate` (retained patterns, M1.5),
-  `step` and `target` (lanes, M1.4). Each lands as one arm in `resolve_pins` when its
-  draw does. No audio was rendered; pins change one number per address and the event
+- Not established here: the pins the folder writes against dice `resolve_pins` cannot yet
+  address. `mutate` (retained patterns, M1.5), `step` and `target` (lanes, M1.4) are not
+  draws in the engine at all. `door` **is** — the returns-clocked router has been rolling it
+  since PR #7 — but `router::roll` calls `decision_roll` directly rather than going through
+  `Dice`, so no pin can reach it; that is a bypass to wire up, not a draw that has yet to
+  land. Each becomes one arm in `resolve_pins`. No audio was rendered; pins change one number per address and the event
   list is the evidence.

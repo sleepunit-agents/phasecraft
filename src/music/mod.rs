@@ -289,8 +289,10 @@ impl Composition {
         if self.accents.len() > 16 {
             return Err("at most 16 shared accent lanes are supported".into());
         }
-        if self.pins.len() > 256 {
-            return Err("at most 256 pins are supported".into());
+        // Resolved pins; `resolve::resolve_pins` enforces the same bound on the authored list,
+        // which is the one an author can exceed (this runs before pins are assigned).
+        if self.pins.len() > resolve::MAX_PINS {
+            return Err(format!("at most {} pins are supported", resolve::MAX_PINS));
         }
         for (name, lane) in &self.accents {
             if name.trim().is_empty()

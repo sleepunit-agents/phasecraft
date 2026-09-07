@@ -342,7 +342,7 @@ fn pins_reach_shared_accents_ratchets_and_a_subdivided_grid() {
             "[[pins]]\nat={roll='fire',voice='hat',bar=1,slot=25}\nu=0.5"
         )
         .unwrap_err()
-        .contains("24 slots per bar")
+        .contains("24 slots in bar 1")
     );
     let c = pinned(
         &triplet,
@@ -373,7 +373,7 @@ fn pins_that_name_no_draw_are_rejected_by_shape() {
         ),
         (
             "at={roll='fire',voice='hat',bar=1,slot=17}\nu=0.5",
-            "16 slots per bar",
+            "16 slots in bar 1",
         ),
         (
             "at={roll='fire',voice='hat',bar=0,slot=1}\nu=0.5",
@@ -420,4 +420,150 @@ fn pins_that_name_no_draw_are_rejected_by_shape() {
     // The same two shapes are two dice once the lane is continuous.
     let part = HAT.replace("'phrase_locked'", "'continuous'");
     assert!(pinned(&part, "[[pins]]\nat={roll='fire',voice='hat',bar=1,slot=3}\nu=0.5\n[[pins]]\nat={roll='fire',voice='hat',bar=5,slot=3}\nu=0.6").is_ok());
+}
+
+// A grid whose cell does not divide the bar: `1/8.` is 720 ticks, so bar 1 holds six onsets
+// (0..3600) and bar 2 holds five, the first of them at tick 4320 — not on the bar line.
+const DOTTED: &str = "subdivision='1/8.'\ntrigger.rhythm={steps=1,pulses=1}\ntrigger.probability=1.0\ntrigger.probability_mode='continuous'\naccent.probability=0.0";
+#[test]
+fn a_pin_on_a_dotted_grid_is_counted_inside_the_bar_it_names() {
+    // `resolve_step` is indexed by sixteenth; a 720-tick cell fires on its own ticks, so the
+    // addresses are compared where they are audible.
+    fn pinned_ticks(c: &Composition, sixteenths: u64) -> Vec<u64> {
+        let mut ticks: Vec<u64> = (0..sixteenths)
+            .flat_map(|s| resolve_step(c, s).0)
+            .filter(|t| t.trigger.pinned)
+            .map(|t| t.tick)
+            .collect();
+        ticks.dedup();
+        ticks
+    }
+    let c = pinned(
+        DOTTED,
+        "[[pins]]\nat={roll='fire',voice='hat',bar=2,slot=1}\nu=0.123",
+    )
+    .unwrap();
+    assert_eq!(c.parts[0].subdivision.0, 720);
+    // Bar 2 starts at tick 3840 and its first onset is 4320. Multiplying a truncated
+    // steps-per-bar (3840/720 = 5) put the address at tick 3600 — inside bar 1.
+    assert_eq!(pinned_ticks(&c, 24), vec![4320]);
+    // Bar 1 really does hold a sixth onset, at 3600; the truncated count rejected it.
+    let sixth = pinned(
+        DOTTED,
+        "[[pins]]\nat={roll='fire',voice='hat',bar=1,slot=6}\nu=0.123",
+    )
+    .unwrap();
+    assert_eq!(pinned_ticks(&sixth, 24), vec![3600]);
+    // Bar 2 holds five, not six: the error names the count for the bar it was asked about.
+    let err = pinned(
+        DOTTED,
+        "[[pins]]\nat={roll='fire',voice='hat',bar=2,slot=6}\nu=0.123",
+    )
+    .unwrap_err();
+    assert!(err.contains("5 slots in bar 2"), "{err}");
+    // Dividing grids are unchanged: sixteen slots in every bar, each bar on the bar line.
+    let straight = pinned(
+        &HAT.replace("'phrase_locked'", "'continuous'"),
+        "[[pins]]\nat={roll='fire',voice='hat',bar=3,slot=4}\nu=0.5",
+    )
+    .unwrap();
+    assert_eq!(pinned_ticks(&straight, 64), vec![35 * 240]);
+}
+#[test]
+fn the_pin_cap_is_enforced_on_the_authored_list() {
+    // `Composition::validate` runs before pins are resolved, so its own copy of this bound never
+    // sees the file's pins: without a check on the authored list, parse accepted 257 and the
+    // returned composition then failed the validate it had already passed.
+    let part = HAT.replace("'phrase_locked'", "'continuous'");
+    let pins = |n: usize| {
+        (0..n)
+            .map(|i| {
+                format!(
+                    "[[pins]]\nat={{roll='fire',voice='hat',bar={},slot={}}}\nu=0.5",
+                    i / 16 + 1,
+                    i % 16 + 1
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let ok = pinned(&part, &pins(256)).unwrap();
+    assert_eq!(ok.pins.len(), 256);
+    assert!(ok.validate().is_ok());
+    let err = pinned(&part, &pins(257)).unwrap_err();
+    assert!(err.contains("at most 256 pins are supported"), "{err}");
+}
+#[test]
+fn a_velocity_pin_is_admitted_wherever_the_touch_closure_draws() {
+    // The closure that draws `humanize_velocity` opens on offbeat gain, a gap response OR
+    // humanize; the loader used to accept only the third and refused a pin at an address the
+    // engine really does roll. A forced draw may be neutral — with no `humanize` the velocity
+    // factor is 1.0 — but the die is rolled, and a pin names the die.
+    for groove in [
+        "groove.offbeat_gain=1.1",
+        "groove.after_gap={steps=2,gain=1.2}",
+        "groove.humanize={timing_ticks=6,velocity=0.2}",
+    ] {
+        let part = format!("{DENSE}\n{groove}");
+        for roll in ["velocity", "timing"] {
+            let c = pinned(
+                &part,
+                &format!("[[pins]]\nat={{roll='{roll}',voice='hat',bar=1,slot=1}}\nu=0.75"),
+            )
+            .unwrap_or_else(|e| panic!("{groove} / {roll}: {e}"));
+            let touch = |step: u64| {
+                resolve_step(&c, step).0[0]
+                    .event
+                    .as_ref()
+                    .unwrap()
+                    .groove
+                    .as_ref()
+                    .unwrap()
+                    .touch
+                    .clone()
+                    .unwrap()
+            };
+            let (at_pin, elsewhere) = (touch(0), touch(1));
+            let (drawn, other) = match roll {
+                "velocity" => (at_pin.velocity_roll, elsewhere.velocity_roll),
+                _ => (at_pin.timing_roll, elsewhere.timing_roll),
+            };
+            assert_eq!(drawn, 0.75, "{groove} / {roll} at the pinned address");
+            assert_ne!(other, 0.75, "{groove} / {roll} one step later");
+        }
+    }
+    // A groove that opens nothing still refuses the pin, and now names what would open it.
+    let err = pinned(
+        DENSE,
+        "[[pins]]\nat={roll='velocity',voice='hat',bar=1,slot=1}\nu=0.75",
+    )
+    .unwrap_err();
+    assert!(err.contains("groove.offbeat_gain"), "{err}");
+}
+const DENSE: &str = "trigger.rhythm={steps=1,pulses=1}\ntrigger.probability=1.0\ntrigger.probability_mode='continuous'\naccent.probability=0.0";
+#[test]
+fn a_continuous_pin_lands_once_per_pass_of_its_step_on_the_clock_it_is_counted_against() {
+    // `continuous` means the address is the step index, and a section with phase = "restart"
+    // restarts that index: the same pin is consulted again at the head of every restarting
+    // section. Under phase = "continue" the clock is transport-relative and the pin is passed
+    // once. "Lands once" is a claim about a non-restarting clock only.
+    let c = Composition::parse(&format!(
+        "tempo=132\nseed=91827\nphrase_bars=1\n[parts.hat]\nuse='techno.closed_hat'\n{DENSE}\n[phrases.A]\n[arrangement]\nrepeat=true\nsections=[{{phrase='A',bars=2,phase='restart'}},{{phrase='A',bars=2,phase='continue'}}]\n[[pins]]\nat={{roll='fire',voice='hat',bar=1,slot=1}}\nu=0.321"
+    ))
+    .unwrap();
+    let pinned_steps: Vec<u64> = (0..192)
+        .filter(|s| resolve_step(&c, *s).0[0].trigger.pinned)
+        .collect();
+    assert_eq!(pinned_steps, vec![0, 64, 128]);
+    // The same pin under no arrangement at all is consulted exactly once.
+    let plain = Composition::parse(&format!(
+        "tempo=132\nseed=91827\nphrase_bars=1\n[parts.hat]\nuse='techno.closed_hat'\n{DENSE}\n[[pins]]\nat={{roll='fire',voice='hat',bar=1,slot=1}}\nu=0.321"
+    ))
+    .unwrap();
+    assert_eq!(
+        (0..192)
+            .filter(|s| resolve_step(&plain, *s).0[0].trigger.pinned)
+            .count(),
+        1
+    );
 }

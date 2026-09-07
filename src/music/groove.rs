@@ -74,6 +74,22 @@ impl Groove {
     pub fn is_default(&self) -> bool {
         self == &Self::default()
     }
+    /// The gate on the touch closure, and so the exact condition under which `humanize_timing`
+    /// and `humanize_velocity` are drawn there: offbeat gain, gap response and humanize each open
+    /// it alone. The engine and the pin loader both read this, so a pin's eligibility cannot drift
+    /// from the draw it names (Mark's review of #9 at `c490b51`: the loader accepted only the third
+    /// disjunct and refused a pin at an address the engine really does roll).
+    pub fn draws_touch(&self) -> bool {
+        self.offbeat_gain != 1.0 || self.after_gap.is_some() || self.humanize.is_some()
+    }
+    /// The mode those draws hash under: `humanize.mode` when authored, else the default. A forced
+    /// draw can have a neutral amount — with no `humanize` the jitter is zero ticks and the
+    /// velocity factor is 1.0 — but the die is still rolled, and a pin names the die.
+    pub fn touch_mode(&self) -> ProbabilityMode {
+        self.humanize
+            .as_ref()
+            .map_or_else(|| Humanize::default().mode, |h| h.mode)
+    }
     pub fn validate(&self) -> Result<(), String> {
         if !self.swing.is_finite() || !(0.5..=0.75).contains(&self.swing) {
             return Err("groove.swing must be within 0.5..0.75 (0.5 is straight)".into());

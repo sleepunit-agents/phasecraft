@@ -358,27 +358,18 @@ impl Compiled {
                 };
                 let roll = c.dice().roll(&part.id, "groove", identity, "ghost").u;
                 let ghost = !event.accent.active && roll < g.ghost_probability;
-                let touch = (g.offbeat_gain != 1.0
-                    || g.after_gap.is_some()
-                    || g.humanize.is_some())
-                .then(|| {
+                let touch = g.draws_touch().then(|| {
                     let offbeat = (step * cell) % crate::music::PPQN == crate::music::PPQN / 2;
                     let after_gap = g.after_gap.as_ref().is_some_and(|gap| {
                         step >= u64::from(gap.steps)
                             && (1..=u64::from(gap.steps)).all(|n| !fired(step.checked_sub(n)))
                     });
                     let h = g.humanize.clone().unwrap_or_default();
-                    let identity = match h.mode {
-                        ProbabilityMode::PhraseLocked => {
-                            decision_identity(c, cell, step, ProbabilityMode::PhraseLocked)
-                        }
-                        ProbabilityMode::Continuous => step,
-                    };
-                    let (timing_roll, requested_jitter_ticks) = g.timing_jitter_identity(
-                        c.dice(),
-                        &part.id,
-                        decision_identity(c, cell, step, h.mode),
-                    );
+                    // One address for both touch draws, and the one `resolve_pins` resolves a
+                    // `timing` or `velocity` pin to.
+                    let identity = decision_identity(c, cell, step, g.touch_mode());
+                    let (timing_roll, requested_jitter_ticks) =
+                        g.timing_jitter_identity(c.dice(), &part.id, identity);
                     let velocity_roll = c
                         .dice()
                         .roll(&part.id, "groove", identity, "humanize_velocity")
@@ -465,14 +456,13 @@ fn offset(part: &Part, c: &Composition, step: u64) -> i64 {
     } else {
         0
     };
-    let mode = part
-        .groove
-        .humanize
-        .as_ref()
-        .map_or(ProbabilityMode::PhraseLocked, |h| h.mode);
     let jitter = part
         .groove
-        .timing_jitter_identity(c.dice(), &part.id, decision_identity(c, cell, step, mode))
+        .timing_jitter_identity(
+            c.dice(),
+            &part.id,
+            decision_identity(c, cell, step, part.groove.touch_mode()),
+        )
         .1;
     (part.groove.delay_ticks + swing + jitter).clamp(
         if anticipates(part) {
