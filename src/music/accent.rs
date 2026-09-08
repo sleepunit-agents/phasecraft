@@ -89,15 +89,59 @@ pub struct ResolvedControl {
 pub fn midi_value(value: f64) -> u8 {
     (value * 127.0).round().clamp(0.0, 127.0) as u8
 }
-pub fn validate(
+/// The rules an output's control mappings are held to on their own — with no profile in
+/// view. Read by `Output::validate`, so a mapping that is wrong regardless of who binds it
+/// (`cc = 200`, a channel of 99, a `default` outside 0..1, a blank name, more than
+/// `MAX_CONTROLS`) is refused wherever the output is written: on a Part, or in a
+/// `[library.kit.<name>]` entry no voice ever uses. Rules that need the profile as well —
+/// every response names a mapping, base/boost ranges — live in `validate_responses`, and
+/// only a Part can run them, because only a Part has both halves.
+pub fn validate_outputs(outputs: &BTreeMap<String, ControlOutput>) -> Result<(), String> {
+    if outputs.len() > MAX_CONTROLS {
+        return Err(format!(
+            "accent profiles support at most {MAX_CONTROLS} controls ({} declared)",
+            outputs.len()
+        ));
+    }
+    for (name, output) in outputs {
+        if name.trim().is_empty() {
+            return Err("output control names cannot be empty".into());
+        }
+        if let Some(v) = output
+            .default
+            .filter(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+        {
+            return Err(format!(
+                "control {name:?}: default must be finite within 0..1 (default {v})"
+            ));
+        }
+        // Exclude bank selection, pedals, increment/decrement, parameter selection
+        // and channel-mode commands; these are continuous momentary controls.
+        if !(1..=31).contains(&output.cc)
+            && !(33..=63).contains(&output.cc)
+            && !(70..=95).contains(&output.cc)
+        {
+            return Err(format!(
+                "control {name:?}: use a continuous CC in 1..31, 33..63 or 70..95 (cc {})",
+                output.cc
+            ));
+        }
+        if let Some(c) = output.channel.filter(|c| !(1..=16).contains(c)) {
+            return Err(format!(
+                "control {name:?}: MIDI channel must be 1..16 (channel {c})"
+            ));
+        }
+    }
+    Ok(())
+}
+/// The half of the rule that needs both the profile and the output: a response with no
+/// mapping to drive, and the response's own ranges. The mappings themselves are checked by
+/// `validate_outputs` through `Output::validate`, which the Part also runs — so a Part is
+/// held to the whole rule, and a kit entry to the half that exists before any Part binds it.
+pub fn validate_responses(
     responses: &BTreeMap<String, ControlResponse>,
     outputs: &BTreeMap<String, ControlOutput>,
 ) -> Result<(), String> {
-    if outputs.len() > MAX_CONTROLS {
-        return Err(format!(
-            "accent profiles support at most {MAX_CONTROLS} controls"
-        ));
-    }
     if responses.keys().any(|name| !outputs.contains_key(name)) {
         return Err("profile.controls names require matching output.controls mappings".into());
     }
@@ -114,32 +158,6 @@ pub fn validate(
             return Err(format!(
                 "control {name:?} requires a name, finite base 0..1 and boost -1..1"
             ));
-        }
-    }
-    for (name, output) in outputs {
-        if output
-            .default
-            .is_some_and(|v| !v.is_finite() || !(0.0..=1.0).contains(&v))
-        {
-            return Err(format!(
-                "control {name:?}: default must be finite within 0..1"
-            ));
-        }
-        if name.trim().is_empty() {
-            return Err("output control names cannot be empty".into());
-        }
-        // Exclude bank selection, pedals, increment/decrement, parameter selection
-        // and channel-mode commands; these are continuous momentary controls.
-        if !(1..=31).contains(&output.cc)
-            && !(33..=63).contains(&output.cc)
-            && !(70..=95).contains(&output.cc)
-        {
-            return Err(format!(
-                "control {name:?}: use a continuous CC in 1..31, 33..63 or 70..95"
-            ));
-        }
-        if output.channel.is_some_and(|c| !(1..=16).contains(&c)) {
-            return Err(format!("control {name:?}: MIDI channel must be 1..16"));
         }
     }
     Ok(())

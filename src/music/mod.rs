@@ -160,6 +160,30 @@ pub struct Output {
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub controls: std::collections::BTreeMap<String, accent::ControlOutput>,
 }
+impl Output {
+    /// The range rules every output is held to — channel, note, gate, and each control
+    /// mapping's cc/channel/default/name/count. One definition, read both by a Part's
+    /// validation and by the kit read (`authoring::library`), so a `[library.kit.<name>]`
+    /// entry is refused where it is written by exactly the rule the Part would refuse it by.
+    /// What is *not* here is anything that needs a profile to judge — that is
+    /// `accent::validate_responses`, and a kit entry has no profile to be judged against.
+    pub fn validate(&self) -> Result<(), String> {
+        if !(1..=16).contains(&self.channel) || self.note > 127 {
+            return Err(format!(
+                "MIDI channel must be 1..16 and note 0..127 (channel {}, note {})",
+                self.channel, self.note
+            ));
+        }
+        if self.gate_ticks == 0 || self.gate_ticks > PPQN * 6 {
+            return Err(format!(
+                "gate_ticks must be 1..5760; gates are limited by the next rhythmic cell and bar (gate_ticks {})",
+                self.gate_ticks
+            ));
+        }
+        accent::validate_outputs(&self.controls)?;
+        Ok(())
+    }
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AccentProfile {
@@ -352,7 +376,7 @@ impl Part {
         }
         self.groove.validate()?;
         self.ornaments.validate(self.subdivision.0)?;
-        accent::validate(&self.profile.controls, &self.output.controls)?;
+        accent::validate_responses(&self.profile.controls, &self.output.controls)?;
         for (name, lane) in &self.parameters {
             if !self.output.controls.contains_key(name) {
                 return Err(format!(
@@ -362,16 +386,7 @@ impl Part {
             lane.validate()
                 .map_err(|e| format!("parameter {name:?}: {e}"))?;
         }
-        let o = &self.output;
-        if !(1..=16).contains(&o.channel) || o.note > 127 {
-            return Err("MIDI channel must be 1..16 and note 0..127".into());
-        }
-        if o.gate_ticks == 0 || o.gate_ticks > PPQN * 6 {
-            return Err(
-                "gate_ticks must be 1..5760; gates are limited by the next rhythmic cell and bar"
-                    .into(),
-            );
-        }
+        self.output.validate()?;
         if !(1..=127).contains(&self.profile.base) || self.profile.boost > 127 {
             return Err("velocity base must be 1..127 and boost 0..127".into());
         }

@@ -598,6 +598,247 @@ fn kit_errors_name_the_instrument_and_the_place() {
         "{e}"
     );
 }
+
+// ---- M1.7 follow-up (t-504, t-505): every kit entry is valid where it is written ----
+
+#[test]
+fn kit_entries_are_checked_where_written_whether_or_not_a_voice_uses_them() {
+    // A composition whose one voice never binds to the kit: the entries below are UNUSED.
+    let piece = |kit: &str| {
+        format!(
+            "tempo=132\nseed=1\n{kit}[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n"
+        )
+    };
+    let err = |kit: &str| Composition::parse(&piece(kit)).unwrap_err();
+    // Range, not just shape: `note = 200` and `channel = 99` are both valid u8s.
+    let e = err("[library.kit.bad]\nnote=200\n");
+    assert!(
+        e.contains("kit.bad") && e.contains("note 0..127") && e.contains("note 200"),
+        "{e}"
+    );
+    let e = err("[library.kit.bad]\nnote=36\nchannel=99\n");
+    assert!(e.contains("kit.bad") && e.contains("channel 99"), "{e}");
+    let e = err("[library.kit.bad]\nnote=36\ngate_ticks=0\n");
+    assert!(e.contains("kit.bad") && e.contains("gate_ticks"), "{e}");
+    // An unused alias must still resolve, and the error names the entry and its target.
+    let e = err("[library.kit]\nbad='kit.nowhere'\n");
+    assert!(
+        e.contains("kit.bad") && e.contains("unknown behavior \"kit.nowhere\""),
+        "{e}"
+    );
+    let e = err("[library.kit]\nbad='std.backbeat'\n");
+    assert!(e.contains("kit.bad") && e.contains("has no output"), "{e}");
+    // The good entries still load, used or not.
+    Composition::parse(&piece(
+        "[library.kit.sub]\nnote=48\nchannel=2\n[library.kit]\nclap='kit.909.clap'\n",
+    ))
+    .unwrap();
+}
+
+#[test]
+fn a_voice_cannot_rescue_a_bad_kit_entry_by_overlaying_it() {
+    // Before t-504 this loaded: the Part's own `output.note = 50` overlaid the kit's 200 and
+    // only the merged output was ever checked. The entry is now refused where it is written.
+    let e = Composition::parse(
+        "tempo=132\nseed=1\n[library.kit.sub]\nnote=200\nchannel=2\n[part]\nid='low'\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=50\n",
+    )
+    .unwrap_err();
+    assert!(e.contains("kit.sub") && e.contains("note 200"), "{e}");
+}
+
+#[test]
+fn kit_errors_in_a_library_file_name_that_file_not_the_composition() {
+    let temp = TempTree::new();
+    let piece = "tempo=132\nseed=1\nimports=['kits/local.toml']\n[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n";
+    let read = |kit: &str| {
+        temp.write("kits/local.toml", kit);
+        let file = temp.write("piece.toml", piece);
+        Composition::read(&file)
+    };
+    // `load_library` canonicalizes the path it names, so the expectation must too: on Windows
+    // that is the `\\?\C:\…` form, and on macOS `/var/…` becomes `/private/var/…` — where a
+    // bare `temp_dir()` path would still pass by substring, which is not the same as passing.
+    let canonical = temp.0.canonicalize().unwrap();
+    let lib = canonical.join("kits/local.toml").display().to_string();
+    // A shape error raised while the file is being added (t-505's first class).
+    let e = read("[library.kit.bad]\nnote='not a number'\n").unwrap_err();
+    assert!(e.contains(&lib) && e.contains("kit.bad"), "{e}");
+    // A range error, where it is written.
+    let e = read("[library.kit.bad]\nnote=200\n").unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("note 200"),
+        "{e}"
+    );
+    // An alias checked after the registry is complete, when no call site is left to name
+    // the file: the entry's recorded origin names it (t-505's second class).
+    let e = read("[library.kit]\nbad='kit.nowhere'\n").unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("kit.nowhere"),
+        "{e}"
+    );
+    // A control mapping, inline and through an alias: the rule is output-only, so it holds
+    // in the kit file, and the file is named either way (Mark's third read of #11, at 8c99f0e).
+    let e = read("[library.kit.bad]\nnote=36\n[library.kit.bad.controls.cutoff]\ncc=200\n")
+        .unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("cc 200"),
+        "{e}"
+    );
+    let e = read(
+        "[library.behaviors.'local.bad']\noutput={note=36,controls={cutoff={cc=74,channel=99}}}\n[library.kit]\nbad='local.bad'\n",
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("channel 99"),
+        "{e}"
+    );
+    // A duplicate names the file that declared the second copy.
+    temp.write("kits/first.toml", "[library.kit.thud]\nnote=40\n");
+    temp.write("kits/second.toml", "[library.kit.thud]\nnote=41\n");
+    let file = temp.write(
+        "twice.toml",
+        "tempo=132\nseed=1\nimports=['kits/first.toml','kits/second.toml']\n[part]\nid='x'\nkit='thud'\ncompose=['std.backbeat','std.no_accent']\n",
+    );
+    let e = Composition::read(&file).unwrap_err();
+    let second = canonical.join("kits/second.toml").display().to_string();
+    assert!(e.contains(&second) && e.contains("duplicate"), "{e}");
+}
+
+#[test]
+fn an_alias_to_a_behavior_with_an_invalid_output_is_refused_where_it_is_written() {
+    // Mark's finding on #11 at cc51bca. Resolving an alias is not checking it: the registry's
+    // `instrument` expands the behavior and hands back its `output` untyped, so before this
+    // commit the two cases below both LOADED — the alias resolved, nothing range-checked what
+    // it resolved to, and the composition ran with note 200. The existing unused-alias tests
+    // only covered an unknown target and a target with no output at all.
+    let piece = |body: &str| format!("tempo=132\nseed=1\n{body}");
+    let bad_behavior =
+        "[library.behaviors.'local.bad']\noutput={note=200}\n[library.kit]\nbad='local.bad'\n";
+
+    // 1. UNUSED: no voice binds `bad`, and it is still refused where it is written.
+    let e = Composition::parse(&piece(&format!(
+        "{bad_behavior}[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n"
+    )))
+    .unwrap_err();
+    assert!(
+        e.contains("kit.bad") && e.contains("note 0..127") && e.contains("note 200"),
+        "{e}"
+    );
+
+    // 2. BOUND AND OVERLAID: the Part's own `note = 50` must not rescue it. This is the
+    //    alias twin of `a_voice_cannot_rescue_a_bad_kit_entry_by_overlaying_it`, which
+    //    covered only an inline table.
+    let e = Composition::parse(&piece(&format!(
+        "{bad_behavior}[part]\nid='low'\nkit='bad'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=50\n"
+    )))
+    .unwrap_err();
+    assert!(e.contains("kit.bad") && e.contains("note 200"), "{e}");
+
+    // 3. The range rule is the whole rule, not just `note`: a gate the bar cannot hold is
+    //    refused through an alias too, and the error carries the offending value.
+    let e = Composition::parse(&piece(
+        "[library.behaviors.'local.long']\noutput={note=40,gate_ticks=99999}\n[library.kit]\nlong='local.long'\n         [part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n",
+    ))
+    .unwrap_err();
+    assert!(
+        e.contains("kit.long") && e.contains("gate_ticks") && e.contains("99999"),
+        "{e}"
+    );
+
+    // A valid alias still loads, bound or not.
+    Composition::parse(&piece(
+        "[library.behaviors.'local.good']\noutput={note=40,channel=3}\n[library.kit]\ngood='local.good'\n         [part]\nid='x'\nkit='good'\ncompose=['std.backbeat','std.no_accent']\n",
+    ))
+    .unwrap();
+}
+
+#[test]
+fn an_alias_to_a_behavior_whose_output_is_not_a_table_is_refused() {
+    // Mark's second reading of #11, at 8e0c702. The commit above closed the RANGE hole by
+    // running what an alias resolved to back through the free `instrument` helper — but that
+    // helper is the check for an entry as it is *written*, where a nonempty string is a legal
+    // alias to resolve later. A resolved output is not a declaration, so a behavior carrying
+    // `output = 'not-an-output-table'` matched the alias branch, returned Ok, and was dropped
+    // on the floor a second time. Ints and arrays were already refused (they reach the helper's
+    // catch-all arm); the string was the whole hole, and it is the shape half of the
+    // shape-and-range property the PR advertises.
+    let piece = |output: &str, bound: &str| {
+        format!(
+            "tempo=132\nseed=1\n[library.behaviors.'local.bad']\noutput={output}\n\
+             [library.kit]\nbad='local.bad'\n\
+             [part]\nid='x'\n{bound}compose=['std.backbeat','std.no_accent']\n\
+             [part.output]\nnote=36\n"
+        )
+    };
+
+    // 1. UNUSED: nothing binds `bad`, and it is refused where it is written, naming the value.
+    let e = Composition::parse(&piece("'not-an-output-table'", "")).unwrap_err();
+    assert!(
+        e.contains("kit.bad")
+            && e.contains("table of output fields")
+            && e.contains("not-an-output-table"),
+        "{e}"
+    );
+
+    // 2. BOUND AND OVERLAID: the Part's own `note = 36` must not rescue it. Without the check
+    //    it did — `merge` replaces a string base with the overlay table outright, so the voice
+    //    played on the Part's own output and the broken kit entry vanished silently.
+    let e = Composition::parse(&piece("'not-an-output-table'", "kit='bad'\n")).unwrap_err();
+    assert!(
+        e.contains("kit.bad") && e.contains("not-an-output-table"),
+        "{e}"
+    );
+
+    // 3. The other non-table shapes stay refused, and still name the offending value.
+    for output in ["5", "['a']", "true"] {
+        let e = Composition::parse(&piece(output, "")).unwrap_err();
+        assert!(
+            e.contains("kit.bad") && e.contains("table of output fields"),
+            "{output}: {e}"
+        );
+    }
+
+    // A behavior whose output IS a table still resolves through the alias, bound or not.
+    Composition::parse(&piece("{note=40,channel=3}", "kit='bad'\n")).unwrap();
+}
+
+#[test]
+fn an_invalid_alias_target_names_the_file_the_alias_was_written_in() {
+    // The imported-file half of the case above: when the check runs on the complete registry
+    // there is no call site left to name the file, so the entry's recorded origin must.
+    let temp = TempTree::new();
+    let canonical = temp.0.canonicalize().unwrap();
+    let lib = canonical.join("kits/local.toml").display().to_string();
+    temp.write(
+        "kits/local.toml",
+        "[library.behaviors.'local.bad']\noutput={note=200}\n[library.kit]\nbad='local.bad'\n",
+    );
+    let file = temp.write(
+        "piece.toml",
+        "tempo=132\nseed=1\nimports=['kits/local.toml']\n[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n",
+    );
+    let e = Composition::read(&file).unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("note 200"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_kit_alias_may_name_a_behavior_a_later_library_declares() {
+    // Libraries load in order: built-ins, `libraries`, imports, then the composition's own
+    // table. The alias below is written in an import and resolves to a behavior declared in
+    // the composition, so an eager check at add time would refuse a valid kit. The check runs
+    // once, on the complete registry.
+    let temp = TempTree::new();
+    temp.write("kits/local.toml", "[library.kit]\nthud='local.thud'\n");
+    let file = temp.write(
+        "piece.toml",
+        "tempo=132\nseed=1\nimports=['kits/local.toml']\n[library.behaviors.'local.thud']\noutput={note=40,channel=3}\n[part]\nid='x'\nkit='thud'\ncompose=['std.backbeat','std.no_accent']\n",
+    );
+    let c = Composition::read(&file).unwrap();
+    assert_eq!((c.parts[0].output.note, c.parts[0].output.channel), (40, 3));
+}
 #[test]
 fn an_instrument_that_declares_nothing_is_a_listed_gap_that_never_plays() {
     use phasecraft::authoring::project;
@@ -657,4 +898,107 @@ fn an_instrument_that_declares_nothing_is_a_listed_gap_that_never_plays() {
     // The voice may close its own gap by declaring the control on its output.
     let ok = Composition::parse("tempo=132\nseed=1\n[library.kit.sub]\nnote=48\nchannel=2\n[part]\nid='sub'\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n[part.output.controls.cutoff]\ncc=74\n[part.parameters.cutoff]\nvalue=0.5\n").unwrap();
     assert_eq!(ok.parts[0].output.controls["cutoff"].cc, 74);
+}
+
+#[test]
+fn kit_control_mappings_are_checked_where_written_whether_or_not_a_voice_uses_them() {
+    // Mark's third read of #11 (at 8c99f0e): the where-written invariant held for an output's
+    // channel, note and gate but not for its `controls`, because the mapping rules lived in
+    // `accent::validate`, which only a Part ran. So every case below LOADED unused, and was
+    // refused only once a Part bound it — the bound refusals being the proof these were
+    // invalid under the existing rule, not a new restriction. The output-only half of that
+    // rule now lives in `Output::validate`; the profile-dependent half stays at the Part.
+    let piece = |kit: &str| {
+        format!(
+            "tempo=132\nseed=1\n{kit}[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n"
+        )
+    };
+    let err = |kit: &str| Composition::parse(&piece(kit)).unwrap_err();
+    // Each mapping fault, written inline and reached through an alias.
+    for (mapping, expect) in [
+        ("cc=200", "cc 200"),
+        ("cc=74,channel=99", "channel 99"),
+        ("cc=74,default=2.0", "default 2"),
+        ("cc=74,default=nan", "default NaN"),
+    ] {
+        let e = err(&format!(
+            "[library.kit.bad]\nnote=36\ncontrols={{cutoff={{{mapping}}}}}\n"
+        ));
+        assert!(
+            e.contains("kit.bad") && e.contains("\"cutoff\"") && e.contains(expect),
+            "inline {mapping}: {e}"
+        );
+        let e = err(&format!(
+            "[library.behaviors.'local.bad']\noutput={{note=36,controls={{cutoff={{{mapping}}}}}}}\n[library.kit]\nbad='local.bad'\n"
+        ));
+        assert!(
+            e.contains("kit.bad") && e.contains("\"cutoff\"") && e.contains(expect),
+            "alias {mapping}: {e}"
+        );
+    }
+    // A blank control name, both ways.
+    let e = err("[library.kit.bad]\nnote=36\ncontrols={''={cc=74}}\n");
+    assert!(
+        e.contains("kit.bad") && e.contains("cannot be empty"),
+        "{e}"
+    );
+    let e = err(
+        "[library.behaviors.'local.bad']\noutput={note=36,controls={''={cc=74}}}\n[library.kit]\nbad='local.bad'\n",
+    );
+    assert!(
+        e.contains("kit.bad") && e.contains("cannot be empty"),
+        "{e}"
+    );
+    // More mappings than an accent profile can drive is an output-only fact too.
+    let nine: String = (1..=9).map(|i| format!("c{i}={{cc={i}}},")).collect();
+    let e = err(&format!(
+        "[library.kit.bad]\nnote=36\ncontrols={{{nine}}}\n"
+    ));
+    assert!(e.contains("kit.bad") && e.contains("at most 8"), "{e}");
+    // The good entry still loads unused — valid cc, channel and default.
+    Composition::parse(&piece(
+        "[library.kit.synth]\nnote=60\ncontrols={cutoff={cc=74,channel=2,default=0.5}}\n",
+    ))
+    .unwrap();
+}
+
+#[test]
+fn a_voice_cannot_rescue_a_bad_kit_control_mapping_by_overlaying_it() {
+    // Mark's reproduction at 8c99f0e: a kit's `cutoff = {cc = 200}` bound by a Part that
+    // overlays `[part.output.controls.cutoff] cc = 74` loaded, because `merge` replaced the
+    // cc before anything checked the kit's own table. The entry is refused where it is written.
+    let bound = |kit: &str, overlay: &str| {
+        Composition::parse(&format!(
+            "tempo=132\nseed=1\n{kit}[part]\nid='x'\nkit='synth'\ncompose=['std.backbeat','std.no_accent']\n[part.output.controls.cutoff]\n{overlay}\n"
+        ))
+    };
+    let e = bound(
+        "[library.kit.synth]\nnote=60\ncontrols={cutoff={cc=200}}\n",
+        "cc=74",
+    )
+    .unwrap_err();
+    assert!(e.contains("kit.synth") && e.contains("cc 200"), "{e}");
+    let e = bound(
+        "[library.behaviors.'local.synth']\noutput={note=60,controls={cutoff={cc=200}}}\n[library.kit]\nsynth='local.synth'\n",
+        "cc=74",
+    )
+    .unwrap_err();
+    assert!(e.contains("kit.synth") && e.contains("cc 200"), "{e}");
+    // The valid mapping binds, and the Part may still overlay it.
+    let c = bound(
+        "[library.kit.synth]\nnote=60\ncontrols={cutoff={cc=74}}\n",
+        "cc=75",
+    )
+    .unwrap();
+    assert_eq!(c.parts[0].output.controls["cutoff"].cc, 75);
+    // The profile-dependent half stays at the Part: a response with no mapping to drive is
+    // refused there, and a kit entry — which has no profile — is never blamed for it.
+    let e = Composition::parse(
+        "tempo=132\nseed=1\n[library.kit.synth]\nnote=60\ncontrols={cutoff={cc=74}}\n[part]\nid='x'\nkit='synth'\ncompose=['std.backbeat','std.no_accent']\n[part.profile.controls.level]\nboost=0.2\n",
+    )
+    .unwrap_err();
+    assert!(
+        e.contains("Part \"x\"") && e.contains("matching output.controls"),
+        "{e}"
+    );
 }

@@ -40,7 +40,9 @@ controls. Late control attacks are skipped; resets are still delivered.
 Each `(channel, CC)` has one owner across the composition. Every named profile
 control must have an output mapping. Kits may declare additional unused mappings;
 these emit nothing until a response or parameter lane uses them. The supported CC ranges are 1–31, 33–63 and 70–95, excluding pedal,
-bank-selection, parameter-selection and channel-mode commands. A mapping's channel
+bank-selection, parameter-selection and channel-mode commands, and a mapping is refused
+by those rules where it is written — on the Part, or in a kit entry no voice uses (see
+`output-bindings.md`). A mapping's channel
 defaults to the Part's note channel. MIDI CC is channel-wide; a Part name does not
 make it specific to one Drum Rack pad. Configure that association in the host.
 

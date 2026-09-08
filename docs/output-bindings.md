@@ -75,13 +75,35 @@ gate = "1/16"                            # the voice's own output fields overlay
 ```
 
 `[library.kit.<name>]` is a third library section beside `behaviors` and
-`profiles`. An entry is either an output table (checked as one where it is
-written) or the name of a behavior, whose `output` it takes verbatim, so an
-imported kit such as `kits/909-prepared.toml` is read and never re-typed. On a
-Part, `kit = "<name>"` **replaces** any output a composed behavior brought and is
-then overlaid by the Part's own `output` fields. An unknown name is an error that
-lists the instruments the kit does declare; a `kit` on a profile is an error;
-duplicate instrument names across kit files are errors like any library name.
+`profiles`. An entry is either an output table or the name of a behavior, whose
+`output` it takes verbatim, so an imported kit such as `kits/909-prepared.toml`
+is read and never re-typed. On a Part, `kit = "<name>"` **replaces** any output a
+composed behavior brought and is then overlaid by the Part's own `output` fields.
+An unknown name is an error that lists the instruments the kit does declare; a
+`kit` on a profile is an error; duplicate instrument names across kit files are
+errors like any library name.
+
+**Every kit entry is valid where it is written, whether or not a voice uses it.**
+An output table is checked as the Part would check it — shape *and* range: channel
+1..16, note 0..127, gate within the bar, and every `controls` mapping (a continuous
+CC in 1–31, 33–63 or 70–95, channel 1..16, `default` within 0..1, a name, at most
+eight) — the moment its file is read, so
+`note = 200` in an instrument no Part binds to is refused, and a Part that does
+bind to it cannot rescue it by overlaying its own `note`. An alias is resolved once
+every library has loaded (built-ins, the project's `libraries`, imports, then the
+composition's own table, in that order), so it may name a behavior a later file
+declares and is still refused if nothing ever does — and what it resolves *to* is
+then held to that same shape-and-range check, so an alias to a behavior whose
+`output` carries `note = 200` is refused exactly as the inline table would be, and one
+whose `output` is not a table at all — a bare string, a number — is refused as a shape.
+(A behavior name is a legal way to *write* an entry, not a legal thing for one to
+resolve to: at that point the value is the output.) The error names the entry, the
+bad value or the unresolved target, **and the file the entry was written in** — an
+imported kit's fault is reported against the kit file, not against the composition
+that imported it.
+The one rule a kit entry is *not* held to is the half that needs a profile to judge:
+a `profile.controls` response with no mapping to drive, or a response's own ranges.
+A kit entry has no profile, so that check stays at the Part that binds one.
 
 **What an instrument declares, it is held to; what it does not declare is a gap.**
 A kit entry that lists a `controls` table declares what the instrument can hear:
