@@ -20,7 +20,8 @@ Event-indexed pitch, nudge (M1.10), shared lanes (M1.4), and retained trigger mu
 
 Each value multiplies the existing semantic velocity, including accent and groove, before
 MIDI's existing round-and-clamp to 1..127. Zero is a minimum-velocity note, not a rest.
-Gate admission remains upstream: these values cannot determine the events that advance them.
+Time-read values begin at the notation's floored tick onsets, including uneven divisions
+such as seven values per bar. Gate admission remains upstream: these values cannot determine the events that advance them.
 
 | field | reading |
 |---|---|

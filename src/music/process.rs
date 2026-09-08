@@ -109,8 +109,11 @@ impl ValuePattern {
         let index = if self.per() == Per::Event {
             (position % self.len() as u64) as usize
         } else {
-            ((u128::from(position % self.cycle_ticks()) * self.len() as u128)
-                / u128::from(self.cycle_ticks())) as usize
+            // The notation floors each onset i * cycle / len. Invert that inequality,
+            // not the unfloored phase: e.g. 7 values over 3840 ticks advance at 548.
+            (((u128::from(position % self.cycle_ticks()) + 1) * self.len() as u128)
+                .div_ceil(u128::from(self.cycle_ticks()))
+                - 1) as usize
         };
         ValueRead {
             child,

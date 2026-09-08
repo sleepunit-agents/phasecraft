@@ -376,3 +376,22 @@ fn value_clock_periods_distinguish_time_from_events() {
         Clock::Event
     ));
 }
+
+#[test]
+fn time_reads_follow_floored_notation_onsets_on_an_uneven_grid() {
+    // The literal's second child is at floor(2*1920/7)=548. The next value is also
+    // written at floor(3840/7)=548: a phase-times-length shortcut reads one value late.
+    let c = parse("x*7 ~", "pattern='1 0.9 0.8 0.7 0.6 0.5 0.4'", "").unwrap();
+    assert_eq!(
+        render(&c, 16),
+        [
+            (0, 100),
+            (274, 100),
+            (548, 90),
+            (822, 90),
+            (1097, 80),
+            (1371, 80),
+            (1645, 70)
+        ]
+    );
+}
