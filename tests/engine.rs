@@ -334,6 +334,21 @@ fn pins_reach_shared_accents_ratchets_and_a_subdivided_grid() {
     assert_eq!((forced.ratchet_roll, forced.ratchet_count), (Some(0.0), 3));
     let denied = resolve(&c, 2).ornaments.unwrap();
     assert_eq!((denied.ratchet_roll, denied.ratchet_count), (Some(0.95), 1));
+    // The gate's own record says the roll was authored: a pinned refusal is still refused by
+    // probability, and the flag is what separates that from chance. Unpinned records omit it.
+    use phasecraft::music::ornament::SuppressionReason::Probability;
+    let forced_gate = forced.ratchet.as_ref().unwrap();
+    assert!(forced_gate.pinned && forced_gate.admitted_count == 3);
+    let denied_gate = denied.ratchet.as_ref().unwrap();
+    assert!(denied_gate.pinned && denied_gate.suppression_reason == Some(Probability));
+    assert!(
+        serde_json::to_string(&denied)
+            .unwrap()
+            .contains("\"pinned\":true")
+    );
+    let free = resolve(&c, 3).ornaments.unwrap();
+    assert!(!free.ratchet.as_ref().unwrap().pinned);
+    assert!(!serde_json::to_string(&free).unwrap().contains("pinned"));
     // A triplet-sixteenth Part has 24 slots per bar; slot 24 is its step 23.
     let triplet = format!("subdivision='1/16T'\n{HAT}");
     assert!(

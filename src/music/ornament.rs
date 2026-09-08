@@ -1,7 +1,7 @@
 //! Bounded, independently admitted expansions of a source hit.
 use super::{
     ProbabilityMode,
-    resolve::{Dice, MusicalEvent},
+    resolve::{Dice, Draw, MusicalEvent},
     time::NoteValue,
 };
 use serde::{Deserialize, Serialize};
@@ -52,12 +52,20 @@ pub struct OrnamentTrace {
 }
 /// One ornament gate and its expansion, before neighboring attacks are merged.
 /// A refused gate has zero counts; the unornamented source hit is not its output.
+/// `pinned` is true when the gate's admission draw was forced by a `[[pins]]` entry:
+/// `suppression_reason` still names the mechanism (`probability`), and the flag says
+/// the roll it compared was authored, not rolled. Written only when true.
 #[derive(Clone, Debug, Serialize)]
 pub struct ExpansionTrace {
     pub probability: f64,
     pub admitted_count: u8,
     pub emitted_count: u8,
     pub suppression_reason: Option<SuppressionReason>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pinned: bool,
+}
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -67,13 +75,14 @@ pub enum SuppressionReason {
     UpperBound,
 }
 impl ExpansionTrace {
-    fn new(probability: f64, roll: f64, count: u8) -> Self {
-        let admitted = roll < probability;
+    fn new(probability: f64, draw: Draw, count: u8) -> Self {
+        let admitted = draw.u < probability;
         Self {
             probability,
             admitted_count: if admitted { count } else { 0 },
             emitted_count: 0,
             suppression_reason: (!admitted).then_some(SuppressionReason::Probability),
+            pinned: draw.pinned,
         }
     }
 }
@@ -113,20 +122,22 @@ impl Ornaments {
         bounds: std::ops::Range<u64>,
     ) -> (Vec<MusicalEvent>, OrnamentTrace) {
         let (lower, upper) = (bounds.start, bounds.end);
-        let roll = |lane, mode| dice.roll(id, lane, identity(mode), "admission").u;
-        let ratchet_roll = self
+        let roll = |lane, mode| dice.roll(id, lane, identity(mode), "admission");
+        let ratchet_draw = self
             .ratchet
             .as_ref()
             .map(|r| roll("ratchet", r.probability_mode));
-        let flam_roll = self.flam.as_ref().map(|f| roll("flam", f.probability_mode));
+        let flam_draw = self.flam.as_ref().map(|f| roll("flam", f.probability_mode));
+        let ratchet_roll = ratchet_draw.map(|d| d.u);
+        let flam_roll = flam_draw.map(|d| d.u);
         let mut ratchet = self
             .ratchet
             .as_ref()
-            .map(|r| ExpansionTrace::new(r.probability, ratchet_roll.unwrap(), r.count));
+            .map(|r| ExpansionTrace::new(r.probability, ratchet_draw.unwrap(), r.count));
         let mut flam = self
             .flam
             .as_ref()
-            .map(|f| ExpansionTrace::new(f.probability, flam_roll.unwrap(), 1));
+            .map(|f| ExpansionTrace::new(f.probability, flam_draw.unwrap(), 1));
         let count = ratchet.as_ref().map_or(1, |r| r.admitted_count.max(1));
         let mut hits = Vec::new();
         for i in 0..count {

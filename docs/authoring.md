@@ -80,9 +80,11 @@ is consulted again at the head of every restarting section; under `phase = "cont
 clock is transport-relative and the step passes once. With no arrangement there is one clock
 and a continuous pin lands exactly once. Two pins that resolve to one dice are an error that
 names both shapes. `inspect` marks a forced draw with `pinned = true` on the **decision** it
-reached — trigger, accent and shared-accent admissions carry the flag; the ornament and touch
-traces do not yet, so a forced `burst`, `flam`, `timing` or `velocity` is read from its rolled
-value in the trace rather than from a flag. Pins live with the composition, not a phrase:
+reached — trigger, accent and shared-accent admissions carry the flag, and so do the ornament
+gates (`ornaments.ratchet.pinned`, `ornaments.flam.pinned`), where a refused gate's
+`suppression_reason = "probability"` otherwise reads as chance when the roll was authored; the
+touch traces do not yet, so a forced `timing` or `velocity` is read from its rolled value in
+the trace rather than from a flag. Pins live with the composition, not a phrase:
 every phrase and section inherits them, and the seed is not part of the address, so changing
 the seed rerolls everything except the pinned draws — which is what pins are for.
 
