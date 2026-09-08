@@ -26,6 +26,7 @@ build every named feature immediately.
 | Controller/host separation (§26, 28, 37, 41) | MIDI bindings separate from semantic parameters; arbitrary note/channel per Part; CC can use another channel; one output port | Kit routing tests; fixed note on each hardware voice's channel is supported |
 | Friendly project workflow (later request) | `phasecraft new`, project discovery, separate musical libraries/kit/config; folder-opening Player and visual rings | Portable scaffold, 15 starter compositions, browser/native smoke |
 | Distribution (later request) | CLI and native Player packages for Windows x64, macOS Intel/Apple Silicon, Linux x64; signed Player update feed; explicit click to install | Full platform CI plus published-feed and Windows checksum verification |
+| Pitch, step 1 (TO-PHASECRAFT D9 / M1.8) | `note.pattern` and `pitch.pattern` on a Part as held value sources over the step notation, sampled per attack; every reachable note proven at load; unpitched Parts unchanged | `tests/pitch.rs`; until-stop's `sub` and `metal` voices; no listening validation yet |
 | Prepared 909 adapter (later request) | Stock note mapping and 64 mapped controls: cutoff, level, pan, stock decay/tail across 16 pads; compact channels 15/16; defaults restored | Existing user-validated Prepared Set; fixture-scoped XML tests |
 
 ## Cycle metadata contract

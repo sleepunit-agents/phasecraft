@@ -5,6 +5,7 @@ pub mod groove;
 pub mod notation;
 pub mod ornament;
 pub mod parameter;
+pub mod pitch;
 pub mod resolve;
 pub mod rhythm;
 pub mod router;
@@ -121,6 +122,12 @@ pub struct Part {
     pub trigger: Lane,
     pub accent: AccentLane,
     pub output: Output,
+    /// The sounding note as a held value source (`pitch.rs`); absent, the kit note sounds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<pitch::ValueLane>,
+    /// Integer semitone offsets from the sounding note, a held value source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pitch: Option<pitch::ValueLane>,
     #[serde(default)]
     pub profile: AccentProfile,
     #[serde(default, skip_serializing_if = "groove::Groove::is_default")]
@@ -410,6 +417,7 @@ impl Part {
         if !(1..=127).contains(&self.profile.base) || self.profile.boost > 127 {
             return Err("velocity base must be 1..127 and boost 0..127".into());
         }
+        pitch::validate(self)?;
         Ok(())
     }
 }

@@ -72,7 +72,9 @@ every admitted event and again for the next onset's reservation, so it needs no 
 all and is never refused. Both are the same die whether or not the amount is audible: with
 no `humanize` the jitter is zero ticks and the velocity factor is 1.0. **A pin names the
 die, not its effect** — pinning `timing` under a groove with no `humanize` forces a draw
-that moves the onset by exactly zero.
+that moves the onset by exactly zero. With a [note or pitch lane](pitch.md), a timing
+pin that moves the attack across a value onset also changes its sounding note: those lanes
+sample at the final attack tick. Bar ownership still clips movement at bar boundaries.
 
 The address is the engine's, so the pin obeys the lane's `probability_mode`: under
 `phrase_locked` the dice at bar 2 slot 3 is rolled again every phrase, and the pin lands

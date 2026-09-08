@@ -295,6 +295,10 @@ pub struct MusicalEvent {
     pub velocity_gain: f64,
     pub tick: u64,
     pub duration_ticks: u64,
+    /// The sounding note when the Part has a note or pitch lane (`pitch::sounding_note`),
+    /// stamped where every attack gets its final tick; absent, the kit note sounds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<u8>,
     pub accent: Accent,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub controls: Vec<super::accent::ResolvedControl>,
@@ -454,6 +458,7 @@ fn resolve_part(
         velocity_gain: 1.0,
         tick: step * part.subdivision.0,
         duration_ticks: part.output.gate_ticks,
+        note: None,
         groove: None,
         controls: part
             .profile
@@ -543,10 +548,11 @@ fn midi_velocity(part: &Part, event: &MusicalEvent) -> u8 {
 pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
     let output = &part.output;
     let velocity = midi_velocity(part, event);
+    let note = event.note.unwrap_or(output.note);
     let mut events = vec![
         MidiEvent {
             tick: event.tick,
-            bytes: [0x90 | (output.channel - 1), output.note, velocity],
+            bytes: [0x90 | (output.channel - 1), note, velocity],
             stop_value: None,
             reset_value: None,
             boundary_reset: false,
@@ -554,7 +560,7 @@ pub fn to_midi(part: &Part, event: &MusicalEvent) -> Vec<MidiEvent> {
         },
         MidiEvent {
             tick: event.tick + event.duration_ticks,
-            bytes: [0x80 | (output.channel - 1), output.note, 0],
+            bytes: [0x80 | (output.channel - 1), note, 0],
             stop_value: None,
             reset_value: None,
             boundary_reset: false,

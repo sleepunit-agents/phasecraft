@@ -199,7 +199,7 @@ pub fn run() -> Result<(), String> {
                                 let midi = phasecraft::music::resolve::to_midi(part, event);
                                 format!(
                                     "note={} channel={} velocity={} gate={} ticks accent={:.2} onset_tick={} controls={}",
-                                    part.output.note,
+                                    midi[0].bytes[1],
                                     part.output.channel,
                                     midi[0].bytes[2],
                                     event.duration_ticks,

@@ -199,6 +199,8 @@ itself twice at once); in a value pattern it is a chord and legal.
 Value patterns are the same parser producing tokens instead of hits. How a consumer walks them
 (`per = "event"` read-then-advance, per-step position, per-bar `< >`) is the consumer's contract
 and is documented with the consumer, not here.
+The first consumer is the pitch sliver — `note.pattern` and `pitch.pattern` as held value
+sources sampled per attack, [pitch.md](pitch.md).
 
 ## What is deliberately not here
 
