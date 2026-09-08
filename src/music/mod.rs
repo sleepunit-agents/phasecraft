@@ -6,6 +6,7 @@ pub mod notation;
 pub mod ornament;
 pub mod parameter;
 pub mod pitch;
+pub mod process;
 pub mod resolve;
 pub mod rhythm;
 pub mod router;
@@ -115,6 +116,8 @@ fn amount() -> f64 {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Part {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub velocity: Option<process::ValuePattern>,
     pub id: String,
     #[serde(default, skip_serializing_if = "time::NoteValue::is_default")]
     pub subdivision: time::NoteValue,
@@ -369,6 +372,7 @@ impl Composition {
             }
         }
         self.evaluation_order()?;
+        process::validate_carry(self)?;
         if let Some(arrangement) = &self.arrangement {
             arrangement.validate(self.tempo)?;
         }

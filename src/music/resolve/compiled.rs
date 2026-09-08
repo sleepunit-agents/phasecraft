@@ -9,9 +9,12 @@ pub struct Compiled {
     sections: Vec<Compiled>,
     scenes: Vec<Compiled>,
     period: u64,
+    value_base: std::collections::BTreeMap<String, u64>,
+    carry_history: std::collections::BTreeMap<u64, std::collections::BTreeMap<String, u64>>,
+    value_prefix: std::collections::BTreeMap<(usize, u64, u64), u64>,
     moves: Vec<crate::music::router::Move>,
-    cell_keys: std::collections::VecDeque<(usize, u64, u64, u64)>,
-    cells: std::collections::BTreeMap<(usize, u64, u64, u64), StepTrace>,
+    cell_keys: std::collections::VecDeque<(usize, u64, u64, u64, u64)>,
+    cells: std::collections::BTreeMap<(usize, u64, u64, u64, u64), StepTrace>,
 }
 impl Compiled {
     pub fn new(c: &Composition) -> Self {
@@ -56,6 +59,9 @@ impl Compiled {
             sections,
             scenes,
             period,
+            value_prefix: Default::default(),
+            value_base: Default::default(),
+            carry_history: Default::default(),
             moves: Vec::new(),
         }
     }
@@ -70,6 +76,75 @@ impl Compiled {
             );
         }
         &self.moves
+    }
+    /// Reconstruct carried residues at a scene/section boundary. A missing Part consumes
+    /// nothing. Checkpoints bound storage; evicted history is replayed, never approximated.
+    fn carry_at(&mut self, target: u64) -> std::collections::BTreeMap<String, u64> {
+        if !self.sections.iter().chain(self.scenes.iter()).any(|c| {
+            c.composition
+                .parts
+                .iter()
+                .any(|p| p.velocity.as_ref().is_some_and(|v| v.carries()))
+        }) {
+            return Default::default();
+        }
+        let (mut cursor, mut state) = self
+            .carry_history
+            .range(..=target)
+            .next_back()
+            .map(|(&t, s)| (t, s.clone()))
+            .unwrap_or_default();
+        while cursor < target {
+            if let Some(a) = &self.composition.arrangement {
+                let Some(located) = a.locate(cursor / STEP_TICKS) else {
+                    break;
+                };
+                let index = located.position.index - 1;
+                let length = u64::from(located.section.bars) * 16 - located.local_step;
+                let end = (cursor + length * STEP_TICKS).min(target);
+                let from = located.musical_step * STEP_TICKS;
+                self.sections[index].spend_carried(from, from + end - cursor, &mut state);
+                cursor = end;
+            } else if let Some(r) = &self.composition.router {
+                r.extend_moves(
+                    self.composition.seed,
+                    self.period,
+                    &mut self.moves,
+                    cursor / self.period,
+                );
+                let visit = r.locate(self.period, cursor, &self.moves);
+                let index = r.scenes.iter().position(|s| s.name == visit.scene).unwrap();
+                let end = visit.next_tick.min(target);
+                self.scenes[index].spend_carried(cursor, end, &mut state);
+                cursor = end;
+            } else {
+                break;
+            }
+            if self.carry_history.len() >= 4096 {
+                self.carry_history.pop_first();
+            }
+            self.carry_history.insert(cursor, state.clone());
+        }
+        state
+    }
+    fn spend_carried(
+        &mut self,
+        from: u64,
+        to: u64,
+        state: &mut std::collections::BTreeMap<String, u64>,
+    ) {
+        for index in 0..self.composition.parts.len() {
+            let part = self.composition.parts[index].clone();
+            let Some(value) = &part.velocity else {
+                continue;
+            };
+            if !value.carries() {
+                continue;
+            }
+            let n = self.value_position(index, from, to.div_ceil(part.subdivision.0));
+            let entry = state.entry(part.id).or_default();
+            *entry = (*entry + n) % value.len() as u64;
+        }
     }
     fn raw_at(&mut self, tick: u64) -> std::sync::Arc<Vec<StepTrace>> {
         if let Some(traces) = self.raw.get(&tick) {
@@ -124,6 +199,7 @@ impl Compiled {
                     Some(crate::music::arrangement::resets(&scene.composition, tick))
                 })
                 .flatten();
+            self.scenes[index].value_base = self.carry_at(visit.entered_tick);
             let (mut traces, mut midi) =
                 self.scenes[index].window(step, visit.entered_tick, visit.next_tick);
             for t in &mut traces {
@@ -150,6 +226,7 @@ impl Compiled {
                 .map(|s| {
                     crate::music::arrangement::resets(&s.section.composition, step * STEP_TICKS)
                 });
+            self.sections[index].value_base = self.carry_at((step - local_step) * STEP_TICKS);
             let (mut traces, mut midi) = self.sections[index].window(musical_step, lower, upper);
             for e in &mut midi {
                 e.tick += shift;
@@ -299,11 +376,21 @@ impl Compiled {
         (traces, midi)
     }
     fn cell(&mut self, index: usize, step: u64, lower: u64, upper: u64) -> StepTrace {
-        let key = (index, step, lower, upper);
+        let key = (
+            index,
+            step,
+            lower,
+            upper,
+            *self
+                .value_base
+                .get(&self.composition.parts[index].id)
+                .unwrap_or(&0),
+        );
         if let Some(trace) = self.cells.get(&key) {
             return trace.clone();
         }
-        let trace = self.compute_cell(index, step, lower, upper);
+        let mut trace = self.compute_cell(index, step, lower, upper);
+        self.sample_values(index, step, lower, &mut trace);
         if self.cells.len() >= 4096
             && let Some(old) = self.cell_keys.pop_front()
         {
@@ -312,6 +399,102 @@ impl Compiled {
         self.cells.insert(key, trace.clone());
         self.cell_keys.push_back(key);
         trace
+    }
+    // Structural counts are independent of value reads, timing and ownership. Prefixes
+    // are residues, not a finite lookbehind: eviction can require replay but never resets history.
+    fn value_position(&mut self, index: usize, origin: u64, step: u64) -> u64 {
+        let part = self.composition.parts[index].clone();
+        let value = part.velocity.as_ref().unwrap();
+        let modulus = value.len() as u64;
+        let first = origin.div_ceil(part.subdivision.0);
+        let mut cursor = first;
+        let mut position = 0;
+        if let Some((&(i, o, s), &p)) = self
+            .value_prefix
+            .range(..=(index, origin, step))
+            .next_back()
+            && i == index
+            && o == origin
+            && s >= first
+        {
+            cursor = s;
+            position = p;
+        }
+        while cursor < step {
+            let trace = self.compute_cell(index, cursor, 0, u64::MAX);
+            let (count, _) = structural_children(&trace);
+            let spend = if value.clock() == super::super::process::Clock::Main {
+                u64::from(count > 0)
+            } else {
+                u64::from(count)
+            };
+            position = (position + spend) % modulus;
+            cursor += 1;
+            if cursor.is_multiple_of(64) {
+                self.save_value_prefix((index, origin, cursor), position);
+            }
+        }
+        self.save_value_prefix((index, origin, step), position);
+        position
+    }
+    fn save_value_prefix(&mut self, key: (usize, u64, u64), value: u64) {
+        if self.value_prefix.len() >= 4096 {
+            self.value_prefix.pop_first();
+        }
+        self.value_prefix.insert(key, value);
+    }
+    fn sample_values(&mut self, index: usize, step: u64, lower: u64, trace: &mut StepTrace) {
+        use super::super::process::{Clock, Per};
+        let part = self.composition.parts[index].clone();
+        let Some(value) = &part.velocity else {
+            return;
+        };
+        let (count, ratchets) = structural_children(trace);
+        if count == 0 {
+            return;
+        }
+        let source = step * part.subdivision.0;
+        let span = trace
+            .trigger
+            .rhythm
+            .literal_attack()
+            .map_or(part.subdivision.0, |a| a.span_ticks);
+        let origin = if value.carries() {
+            lower
+        } else {
+            (source / value.cycle_ticks() * value.cycle_ticks()).max(lower)
+        };
+        let position = if value.per() == Per::Event {
+            (self.value_position(index, origin, step)
+                + if value.carries() {
+                    *self.value_base.get(&part.id).unwrap_or(&0)
+                } else {
+                    0
+                })
+                % value.len() as u64
+        } else {
+            source
+        };
+        for child in 0..count {
+            let at = if value.per() == Per::Event {
+                position
+                    + if value.clock() == Clock::Attacks {
+                        u64::from(child)
+                    } else {
+                        0
+                    }
+            } else if child < ratchets {
+                source + u64::from(child) * span / u64::from(ratchets)
+            } else {
+                source.saturating_sub(part.ornaments.flam.as_ref().unwrap().spacing.0)
+            };
+            trace.values.push(value.read(child, at));
+        }
+        for event in trace.event.iter_mut().chain(trace.extra_events.iter_mut()) {
+            let read = trace.values[usize::from(event.structural_child)].clone();
+            event.velocity_gain *= read.value;
+            event.velocity = Some(read);
+        }
     }
     fn compute_cell(&mut self, index: usize, step: u64, lower: u64, upper: u64) -> StepTrace {
         let part = self.composition.parts[index].clone();
@@ -446,27 +629,7 @@ impl Compiled {
                 .min(span - 1)
                 .min(end.saturating_sub(event.tick + 1))
                 .max(1);
-            let mut expansion = part.ornaments.clone();
-            if let Some(a) = literal {
-                // The string owns count/span. The external ratchet is only its optional
-                // gate configuration; it cannot add tails to a plain literal hit.
-                expansion.ratchet = (a.ratchet > 1).then(|| {
-                    let configured = part.ornaments.ratchet.as_ref();
-                    crate::music::ornament::Ratchet {
-                        count: a.ratchet,
-                        probability: configured.map_or(
-                            if a.draw == crate::music::notation::Draw::Tail {
-                                0.5
-                            } else {
-                                1.0
-                            },
-                            |r| r.probability,
-                        ),
-                        probability_mode: configured
-                            .map_or(ProbabilityMode::PhraseLocked, |r| r.probability_mode),
-                    }
-                });
-            }
+            let expansion = expansion_for(&part, literal);
             if !expansion.is_default() {
                 let (mut hits, ornaments) = expansion.expand(
                     c.dice(),
@@ -526,6 +689,50 @@ fn anticipates(part: &Part) -> bool {
             .humanize
             .as_ref()
             .is_some_and(|h| h.timing_ticks > 0)
+}
+
+/// Number of admitted structural children, including the main. A refused burst retains
+/// the main; ownership suppression never changes these counts.
+fn structural_children(trace: &StepTrace) -> (u8, u8) {
+    if !trace.trigger.admitted {
+        return (0, 0);
+    }
+    let ratchets = trace
+        .ornaments
+        .as_ref()
+        .and_then(|o| o.ratchet.as_ref())
+        .map_or(1, |r| r.admitted_count.max(1));
+    let grace = trace
+        .ornaments
+        .as_ref()
+        .and_then(|o| o.flam.as_ref())
+        .map_or(0, |f| f.admitted_count);
+    (ratchets + grace, ratchets)
+}
+fn expansion_for(
+    part: &Part,
+    literal: Option<crate::music::rhythm::literal::Attack>,
+) -> crate::music::ornament::Ornaments {
+    let mut expansion = part.ornaments.clone();
+    if let Some(a) = literal {
+        expansion.ratchet = (a.ratchet > 1).then(|| {
+            let configured = part.ornaments.ratchet.as_ref();
+            crate::music::ornament::Ratchet {
+                count: a.ratchet,
+                probability: configured.map_or(
+                    if a.draw == crate::music::notation::Draw::Tail {
+                        0.5
+                    } else {
+                        1.0
+                    },
+                    |r| r.probability,
+                ),
+                probability_mode: configured
+                    .map_or(ProbabilityMode::PhraseLocked, |r| r.probability_mode),
+            }
+        });
+    }
+    expansion
 }
 
 #[cfg(test)]

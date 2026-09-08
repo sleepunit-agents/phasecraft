@@ -1,0 +1,36 @@
+# Numeric velocity study: until-stop's carried seven-value hat emphasis and exposed snare.
+# The hat uses a STATIC six-hit stand-in; retained hat-memory and shared weather are later slices.
+# Snare timing is unchanged here; its event-indexed nudge remains M1.10.
+tempo = 126
+seed = 91827
+
+[parts.hat]
+trigger.rhythm = { steps = 16, pulses = 6 }
+accent.rhythm = { steps = 16, pulses = 0 }
+profile.base = 100
+output.note = 42
+output.channel = 10
+[parts.hat.velocity]
+pattern = "1.0 0.62 0.78 0.55 0.9 0.6 0.7"
+per = "event"
+clock = "attacks"
+carry = "always"
+
+[parts.snare]
+trigger.pattern = "~ x ~ [x x*3?]"
+accent.rhythm = { steps = 16, pulses = 0 }
+profile.base = 100
+output.note = 38
+output.channel = 10
+[parts.snare.velocity]
+pattern = "0.95 0.6"
+per = "event"
+clock = "attacks"
+cycle = 16 # sixteenth slots; native value reset cycle, matching the example voice's cycle
+
+[[pins]]
+at = { roll = "burst", voice = "snare", bar = 1, slot = 15 }
+u = 0.0
+[[pins]]
+at = { roll = "burst", voice = "snare", bar = 2, slot = 15 }
+u = 0.99

@@ -97,6 +97,13 @@ fn alignment(c: &Composition, p: &Part) -> Option<u64> {
             ),
         );
     }
+    if let Some(value) = &p.velocity {
+        cycle = if value.per() == super::process::Per::Step {
+            lcm(cycle, Some(value.cycle_ticks()))
+        } else {
+            None
+        };
+    }
     cycle
 }
 pub fn spans(c: &Composition, part_id: &str, start: u64, end: u64) -> Vec<CycleSpan> {

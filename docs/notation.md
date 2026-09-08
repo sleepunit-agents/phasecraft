@@ -248,3 +248,8 @@ file first, with a use in a piece that needs it.
 | `[1,3,5,7,9]` | five simultaneous values at 0 |
 | `1 2 3 ~ 5 ~ 7 8 1 ~ 3 4 ~ 6 7 ~` | sixteen slots of slice indices, rests at 3, 5, 9, 12, 15 |
 | `~ 12*6` | one event at 1/2, token 12, ratchet 6 over span 1/2 |
+
+
+The [numeric velocity consumer](event-values.md) now reads flat number sequences by written
+position or structural event count. Its event clock and carry are consumer fields; they do
+not widen this grammar. Other notation forms are refused by this first velocity consumer.

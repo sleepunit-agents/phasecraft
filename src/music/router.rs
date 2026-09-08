@@ -38,12 +38,28 @@ pub enum Clock {
     Absent,
 }
 /// Resolve one member key. The shapes this engine can read today are
-/// `voices.<id>.trigger.cycle` and `voices.<id>.accent.cycle` (`parts.` is the same word): the
-/// structural period of that stream's rhythm. A key whose owner is not in this engine yet —
+/// `voices.<id>.trigger.cycle`, `voices.<id>.accent.cycle`, and
+/// `voices.<id>.velocity.cycle` (`parts.` is the same word). Velocity per=event
+/// is an event clock even when it has a periodic reset; per=step has a transport period. A key whose owner is not in this engine yet —
 /// `patterns.*` (M1.5), `lanes.*` (M1.4) — is an error that names the key. Nothing is stubbed.
 pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
     let segments: Vec<&str> = key.split('.').collect();
     match segments.as_slice() {
+        ["voices" | "parts", id, "velocity", "cycle"] => {
+            let Some(part) = c.parts.iter().find(|p| p.id == *id) else {
+                return Ok(Clock::Absent);
+            };
+            let value = part
+                .velocity
+                .as_ref()
+                .ok_or_else(|| format!("{key}: no velocity value pattern"))?;
+            Ok(if value.per() == super::process::Per::Event {
+                Clock::Event
+            } else {
+                Clock::Fixed(value.cycle_ticks())
+            })
+        }
+
         [
             "voices" | "parts",
             id,
@@ -63,7 +79,7 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
                 .ok_or_else(|| format!("{key}: the {stream} period does not fit in u64 ticks"))
         }
         ["voices" | "parts", ..] => Err(format!(
-            "{key}: a voice's fixed clocks are trigger.cycle and accent.cycle; nothing else on a voice has a transport period this engine can read"
+            "{key}: a voice's clocks are trigger.cycle, accent.cycle and velocity.cycle; velocity per=event has no fixed transport period"
         )),
         ["patterns", ..] => Err(format!(
             "{key}: patterns are not in this engine yet (M1.5), so the key cannot be resolved; it is not guessed"
@@ -680,7 +696,7 @@ mod tests {
         for (key, says) in [
             ("patterns.hat-memory.change.every", "M1.5"),
             ("lanes.drift.every", "M1.4"),
-            ("voices.hat.velocity", "trigger.cycle and accent.cycle"),
+            ("voices.hat.velocity", "velocity.cycle"),
             ("weather", "not a clock"),
         ] {
             let e = member_clock(&c, key).unwrap_err();

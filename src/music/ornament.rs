@@ -142,6 +142,7 @@ impl Ornaments {
         let mut hits = Vec::new();
         for i in 0..count {
             let mut hit = event.clone();
+            hit.structural_child = i;
             hit.tick = event.tick + u64::from(i) * cell / u64::from(count);
             if hit.tick + 1 >= upper {
                 break;
@@ -167,6 +168,7 @@ impl Ornaments {
             && let Some(tick) = event.tick.checked_sub(f.spacing.0).filter(|&t| t >= lower)
         {
             let mut grace = event.clone();
+            grace.structural_child = count;
             grace.tick = tick;
             grace.duration_ticks = grace.duration_ticks.min(f.spacing.0 - 1);
             grace.velocity_gain *= f.gain;
