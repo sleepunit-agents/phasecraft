@@ -3,7 +3,7 @@
 //! Two optional lanes on a Part read the step-notation parser (`notation.rs`) for values
 //! instead of hits:
 //!
-//! - `[parts.sub.note] pattern = "<c1 c1 eb1 bb0>"` — note names, or integers 0..=127, that
+//! - `[parts.sub.note] pattern = "<c1 ~ eb1 bb0>"` — note names, or integers 0..=127, that
 //!   replace the kit note (`output.note`);
 //! - `[parts.metal.pitch] pattern = "<0 0 -5 7>"` — integer semitone offsets from that note.
 //!

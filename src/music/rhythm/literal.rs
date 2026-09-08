@@ -1,8 +1,8 @@
 //! A fully prepared literal trigger schedule. Preparation belongs off the transport
 //! path; lookup never parses, renders a cycle, allocates, or fills a cache.
 //!
-//! This is the M1.2 preparation seam, not yet an `Expression` variant or a resolver.
-//! Admission, timing displacement and boundary suppression remain downstream.
+//! The literal Expression owns this prepared material. Admission, timing displacement
+//! and boundary suppression remain downstream.
 use crate::music::{
     PPQN,
     notation::{Draw, Pattern},
@@ -15,13 +15,60 @@ const MAX_PREPARE_WORK: u64 = 1 << 20;
 const MAX_PREPARE_EVENTS: u64 = 65536;
 
 /// Metadata of one main structural onset, before probability or timing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Attack {
     /// The event's own span, not the Part's subdivision cell.
     pub span_ticks: u64,
     /// Includes the main hit; a denied tail gate leaves the main hit intact.
     pub ratchet: u8,
     pub draw: Draw,
+}
+
+/// Authored configuration and prepared data travel together, so validation catches stale
+/// material after a Rust caller changes an Expression or the Part's subdivision.
+#[derive(Clone, Debug)]
+pub struct Prepared {
+    pattern: std::sync::Arc<str>,
+    cycle_bars: u32,
+    rotate: i32,
+    cell: NoteValue,
+    schedule: Schedule,
+}
+impl Prepared {
+    pub fn new(
+        pattern: &str,
+        cycle_bars: u32,
+        cell: NoteValue,
+        rotate: i32,
+    ) -> Result<Self, String> {
+        if !(1..=1024).contains(&cycle_bars) {
+            return Err("literal cycle_bars must be 1..1024".into());
+        }
+        Ok(Self {
+            pattern: pattern.into(),
+            cycle_bars,
+            rotate,
+            cell,
+            schedule: Schedule::prepare(pattern, cycle_bars, cell, rotate)?,
+        })
+    }
+    pub fn matches(&self, pattern: &str, cycle_bars: u32, rotate: i32) -> bool {
+        self.pattern.as_ref() == pattern && self.cycle_bars == cycle_bars && self.rotate == rotate
+    }
+    pub fn cell(&self) -> NoteValue {
+        self.cell
+    }
+    pub fn schedule(&self) -> &Schedule {
+        &self.schedule
+    }
+    /// Phase lookup alone is not absolute-event admission: the complete structural span
+    /// must fit on the tick grid before any caller can add its offsets.
+    pub fn at_step(&self, step: u64) -> Option<Attack> {
+        let tick = step.checked_mul(self.cell.0)?;
+        let attack = self.schedule.at(tick)?;
+        tick.checked_add(attack.span_ticks)?;
+        Some(attack)
+    }
 }
 impl Attack {
     /// Structural child offset, using the notation renderer's floor rule. Child 0
@@ -167,6 +214,27 @@ impl Schedule {
 
     pub fn period_ticks(&self) -> u64 {
         self.period_ticks
+    }
+    pub fn has_ratchet(&self) -> bool {
+        self.entries.iter().any(|e| e.attack.ratchet > 1)
+    }
+
+    /// Next possible main onset, independent of probability, for gate/tail reservation.
+    pub fn next_after(&self, tick: u64) -> Option<u64> {
+        if self.entries.is_empty() {
+            return None;
+        }
+        let phase = tick % self.period_ticks;
+        let source = (u128::from(phase) + u128::from(self.period_ticks)
+            - u128::from(self.rotation_ticks))
+            % u128::from(self.period_ticks);
+        let source = source as u64;
+        let next = self.entries.partition_point(|e| e.tick <= source);
+        let distance = match self.entries.get(next) {
+            Some(e) => e.tick - source,
+            None => self.period_ticks - source + self.entries[0].tick,
+        };
+        tick.checked_add(distance)
     }
 
     /// Exact main onset lookup at an absolute transport tick. Tails are metadata

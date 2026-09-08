@@ -83,6 +83,7 @@ impl TryFrom<CompositionFile> for Composition {
             router: file.router,
             pins: Vec::new(),
         };
+        c.prepare_patterns()?;
         c.validate()?;
         // Pins resolve against validated Parts; the address a draw hashes is fixed here, once.
         c.pins = resolve::resolve_pins(&c, &file.pins)?;
@@ -219,6 +220,16 @@ impl Default for AccentProfile {
     }
 }
 impl Composition {
+    /// Rebuild authored literal material after edits, before validation or playback.
+    pub fn prepare_patterns(&mut self) -> Result<(), String> {
+        for part in &mut self.parts {
+            part.trigger
+                .rhythm
+                .prepare(part.subdivision)
+                .map_err(|e| format!("Part {:?} trigger.rhythm: {e}", part.id))?;
+        }
+        Ok(())
+    }
     pub fn parse(text: &str) -> Result<Self, String> {
         crate::authoring::library::expand(text, None)?
             .try_into()
@@ -302,6 +313,11 @@ impl Composition {
             return Err(format!("at most {} pins are supported", resolve::MAX_PINS));
         }
         for (name, lane) in &self.accents {
+            if lane.rhythm.contains_literal() {
+                return Err(format!(
+                    "shared accent {name:?}: literal material is currently a trigger source"
+                ));
+            }
             if name.trim().is_empty()
                 || !lane.sources.is_empty()
                 || !lane.rhythm.references().is_empty()
@@ -400,6 +416,17 @@ impl Part {
             .map_err(|e| format!("accent.rhythm: {e}"))?;
         if !self.subdivision.valid() {
             return Err("invalid Part subdivision".into());
+        }
+        if self.accent.rhythm.contains_literal() {
+            return Err("accent.rhythm: literal material is currently a trigger source".into());
+        }
+        if self
+            .trigger
+            .rhythm
+            .literal_schedule()
+            .is_some_and(|p| p.cell() != self.subdivision)
+        {
+            return Err("literal material was prepared for a different subdivision; prepare_patterns after editing".into());
         }
         self.groove.validate()?;
         self.ornaments.validate(self.subdivision.0)?;

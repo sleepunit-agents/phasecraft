@@ -15,7 +15,9 @@ pub(super) fn rhythm(value: &mut Value) -> Result<(), String> {
         fields.insert("type".into(), Value::String("part".into()));
     }
     if !fields.contains_key("type") {
-        let kind = if fields.contains_key("op") {
+        let kind = if fields.contains_key("pattern") {
+            Some("literal")
+        } else if fields.contains_key("op") {
             Some("binary")
         } else if fields.contains_key("steps") {
             Some("euclidean")
@@ -35,6 +37,17 @@ pub(super) fn rhythm(value: &mut Value) -> Result<(), String> {
 }
 
 pub(super) fn behavior(fields: &mut Table) -> Result<(), String> {
+    if let Some(trigger) = fields.get_mut("trigger").and_then(Value::as_table_mut)
+        && let Some(pattern) = trigger.remove("pattern")
+    {
+        if trigger.contains_key("rhythm") {
+            return Err("choose trigger.pattern or trigger.rhythm, not both".into());
+        }
+        let mut literal = Table::new();
+        literal.insert("type".into(), Value::String("literal".into()));
+        literal.insert("pattern".into(), pattern);
+        trigger.insert("rhythm".into(), Value::Table(literal));
+    }
     if let Some(output) = fields.get_mut("output").and_then(Value::as_table_mut)
         && let Some(gate) = output.remove("gate")
     {

@@ -32,6 +32,15 @@ pub enum ReferenceMode {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Expression {
+    Literal {
+        pattern: String,
+        #[serde(default = "literal_cycle")]
+        cycle_bars: u32,
+        #[serde(default)]
+        rotate: i32,
+        #[serde(skip)]
+        prepared: Option<literal::Prepared>,
+    },
     Euclidean {
         steps: u32,
         pulses: u32,
@@ -50,9 +59,19 @@ pub enum Expression {
         mode: ReferenceMode,
     },
 }
+fn literal_cycle() -> u32 {
+    1
+}
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RhythmTrace {
+    Literal {
+        pattern: String,
+        cycle_bars: u32,
+        rotate: i32,
+        active: bool,
+        attack: Option<literal::Attack>,
+    },
     Euclidean {
         steps: u32,
         pulses: u32,
@@ -75,18 +94,70 @@ pub enum RhythmTrace {
 impl RhythmTrace {
     pub fn active(&self) -> bool {
         match self {
-            Self::Euclidean { active, .. }
+            Self::Literal { active, .. }
+            | Self::Euclidean { active, .. }
             | Self::Binary { active, .. }
             | Self::Part { active, .. } => *active,
         }
     }
+    pub fn literal_attack(&self) -> Option<literal::Attack> {
+        match self {
+            Self::Literal { attack, .. } => *attack,
+            _ => None,
+        }
+    }
 }
 impl Expression {
+    /// Prepare literal material at composition load, never during a playback lookup.
+    pub fn prepare(&mut self, cell: super::time::NoteValue) -> Result<(), String> {
+        match self {
+            Self::Literal {
+                pattern,
+                cycle_bars,
+                rotate,
+                prepared,
+            } => {
+                *prepared = Some(literal::Prepared::new(pattern, *cycle_bars, cell, *rotate)?);
+            }
+            Self::Binary { .. } if self.contains_literal() => {
+                return Err("literal material must be the trigger root; boolean combinations do not define which event span and ratchet to keep".into());
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    pub fn contains_literal(&self) -> bool {
+        match self {
+            Self::Literal { .. } => true,
+            Self::Binary { a, b, .. } => a.contains_literal() || b.contains_literal(),
+            _ => false,
+        }
+    }
+    pub fn literal_schedule(&self) -> Option<&literal::Prepared> {
+        match self {
+            Self::Literal { prepared, .. } => prepared.as_ref(),
+            _ => None,
+        }
+    }
     pub fn validate(&self, depth: usize) -> Result<(), String> {
         if depth > 32 {
             return Err("rhythm expression nesting exceeds 32".into());
         }
         match self {
+            Self::Literal {
+                pattern,
+                cycle_bars,
+                rotate,
+                prepared,
+            } => {
+                if depth != 0
+                    || !prepared
+                        .as_ref()
+                        .is_some_and(|p| p.matches(pattern, *cycle_bars, *rotate))
+                {
+                    return Err("literal material must be prepared as the trigger root for this pattern before playback".into());
+                }
+            }
             Self::Euclidean { steps, pulses, .. } => {
                 if *steps == 0 || *steps > 65536 || pulses > steps {
                     return Err("Euclidean requires 1 <= steps <= 65536 and pulses <= steps".into());
@@ -112,7 +183,7 @@ impl Expression {
                 refs.extend(b.references());
                 refs
             }
-            Self::Euclidean { .. } => vec![],
+            Self::Euclidean { .. } | Self::Literal { .. } => vec![],
         }
     }
     pub fn evaluate(
@@ -130,6 +201,21 @@ impl Expression {
         reference: &dyn Fn(&str, ReferenceMode) -> bool,
     ) -> RhythmTrace {
         match self {
+            Self::Literal {
+                pattern,
+                cycle_bars,
+                rotate,
+                prepared,
+            } => {
+                let attack = prepared.as_ref().and_then(|p| p.at_step(absolute_step));
+                RhythmTrace::Literal {
+                    pattern: pattern.clone(),
+                    cycle_bars: *cycle_bars,
+                    rotate: *rotate,
+                    active: attack.is_some(),
+                    attack,
+                }
+            }
             Self::Euclidean {
                 steps,
                 pulses,
