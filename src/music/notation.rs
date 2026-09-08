@@ -185,6 +185,8 @@ struct Inherit {
 #[derive(Clone, Debug)]
 pub struct Pattern {
     stack: Vec<Vec<Step>>,
+    work_bound: u64,
+    event_bound: u64,
 }
 impl Pattern {
     pub fn parse(text: &str) -> Result<Self, String> {
@@ -198,7 +200,17 @@ impl Pattern {
         for seq in &stack {
             cost = cost.add(check_bounds(seq, 1)?)?;
         }
-        Ok(Self { stack })
+        Ok(Self {
+            stack,
+            work_bound: cost.work,
+            event_bound: cost.events,
+        })
+    }
+    /// Conservative per-cycle bounds established by the parser, for consumers that
+    /// prepare several cycles. These count renderer visits and main events, not time
+    /// or expanded ratchet attacks; alternations use their most expensive branch.
+    pub fn render_bounds(&self) -> (u64, u64) {
+        (self.work_bound, self.event_bound)
     }
     /// Events of cycle `k`, sorted by onset; simultaneous events keep source order.
     pub fn cycle(&self, k: u64) -> Vec<Event> {
