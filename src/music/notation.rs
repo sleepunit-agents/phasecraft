@@ -259,6 +259,19 @@ impl Pattern {
         }
         kinds
     }
+    /// Every token the pattern can ever produce (each `< >` and `{ }` element, in source
+    /// order), and which constructs it uses — so a value consumer can decide at load, over
+    /// the whole pattern rather than a sampled cycle, whether it can walk it.
+    pub fn shape(&self) -> Shape {
+        let mut shape = Shape {
+            stacked: self.stack.len() > 1,
+            ..Shape::default()
+        };
+        for seq in &self.stack {
+            seq_shape(seq, &mut shape);
+        }
+        shape
+    }
     /// Cycles after which the pattern repeats: lcm of every `< >` length and `{ }%n` period.
     /// None when that lcm exceeds u64.
     pub fn period_cycles(&self) -> Option<u64> {
@@ -270,6 +283,34 @@ impl Pattern {
     }
 }
 
+/// What a pattern is made of, for a consumer deciding at load whether it can walk it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Shape {
+    pub tokens: Vec<Token>,
+    /// Any `,` anywhere: simultaneous values.
+    pub stacked: bool,
+    /// Any `*n` anywhere.
+    pub ratchet: bool,
+    /// Any `?` anywhere.
+    pub draw: bool,
+}
+fn seq_shape(steps: &[Step], shape: &mut Shape) {
+    for s in steps {
+        shape.ratchet |= s.ratchet.is_some();
+        shape.draw |= s.draw;
+        match &s.atom {
+            Atom::Rest => {}
+            Atom::Token(token) => shape.tokens.push(token.clone()),
+            Atom::Stack(seqs) => {
+                shape.stacked |= seqs.len() > 1;
+                for q in seqs {
+                    seq_shape(q, shape);
+                }
+            }
+            Atom::Alt(elems) | Atom::Poly { steps: elems, .. } => seq_shape(elems, shape),
+        }
+    }
+}
 fn seq_kinds(steps: &[Step], kinds: &mut TokenKinds) {
     for s in steps {
         match &s.atom {

@@ -11,7 +11,10 @@ Two common target arrangements:
 | Drum Rack / note-selected kit | A pad's configured note on a shared channel | The pad's note number |
 | Multitimbral / channel-selected instrument | A dedicated receive channel for the voice | An explicit configurable trigger/root note; it may affect pitch |
 
-Both are supported by today's per-Part `output.note` and `output.channel`. The
+Both are supported by today's per-Part `output.note` and `output.channel`. A Part
+can also sound a note other than its kit note: `[parts.sub.note]` and
+`[parts.sub.pitch]` are value patterns sampled per attack, and `output.note` stays the
+Part's identity and the note the lanes start from — see [pitch](pitch.md). The
 engine does not require note channel 10. The same note on two different channels
 is valid. There is no wire-level “any note” MIDI Note On: use a documented default
 for the target, with an override. A future binding may describe that note's role

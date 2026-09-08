@@ -236,7 +236,10 @@ impl Compiled {
                         .min((next - attacks[i].2.tick).saturating_sub(1).max(1));
                 }
             }
-            for (owner, main, event) in attacks {
+            for (owner, main, mut event) in attacks {
+                // Every attack — main, tail, grace — has its final tick here, so this is where
+                // the pitch lanes are sampled, once, and the trace and the wire read one field.
+                event.note = crate::music::pitch::sounding_note(&part, event.tick);
                 if event.accent.active {
                     history.push((event.tick, event.accent.amount));
                 }
