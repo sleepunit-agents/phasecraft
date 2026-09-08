@@ -223,3 +223,9 @@ not a separate signing infrastructure.
 Part order in keyed `[parts.name]` tables is preserved as written, just like explicit
 `[[parts]]` arrays. Player cards and the E16 Kit use this order. It does not alter
 seeded decision identities or dependency evaluation order.
+
+
+Numeric velocity sequences are available as `[parts.NAME.velocity]`: a flat `pattern`,
+`per = "step"` or `"event"`, optional event `clock = "main"` or `"attacks"`,
+`cycle` in sixteenth slots, and event `carry = "always"`. See [event values](event-values.md)
+for admission, boundary spending, scene compatibility, and seek/reload limits.

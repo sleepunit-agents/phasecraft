@@ -311,6 +311,10 @@ fn is_one(v: &f64) -> bool {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct MusicalEvent {
+    #[serde(skip)]
+    pub structural_child: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub velocity: Option<super::process::ValueRead>,
     #[serde(skip_serializing_if = "is_one")]
     pub velocity_gain: f64,
     pub tick: u64,
@@ -341,6 +345,9 @@ pub struct SharedAccentTrace {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct StepTrace {
+    /// Every admitted structural child reads, including children suppressed by ownership.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub values: Vec<super::process::ValueRead>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sounding: Option<Vec<MusicalEvent>>,
     #[serde(skip_serializing_if = "is_default_cell")]
@@ -483,6 +490,8 @@ fn resolve_part(
         f64::max,
     );
     let event = trigger.admitted.then(|| MusicalEvent {
+        structural_child: 0,
+        velocity: None,
         velocity_gain: 1.0,
         tick: step * part.subdivision.0,
         duration_ticks: part.output.gate_ticks,
@@ -514,6 +523,7 @@ fn resolve_part(
         },
     });
     StepTrace {
+        values: Vec::new(),
         sounding: None,
         cell_ticks: part.subdivision.0,
         extra_events: Vec::new(),
