@@ -1,0 +1,5 @@
+name = "Run the Line — driving drums"
+default = "compositions/driving-drums.toml"
+compositions = ["compositions/driving-drums.toml"]
+libraries = ["kits/909-prepared.toml"]
+midi = "config/midi.toml"
