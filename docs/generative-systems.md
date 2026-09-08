@@ -101,7 +101,9 @@ No arbitrary expression evaluator or embedded scripting language in this slice.
 Every random modifier specifies a distribution and update domain. Start with uniform
 offsets; expose asymmetric min/max bounds. A random value is addressed by seed,
 Part/source ID, modifier ID, occurrence and decision ID. Modifier array indices are
-never random identities. Shared randomness requires an explicit shared source;
+never random identities. A `[[pins]]` entry forces one address's draw before the hash
+is consulted (`authoring.md`); the address is the engine's, so a pin follows the
+lane's probability mode and never moves another draw. Shared randomness requires an explicit shared source;
 unrelated modifiers remain isolated.
 
 Examples of intended semantics:

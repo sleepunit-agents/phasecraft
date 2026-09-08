@@ -34,6 +34,9 @@ pub struct Composition {
     pub returns: std::collections::BTreeMap<String, router::ReturnGroup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub router: Option<router::Router>,
+    /// Forced draws by address, consulted before the hash (`resolve::Dice`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pins: Vec<resolve::Pin>,
 }
 // Accept the original single-Part file without changing its musical identity.
 #[derive(Deserialize)]
@@ -53,6 +56,8 @@ struct CompositionFile {
     returns: std::collections::BTreeMap<String, router::ReturnGroup>,
     #[serde(default)]
     router: Option<router::Router>,
+    #[serde(default)]
+    pins: Vec<resolve::Pin>,
 }
 impl TryFrom<CompositionFile> for Composition {
     type Error = String;
@@ -67,7 +72,7 @@ impl TryFrom<CompositionFile> for Composition {
                 );
             }
         };
-        let c = Self {
+        let mut c = Self {
             tempo: file.tempo,
             seed: file.seed,
             phrase_bars: file.phrase_bars,
@@ -76,8 +81,11 @@ impl TryFrom<CompositionFile> for Composition {
             arrangement: file.arrangement,
             returns: file.returns,
             router: file.router,
+            pins: Vec::new(),
         };
         c.validate()?;
+        // Pins resolve against validated Parts; the address a draw hashes is fixed here, once.
+        c.pins = resolve::resolve_pins(&c, &file.pins)?;
         Ok(c)
     }
 }
@@ -222,6 +230,13 @@ impl Composition {
     pub fn phrase_steps(&self) -> u64 {
         u64::from(self.phrase_bars) * 16
     }
+    /// The seed and the pins, as every draw in the piece sees them.
+    pub fn dice(&self) -> resolve::Dice<'_> {
+        resolve::Dice {
+            seed: self.seed,
+            pins: &self.pins,
+        }
+    }
     pub fn evaluation_order(&self) -> Result<Vec<&Part>, String> {
         fn visit<'a>(
             part: &'a Part,
@@ -280,6 +295,11 @@ impl Composition {
         }
         if self.accents.len() > 16 {
             return Err("at most 16 shared accent lanes are supported".into());
+        }
+        // Resolved pins; `resolve::resolve_pins` enforces the same bound on the authored list,
+        // which is the one an author can exceed (this runs before pins are assigned).
+        if self.pins.len() > resolve::MAX_PINS {
+            return Err(format!("at most {} pins are supported", resolve::MAX_PINS));
         }
         for (name, lane) in &self.accents {
             if name.trim().is_empty()

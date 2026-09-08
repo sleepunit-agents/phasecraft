@@ -236,9 +236,10 @@ pub fn run() -> Result<(), String> {
                             )
                             .map_err(|e| e.to_string())?;
                         }
-                        writeln!(out, "{} {} | trigger pattern={} roll={:.4} p={:.2} fired={} | accent pattern={} roll={:.4} p={:.2} admitted={} | {} | parameters={}",
-                            trace.position,trace.part,trace.trigger.rhythm.active(),trace.trigger.roll,trace.trigger.probability,trace.trigger.admitted,
-                            trace.accent.rhythm.active(),trace.accent.roll,trace.accent.probability,trace.accent.admitted,result,serde_json::to_string(&trace.parameters).unwrap()).map_err(|e|e.to_string())?;
+                        let pinned = |p: bool| if p { " pinned" } else { "" };
+                        writeln!(out, "{} {} | trigger pattern={} roll={:.4}{} p={:.2} fired={} | accent pattern={} roll={:.4}{} p={:.2} admitted={} | {} | parameters={}",
+                            trace.position,trace.part,trace.trigger.rhythm.active(),trace.trigger.roll,pinned(trace.trigger.pinned),trace.trigger.probability,trace.trigger.admitted,
+                            trace.accent.rhythm.active(),trace.accent.roll,pinned(trace.accent.pinned),trace.accent.probability,trace.accent.admitted,result,serde_json::to_string(&trace.parameters).unwrap()).map_err(|e|e.to_string())?;
                     } else {
                         serde_json::to_writer(&mut out, &trace).map_err(|e| e.to_string())?;
                         writeln!(out).map_err(|e| e.to_string())?;

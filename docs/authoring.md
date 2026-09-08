@@ -34,6 +34,63 @@ There is no expression string syntax or custom language.
 Do not rename IDs casually: they address random decisions and Part references.
 Keyed table order carries no musical meaning.
 
+## Pins
+
+Every random decision is a pure function of the seed and an address, so one draw can
+be forced without moving any other. A pin names the **dice**, never the outcome:
+
+```toml
+[[pins]]
+at = { roll = "fire", voice = "hat", bar = 2, slot = 3 }
+u  = 0.99
+```
+
+`roll` says which dice; `voice` (a Part) or `accent` (a shared accent lane) says whose;
+`bar` and `slot` say when, both 1-based, the slot counted on the owner's own grid (a
+`1/16T` Part has 24 slots per bar; a shared accent lane has 16). `u` is the number the
+draw returns instead of the hash, `0 <= u < 1`; the composition still decides what
+`u` means at that address, so a pinned `0.5` can admit under one probability and refuse
+under another. A voice rolls `fire` (trigger admission), `accent`, `burst` (ratchet),
+`flam`, `ghost`, `timing` and `velocity`; a shared accent lane rolls `accent`. A pin on a
+dice the owner never rolls — `burst` without a ratchet, `ghost` without a groove — is an
+error, as is a pin on a Part or lane that does not exist. A composition carries at most
+256 pins.
+
+**The slot is counted inside the bar it names, not by multiplying a per-bar count.** The
+grid is continuous — step *n* is at tick *n·cell* — and a dotted cell does not divide the
+3840-tick bar, so bars hold different numbers of onsets and only the first starts on a bar
+line. A `1/8.` Part (720 ticks) has six slots in bar 1, at ticks 0…3600, and five in bar 2,
+the first at 4320; `bar = 2, slot = 1` is that 4320. The error for a slot past the end names
+the count for the bar it was asked about, because there is no single count. That count can
+be zero: `1/1.` is 5760 ticks, longer than a bar, so its onsets fall at 0, 5760, 11520, …
+and every third bar holds none at all. No slot addresses such a bar, and a pin that names
+one is refused for the empty bar, not for its slot number.
+
+`velocity` is drawn wherever the touch closure runs, which any one of `groove.offbeat_gain`,
+`groove.after_gap` or `groove.humanize` opens — not `humanize` alone. `timing` is drawn on
+every admitted event and again for the next onset's reservation, so it needs no groove at
+all and is never refused. Both are the same die whether or not the amount is audible: with
+no `humanize` the jitter is zero ticks and the velocity factor is 1.0. **A pin names the
+die, not its effect** — pinning `timing` under a groove with no `humanize` forces a draw
+that moves the onset by exactly zero.
+
+The address is the engine's, so the pin obeys the lane's `probability_mode`: under
+`phrase_locked` the dice at bar 2 slot 3 is rolled again every phrase, and the pin lands
+every time; under `continuous` the address is the step index itself, and the pin lands once
+per pass of that step **on the clock the section runs**. That clock is the qualification: a
+section with `phase = "restart"` restarts the step index, so a continuous pin at bar 1 slot 1
+is consulted again at the head of every restarting section; under `phase = "continue"` the
+clock is transport-relative and the step passes once. With no arrangement there is one clock
+and a continuous pin lands exactly once. Two pins that resolve to one dice are an error that
+names both shapes. `inspect` marks a forced draw with `pinned = true` on the **decision** it
+reached — trigger, accent and shared-accent admissions carry the flag, and so do the ornament
+gates (`ornaments.ratchet.pinned`, `ornaments.flam.pinned`), where a refused gate's
+`suppression_reason = "probability"` otherwise reads as chance when the roll was authored; the
+touch traces do not yet, so a forced `timing` or `velocity` is read from its rolled value in
+the trace rather than from a flag. Pins live with the composition, not a phrase:
+every phrase and section inherits them, and the seed is not part of the address, so changing
+the seed rerolls everything except the pinned draws — which is what pins are for.
+
 ## Sharing musical knowledge
 
 Group related definitions into files such as `patterns/drums.toml` and

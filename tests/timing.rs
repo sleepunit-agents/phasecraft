@@ -1,6 +1,6 @@
 use phasecraft::music::{
     Composition, STEP_TICKS,
-    resolve::{Compiled, MidiEvent, realize, resolve_step},
+    resolve::{Compiled, Dice, MidiEvent, realize, resolve_step},
     time::NoteValue,
 };
 fn song(fields: &str) -> Composition {
@@ -305,9 +305,17 @@ fn ornament_trace_separates_gate_refusal_from_boundary_suppression() {
     event.tick = 120;
     // Ratchet requests 120/200/280; 280 cannot close before exclusive upper 281.
     // Flam requests 80, before lower 100. Both gates admitted independently.
-    let (hits, trace) = c.parts[0]
-        .ornaments
-        .expand(123, "hat", |_| 0, &event, 240, 100..281);
+    let (hits, trace) = c.parts[0].ornaments.expand(
+        Dice {
+            seed: 123,
+            pins: &[],
+        },
+        "hat",
+        |_| 0,
+        &event,
+        240,
+        100..281,
+    );
     assert_eq!(hits.iter().map(|e| e.tick).collect::<Vec<_>>(), [120, 200]);
     let r = trace.ratchet.unwrap();
     let f = trace.flam.unwrap();
@@ -325,9 +333,17 @@ fn ornament_trace_separates_gate_refusal_from_boundary_suppression() {
     assert!(!trace.flam_active);
 
     // One more tick admits the last tail; equality with lower admits the grace.
-    let (hits, trace) = c.parts[0]
-        .ornaments
-        .expand(123, "hat", |_| 0, &event, 240, 80..282);
+    let (hits, trace) = c.parts[0].ornaments.expand(
+        Dice {
+            seed: 123,
+            pins: &[],
+        },
+        "hat",
+        |_| 0,
+        &event,
+        240,
+        80..282,
+    );
     assert_eq!(
         hits.iter().map(|e| e.tick).collect::<Vec<_>>(),
         [80, 120, 200, 280]
@@ -340,9 +356,17 @@ fn ornament_trace_separates_gate_refusal_from_boundary_suppression() {
     let refused = song(
         "ornaments.ratchet={count=3,probability=0}\nornaments.flam={spacing='1/64T',probability=0}",
     );
-    let (hits, trace) = refused.parts[0]
-        .ornaments
-        .expand(123, "hat", |_| 0, &event, 240, 100..281);
+    let (hits, trace) = refused.parts[0].ornaments.expand(
+        Dice {
+            seed: 123,
+            pins: &[],
+        },
+        "hat",
+        |_| 0,
+        &event,
+        240,
+        100..281,
+    );
     assert_eq!(hits.len(), 1); // the source still sounds, outside either refused expansion
     assert_eq!(trace.ratchet_count, 1);
     assert!(!trace.flam_active);
