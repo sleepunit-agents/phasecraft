@@ -194,10 +194,15 @@ impl Compiled {
                 .filter_map(|r| r.envelope.as_ref().map(|e| e.history_steps()))
                 .max()
                 .unwrap_or(0);
-            let first = start
+            let mut first = start
                 .saturating_sub((envelope_steps + 1) * STEP_TICKS)
                 .max(lower)
                 / cell;
+            // Literal tails/gates may occupy their whole written span. Bars still own
+            // them, so the current bar's structural sources are sufficient for any seek.
+            if part.trigger.rhythm.literal_schedule().is_some() {
+                first = first.min(start / (16 * STEP_TICKS) * (16 * STEP_TICKS) / cell);
+            }
             let last = (end + cell + 240).min(upper.saturating_sub(1)) / cell;
             let mut audible = Vec::new();
             let mut history = Vec::new();
@@ -280,7 +285,11 @@ impl Compiled {
                 trace.trigger.admitted = false;
                 part_traces.insert(0, trace);
             }
-            if cell != STEP_TICKS || !part.ornaments.is_default() || anticipates(&part) {
+            if cell != STEP_TICKS
+                || !part.ornaments.is_default()
+                || anticipates(&part)
+                || part.trigger.rhythm.literal_schedule().is_some()
+            {
                 part_traces[0].sounding = Some(audible);
             }
             part_traces[0].parameters = parameters;
@@ -312,6 +321,8 @@ impl Compiled {
         let lower = lower.max(step * cell / bar * bar);
         let upper = upper.min((step * cell / bar + 1) * bar);
         let mut trace = self.raw_at(step * cell)[index].clone();
+        let literal = trace.trigger.rhythm.literal_attack();
+        let span = literal.map_or(cell, |a| a.span_ticks);
         use crate::music::groove::{GrooveTrace, RunContour};
         let run_context = part.groove.run != RunContour::None;
         let lookbehind = part
@@ -398,7 +409,9 @@ impl Compiled {
                 let offset = onset as i64 - event.tick as i64;
                 event.tick = onset;
                 // Positive groove retains the original gate boundary. Anticipation may cross it.
-                event.duration_ticks = event.duration_ticks.min((step + 1) * cell - event.tick - 1);
+                event.duration_ticks = event
+                    .duration_ticks
+                    .min((step * cell + span).saturating_sub(event.tick + 1).max(1));
                 event.groove = Some(GrooveTrace {
                     offset_ticks: offset.max(0) as u64,
                     advance_ticks: (-offset).max(0) as u64,
@@ -417,24 +430,50 @@ impl Compiled {
             }
         }
         if let Some(event) = &mut trace.event {
-            // Reserve the next cell's earliest onset (including a possible grace hit).
-            let next_tick = ((step + 1) * cell) as i128 + i128::from(offset(&part, c, step + 1));
+            // Literal rests are not possible attacks. Reserve the next structural main
+            // onset, including its possible grace, rather than an intervening empty cell.
+            let next_source = match part.trigger.rhythm.literal_schedule() {
+                Some(p) => p.schedule().next_after(step * cell).unwrap_or(upper),
+                None => (step + 1) * cell,
+            };
+            let next_tick = next_source as i128 + i128::from(offset(&part, c, next_source / cell));
             let next_first = (next_tick
                 - i128::from(part.ornaments.flam.as_ref().map_or(0, |f| f.spacing.0)))
             .max(i128::from(event.tick + 2)) as u64;
             let end = upper.min(next_first);
             event.duration_ticks = event
                 .duration_ticks
-                .min(cell - 1)
+                .min(span - 1)
                 .min(end.saturating_sub(event.tick + 1))
                 .max(1);
-            if !part.ornaments.is_default() {
-                let (mut hits, ornaments) = part.ornaments.expand(
+            let mut expansion = part.ornaments.clone();
+            if let Some(a) = literal {
+                // The string owns count/span. The external ratchet is only its optional
+                // gate configuration; it cannot add tails to a plain literal hit.
+                expansion.ratchet = (a.ratchet > 1).then(|| {
+                    let configured = part.ornaments.ratchet.as_ref();
+                    crate::music::ornament::Ratchet {
+                        count: a.ratchet,
+                        probability: configured.map_or(
+                            if a.draw == crate::music::notation::Draw::Tail {
+                                0.5
+                            } else {
+                                1.0
+                            },
+                            |r| r.probability,
+                        ),
+                        probability_mode: configured
+                            .map_or(ProbabilityMode::PhraseLocked, |r| r.probability_mode),
+                    }
+                });
+            }
+            if !expansion.is_default() {
+                let (mut hits, ornaments) = expansion.expand(
                     c.dice(),
                     &part.id,
                     |mode| decision_identity(c, cell, step, mode),
                     event,
-                    cell,
+                    span,
                     lower..end,
                 );
                 // Store the main hit separately for existing consumers; extras are audible events too.

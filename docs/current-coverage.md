@@ -12,6 +12,7 @@ build every named feature immediately.
 
 | Requirement or later request | Current implementation | Listening / validation |
 | --- | --- | --- |
+| Literal triggers (M1.2) | Written patterns prepared at load, exact main onsets, full-span ratchets, pinned admission, seek-safe tails and pitch per attack | until-stop-derived sub/snare and `tests/literal_playback.rs` |
 | Deterministic local probability (§14–18) | SHA-256 decision addresses isolate Parts, lanes and decisions; phrase-locked/continuous modes; `[[pins]]` force one address's draw before the hash | Probability studies, original 35-bar golden traces, RNG-isolation tests, pin isolation tests in `tests/engine.rs` |
 | Independent rhythms and reset (§9–13, 19, 25, 32) | Recursive five-operator Boolean algebra; signed leaf rotation; independent Euclidean lengths; per-leaf reset | Original hat, algebra/phase studies, cycle tests |
 | Generator-independent realization (§12) | Semantic events in a requested window; cycle spans describe structural phase alignment without allocating an LCM-sized pattern | `resolve::realize`, `tests/cycles.rs`; same resolution path as playback |

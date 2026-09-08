@@ -27,7 +27,12 @@ A rhythm with `steps` implies `type = "euclidean"`; one with `op` implies
 `{ type = "part", id = "kick", mode = "hits" }`. The reference mode remains
 required. An explicit `type` wins; contradictory fields are rejected. A partial
 override such as `{ pulses = 4 }` inherits its existing type and other fields.
-There is no expression string syntax or custom language.
+For written rhythms, `trigger.pattern = "x ~ ~ [~ x]"` supplies a literal trigger.
+Its explicit form is `rhythm = { type = "literal", pattern = "x ~ ~ [~ x]" }`;
+`pattern` also infers the literal type. The closed grammar, probability markers,
+cycle length and rotation are described in [notation.md](notation.md). A literal
+currently occupies the trigger root; it cannot be nested in Boolean expressions or
+used as an accent source.
 
 `[parts.hat]` supplies ID `hat`; writing `id` there is an error. Existing
 `[[parts]]` entries with explicit `id`, and single `[part]` files, remain valid.
@@ -52,7 +57,8 @@ draw returns instead of the hash, `0 <= u < 1`; the composition still decides wh
 `u` means at that address, so a pinned `0.5` can admit under one probability and refuse
 under another. A voice rolls `fire` (trigger admission), `accent`, `burst` (ratchet),
 `flam`, `ghost`, `timing` and `velocity`; a shared accent lane rolls `accent`. A pin on a
-dice the owner never rolls — `burst` without a ratchet, `ghost` without a groove — is an
+dice the owner never rolls — `burst` without a ratchet (written `*n` for literal
+triggers), `ghost` without a groove — is an
 error, as is a pin on a Part or lane that does not exist. A composition carries at most
 256 pins.
 

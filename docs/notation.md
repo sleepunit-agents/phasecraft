@@ -145,9 +145,10 @@ one, which is the reason the contract is a refusal and not a clamp.
 
 ## The leaf in the engine
 
-The resolver integration described below is still pending. Its preparation seam is
+Literal trigger playback is implemented. Its preparation seam is
 available as `music::rhythm::literal::Schedule::prepare(pattern, cycle_bars,
-subdivision, rotate)`. It does not add authoring syntax or change playback yet.
+subdivision, rotate)`. A composition prepares each literal trigger before it becomes
+a playback snapshot; cold seeks read the same immutable schedule.
 
 Preparation parses once and renders **the complete material period**, checking all
 reachable branches for hit-only tokens, duplicate main onsets and exact subdivision
@@ -170,10 +171,10 @@ Storage follows the event count, not the number of ticks, and clones share it.
 no allocation and no parser or renderer work. It is a periodic phase query even at
 `u64::MAX`; it does not construct an absolute event or authorize a note past the tick
 grid. It does not draw probability, displace timing, truncate tails or emit MIDI.
-Admission and boundary suppression will use the retained metadata downstream.
-The future resolver must prepare schedules before making a snapshot available for
-playback, including cold start, seeks and edits; this API does not yet establish that
-integration or close t-494 for live playback. The work cap is not a wall-clock bound.
+The resolver uses the retained metadata downstream. Its absolute admission check also
+requires the complete structural span to fit the tick grid; a valid phase lookup alone
+does not establish that. Resource limits apply per source, and the work cap is not a
+wall-clock or whole-composition bound. Live transport deadline work remains on t-494.
 
 `Expression::Literal { pattern, cycle_bars, rotate }` joins Euclidean, Binary and Part as a
 rhythm leaf. At a Part subdivision step whose tick is `t`:
@@ -189,6 +190,29 @@ rhythm leaf. At a Part subdivision step whose tick is `t`:
   Negative values advance it. This includes alternations and polymeters, rather than
   wrapping each bar separately. It moves the playhead, not the cycle origin, so a
   return group containing the leaf keeps its phase.
+
+The authored convenience is `[parts.NAME.trigger] pattern = "x ~ ~ [~ x]"`.
+It expands to `rhythm = { type = "literal", pattern = "x ~ ~ [~ x]", cycle_bars = 1,
+rotate = 0 }`; the explicit rhythm table also supports cycle lengths of 1..1024 bars.
+A literal currently occupies the **trigger root**. Nesting it inside a Boolean rhythm
+or using it as an accent source is refused: those combinations do not yet define which
+span and ratchet metadata to retain. A Part reference may read a literal Part's main
+structure/admission; it does not treat the tails as new structural hits.
+
+`x?` uses `trigger.probability` (set it explicitly; the existing lane default is 1).
+Plain `x` and the main attack of `x*n?` are unconditional. For `*n`, the notation owns
+count and span. An authored `ornaments.ratchet` supplies its probability/mode, even if
+no `?` is written; its count is replaced by the notation's count. Without that gate,
+`*n` opens fully and `*n?` uses a 0.5 phrase-locked tail gate. A plain literal hit gets
+no tails from an external ratchet count. Existing `fire`/`burst` pin addresses are used;
+this slice does not migrate the versioned hash to the example engine's address spelling.
+
+Groove displacement is applied once to the source. Tails keep their offsets over its
+written span. The next possible structural main onset reserves its earliest grace;
+empty grid cells do not truncate literal tails. Bar/section ownership still clips attacks
+and releases, and random seeks include earlier sources in the bar that can sound now.
+Pitch is sampled separately at each final attack, including tails. See
+`examples/quickstart/literal.toml` for the sub and snare figures adapted from until-stop.
 
 A main onset that is not a multiple of the Part's subdivision cell is a **validation error**
 naming the pattern, the onset, and the fix ("set `subdivision` finer, or write `*n`"). Tail
@@ -220,7 +244,7 @@ file first, with a use in a piece that needs it.
 | `x@3 [~ x]` | 0 (span 3/4), 7/8 |
 | `{x ~ x x ~ x ~}%16` | element `(16·k + j) mod 7` at slot *j*: cycle 0 slots 0 2 3 5 7 9 10 12 14 · cycle 1 slots 0 1 3 5 7 8 10 12 14 15 · period 7 cycles |
 | `x(5,8)` | 0, 2/8, 4/8, 5/8, 7/8 … by `(i·5) mod 8 < 5`: i = 0,2,4,5,7 |
-| `<c1 c1 eb1 bb0>` | one note per cycle: c1, c1, eb1, bb0, repeating |
+| `<c1 ~ eb1 bb0>` | c1, no new value, eb1, bb0; the pitch consumer holds c1 through the second cycle |
 | `[1,3,5,7,9]` | five simultaneous values at 0 |
 | `1 2 3 ~ 5 ~ 7 8 1 ~ 3 4 ~ 6 7 ~` | sixteen slots of slice indices, rests at 3, 5, 9, 12, 15 |
 | `~ 12*6` | one event at 1/2, token 12, ratchet 6 over span 1/2 |

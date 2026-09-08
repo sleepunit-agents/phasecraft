@@ -99,7 +99,8 @@ pub enum Token {
     Name(String),
 }
 /// Where a `?` puts its draw: on the hit itself, or on a ratchet's tail.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Draw {
     None,
     Hit,

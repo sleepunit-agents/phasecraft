@@ -1,0 +1,20 @@
+# Native adaptation of until-stop's sub and snare: the example comes first.
+# This is a two-voice study, not the complete scene/lane-driven piece.
+tempo = 126
+seed = 91827
+phrase_bars = 4
+
+[parts.sub]
+trigger.pattern = "x ~ ~ [~ x]"
+note.pattern = "<c1 ~ eb1 bb0>" # bar 2 keeps c1 while both triggers still sound
+accent.rhythm = { steps = 16, pulses = 0 }
+output.channel = 2
+output.note = 48
+
+[parts.snare]
+trigger.pattern = "~ x ~ [x x*3?]"
+accent.rhythm = { steps = 16, pulses = 0 }
+output.channel = 10
+output.note = 38
+# The ? gates one three-attack burst at 0.5. Its main backbeat always sounds;
+# the written final half-beat spans 480 ticks, with tails at +160 and +320.

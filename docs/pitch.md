@@ -13,9 +13,9 @@ across bars — is designed in TO-PHASECRAFT § E and not built.
 [parts.sub]
 kit = "sub"                          # output.note = 48 from the kit
 [parts.sub.trigger]
-rhythm = { steps = 16, pulses = 2 }
+pattern = "x ~ ~ [~ x]"
 [parts.sub.note]
-pattern = "<c1 c1 eb1 bb0>"          # one note per bar, four-bar cycle
+pattern = "<c1 ~ eb1 bb0>"          # bar 2 holds c1; four-bar cycle
 
 [parts.metal.pitch]
 pattern = "<0 0 -5 7>"               # semitones from the kit note, one per bar
@@ -53,8 +53,8 @@ offsets and ornament expansion — and the result is stamped on the event as `no
 what `to_midi` sends and what `inspect` prints. A `timing` pin can therefore change the
 sounding note when it moves an attack across a value onset. Value cycle lines are whole-bar
 boundaries: bar ownership clips an early attack to its own bar, so a timing pin cannot
-reach back across that line to select the previous cycle's value. A Part with neither lane carries no `note`
-field on its events, so an unpitched piece's trace and MIDI are byte-identical to before.
+reach back across that line to select the previous cycle's value. A Part with neither lane
+carries no `note` field on its events, so an unpitched piece's trace and MIDI are byte-identical to before.
 
 Under an arrangement or a router the tick is the section's or scene's musical tick, the
 same clock every other decision in the Part reads. A scene overrides a lane the way it

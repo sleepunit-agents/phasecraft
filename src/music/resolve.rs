@@ -166,8 +166,28 @@ pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
                 let (lane, decision, mode) = match at.roll.as_str() {
                     "fire" => ("trigger", "admission", part.trigger.probability_mode),
                     "accent" => ("accent", "admission", part.accent.probability_mode),
+                    "burst"
+                        if part
+                            .trigger
+                            .rhythm
+                            .literal_schedule()
+                            .is_some_and(|p| !p.schedule().has_ratchet()) =>
+                    {
+                        return Err(format!(
+                            "{}: {voice:?} has no literal ratchet to draw for",
+                            shape()
+                        ));
+                    }
                     "burst" => match &part.ornaments.ratchet {
                         Some(r) => ("ratchet", "admission", r.probability_mode),
+                        None if part
+                            .trigger
+                            .rhythm
+                            .literal_schedule()
+                            .is_some_and(|p| p.schedule().has_ratchet()) =>
+                        {
+                            ("ratchet", "admission", ProbabilityMode::PhraseLocked)
+                        }
                         None => {
                             return Err(format!(
                                 "{}: {voice:?} has no ratchet to draw for",
@@ -366,6 +386,14 @@ fn admission(
         (step * cell % (c.phrase_steps() * STEP_TICKS)) / cell,
         reference,
     );
+    // The literal marker gates a main hit only for `x?`. Plain hits and the main
+    // hit of `x*n?` are structural; the latter's one draw belongs to tail expansion.
+    let probability = match &rhythm {
+        RhythmTrace::Literal {
+            attack: Some(a), ..
+        } if a.draw != super::notation::Draw::Hit => 1.0,
+        _ => probability,
+    };
     let draw = c.dice().roll(part_id, name, event_identity, "admission");
     let admitted = rhythm.active() && draw.u < probability;
     DecisionTrace {
