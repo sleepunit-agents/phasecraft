@@ -47,6 +47,35 @@ pub struct OrnamentTrace {
     pub flam_roll: Option<f64>,
     pub ratchet_count: u8,
     pub flam_active: bool,
+    pub ratchet: Option<ExpansionTrace>,
+    pub flam: Option<ExpansionTrace>,
+}
+/// One ornament gate and its expansion, before neighboring attacks are merged.
+/// A refused gate has zero counts; the unornamented source hit is not its output.
+#[derive(Clone, Debug, Serialize)]
+pub struct ExpansionTrace {
+    pub probability: f64,
+    pub admitted_count: u8,
+    pub emitted_count: u8,
+    pub suppression_reason: Option<SuppressionReason>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SuppressionReason {
+    Probability,
+    LowerBound,
+    UpperBound,
+}
+impl ExpansionTrace {
+    fn new(probability: f64, roll: f64, count: u8) -> Self {
+        let admitted = roll < probability;
+        Self {
+            probability,
+            admitted_count: if admitted { count } else { 0 },
+            emitted_count: 0,
+            suppression_reason: (!admitted).then_some(SuppressionReason::Probability),
+        }
+    }
 }
 impl Ornaments {
     pub fn is_default(&self) -> bool {
@@ -90,11 +119,15 @@ impl Ornaments {
             .as_ref()
             .map(|r| roll("ratchet", r.probability_mode));
         let flam_roll = self.flam.as_ref().map(|f| roll("flam", f.probability_mode));
-        let count = self
+        let mut ratchet = self
             .ratchet
             .as_ref()
-            .filter(|r| ratchet_roll.unwrap() < r.probability)
-            .map_or(1, |r| r.count);
+            .map(|r| ExpansionTrace::new(r.probability, ratchet_roll.unwrap(), r.count));
+        let mut flam = self
+            .flam
+            .as_ref()
+            .map(|f| ExpansionTrace::new(f.probability, flam_roll.unwrap(), 1));
+        let count = ratchet.as_ref().map_or(1, |r| r.admitted_count.max(1));
         let mut hits = Vec::new();
         for i in 0..count {
             let mut hit = event.clone();
@@ -109,11 +142,17 @@ impl Ornaments {
                 .max(1);
             hits.push(hit);
         }
+        if let Some(r) = &mut ratchet
+            && r.admitted_count > 0
+        {
+            r.emitted_count = hits.len() as u8;
+            if r.emitted_count < r.admitted_count {
+                r.suppression_reason = Some(SuppressionReason::UpperBound);
+            }
+        }
         let mut flam_active = false;
-        if let Some(f) = self
-            .flam
-            .as_ref()
-            .filter(|f| flam_roll.unwrap() < f.probability)
+        if let Some(f) = self.flam.as_ref()
+            && flam.as_ref().is_some_and(|f| f.admitted_count > 0)
             && let Some(tick) = event.tick.checked_sub(f.spacing.0).filter(|&t| t >= lower)
         {
             let mut grace = event.clone();
@@ -123,6 +162,14 @@ impl Ornaments {
             hits.insert(0, grace);
             flam_active = true;
         }
+        if let Some(f) = &mut flam
+            && f.admitted_count > 0
+        {
+            f.emitted_count = u8::from(flam_active);
+            if !flam_active {
+                f.suppression_reason = Some(SuppressionReason::LowerBound);
+            }
+        }
         (
             hits,
             OrnamentTrace {
@@ -130,6 +177,8 @@ impl Ornaments {
                 flam_roll,
                 ratchet_count: count,
                 flam_active,
+                ratchet,
+                flam,
             },
         )
     }
