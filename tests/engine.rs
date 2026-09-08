@@ -518,9 +518,11 @@ fn a_bar_the_grid_steps_over_is_named_not_panicked_on() {
     // where the bar it names really holds that slot — including when it holds none.
     //
     // The expected count is the grid's onsets in the bar, enumerated tick by tick — not the
-    // engine's closed form (`end.div_ceil(cell) - start.div_ceil(cell)`). With the closed form
-    // as its own oracle this sweep could only catch a panic, never a count that is off by one:
-    // code and assertion would move together. Enumeration owes the formula nothing.
+    // engine's closed form (`end.div_ceil(cell) - start.div_ceil(cell)`). Restating that form
+    // here would still catch the engine drifting away from it; what it could not catch is the
+    // form being wrong in both places at once. Test and engine were written in one commit from
+    // one derivation, so that is the failure this sweep was open to. Enumeration owes the
+    // derivation nothing.
     for cell in [1, 2, 4, 8, 16, 32, 64]
         .iter()
         .flat_map(|d| ["", "T", "."].iter().map(move |s| format!("1/{d}{s}")))
