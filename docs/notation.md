@@ -145,6 +145,36 @@ one, which is the reason the contract is a refusal and not a clamp.
 
 ## The leaf in the engine
 
+The resolver integration described below is still pending. Its preparation seam is
+available as `music::rhythm::literal::Schedule::prepare(pattern, cycle_bars,
+subdivision, rotate)`. It does not add authoring syntax or change playback yet.
+
+Preparation parses once and renders **the complete material period**, checking all
+reachable branches for hit-only tokens, duplicate main onsets and exact subdivision
+alignment. Alignment is checked on rational onsets before flooring to ticks, and on
+the period's return to the Part grid: `x` over one bar on a dotted-sixteenth grid is
+refused because its second onset, tick 3840, is off that grid. Each attack retains its
+own span, ratchet count and hit/tail draw flag. Ratchets require at least two ticks per
+child; `Attack::child_offset` reproduces the notation renderer's floor rule.
+
+This consumer accepts at most **4096 material cycles**, **2²⁰ total renderer visits**
+and **65,536 main events** in the prepared period. Work and storage are checked using
+the parser's conservative per-cycle bounds times the period, before any cycle is
+rendered. A refusal says the bound exceeds the policy, not that every cycle actually
+costs its worst case. These are consumer limits, not new grammar restrictions. They
+allow a complete sparse schedule instead of a cache with an unprepared-cycle fallback;
+long periods and large silent traversals are refused rather than deferred to playback.
+Storage follows the event count, not the number of ticks, and clones share it.
+
+`Schedule::at(tick)` returns only an exact main onset's metadata, with binary search,
+no allocation and no parser or renderer work. It is a periodic phase query even at
+`u64::MAX`; it does not construct an absolute event or authorize a note past the tick
+grid. It does not draw probability, displace timing, truncate tails or emit MIDI.
+Admission and boundary suppression will use the retained metadata downstream.
+The future resolver must prepare schedules before making a snapshot available for
+playback, including cold start, seeks and edits; this API does not yet establish that
+integration or close t-494 for live playback. The work cap is not a wall-clock bound.
+
 `Expression::Literal { pattern, cycle_bars, rotate }` joins Euclidean, Binary and Part as a
 rhythm leaf. At a Part subdivision step whose tick is `t`:
 
@@ -154,8 +184,11 @@ rhythm leaf. At a Part subdivision step whose tick is `t`:
 - the step's **draw** flag says whether `?` was written, and whether it gates the hit or the
   tail; the resolver rolls at `step/<part>/<bar>/<slot>` (hit) or `<part>/burst/<bar>/<slot>`
   (tail) — the addresses `until-stop` already names;
-- `rotate = r` reads the pattern `r` Part steps later, like signed Euclidean rotation. It moves
-  the playhead, not the cycle origin, so a return group containing the leaf keeps its phase.
+- `rotate = r` delays material by `r` Part steps, like signed Euclidean rotation:
+  the source position is `t - r * cell`, wrapped over the complete material period.
+  Negative values advance it. This includes alternations and polymeters, rather than
+  wrapping each bar separately. It moves the playhead, not the cycle origin, so a
+  return group containing the leaf keeps its phase.
 
 A main onset that is not a multiple of the Part's subdivision cell is a **validation error**
 naming the pattern, the onset, and the fix ("set `subdivision` finer, or write `*n`"). Tail
