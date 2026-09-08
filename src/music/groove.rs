@@ -74,6 +74,22 @@ impl Groove {
     pub fn is_default(&self) -> bool {
         self == &Self::default()
     }
+    /// The gate on the touch closure, and so the exact condition under which `humanize_timing`
+    /// and `humanize_velocity` are drawn there: offbeat gain, gap response and humanize each open
+    /// it alone. The engine and the pin loader both read this, so a pin's eligibility cannot drift
+    /// from the draw it names (Mark's review of #9 at `c490b51`: the loader accepted only the third
+    /// disjunct and refused a pin at an address the engine really does roll).
+    pub fn draws_touch(&self) -> bool {
+        self.offbeat_gain != 1.0 || self.after_gap.is_some() || self.humanize.is_some()
+    }
+    /// The mode those draws hash under: `humanize.mode` when authored, else the default. A forced
+    /// draw can have a neutral amount — with no `humanize` the jitter is zero ticks and the
+    /// velocity factor is 1.0 — but the die is still rolled, and a pin names the die.
+    pub fn touch_mode(&self) -> ProbabilityMode {
+        self.humanize
+            .as_ref()
+            .map_or_else(|| Humanize::default().mode, |h| h.mode)
+    }
     pub fn validate(&self) -> Result<(), String> {
         if !self.swing.is_finite() || !(0.5..=0.75).contains(&self.swing) {
             return Err("groove.swing must be within 0.5..0.75 (0.5 is straight)".into());
@@ -104,24 +120,41 @@ impl Groove {
         }
         Ok(())
     }
-    pub fn timing_jitter(&self, seed: u64, id: &str, step: u64, phrase_steps: u64) -> (f64, i64) {
+    pub fn timing_jitter(
+        &self,
+        dice: super::resolve::Dice,
+        id: &str,
+        step: u64,
+        phrase_steps: u64,
+    ) -> (f64, i64) {
         let h = self.humanize.clone().unwrap_or_default();
         let identity = match h.mode {
             ProbabilityMode::PhraseLocked => step % phrase_steps,
             ProbabilityMode::Continuous => step,
         };
-        self.timing_jitter_identity(seed, id, identity)
+        self.timing_jitter_identity(dice, id, identity)
     }
-    pub fn timing_jitter_identity(&self, seed: u64, id: &str, identity: u64) -> (f64, i64) {
+    pub fn timing_jitter_identity(
+        &self,
+        dice: super::resolve::Dice,
+        id: &str,
+        identity: u64,
+    ) -> (f64, i64) {
         let h = self.humanize.clone().unwrap_or_default();
-        let roll = super::resolve::decision_roll(seed, id, "groove", identity, "humanize_timing");
+        let roll = dice.roll(id, "groove", identity, "humanize_timing").u;
         (
             roll,
             ((roll * 2.0 - 1.0) * h.timing_ticks as f64).round() as i64,
         )
     }
-    pub fn onset_offset(&self, seed: u64, id: &str, step: u64, phrase_steps: u64) -> u64 {
-        (self.offset(step) + self.timing_jitter(seed, id, step, phrase_steps).1)
+    pub fn onset_offset(
+        &self,
+        dice: super::resolve::Dice,
+        id: &str,
+        step: u64,
+        phrase_steps: u64,
+    ) -> u64 {
+        (self.offset(step) + self.timing_jitter(dice, id, step, phrase_steps).1)
             .clamp(0, super::STEP_TICKS as i64 - 2) as u64
     }
     pub fn offset(&self, step: u64) -> i64 {

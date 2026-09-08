@@ -127,7 +127,9 @@ Each source trace with an admitted trigger and configured ornaments includes
 `admitted_count`, `emitted_count`, and `suppression_reason`. Probability is currently
 constant configuration; the trace stores the comparand itself rather than requiring
 the reader to reconstruct it from the piece. The existing `ratchet_roll` and
-`flam_roll` are the corresponding draws.
+`flam_roll` are the corresponding draws. When that draw was forced by a `[[pins]]`
+entry the record also carries `pinned = true` (omitted when false), so a reason of
+`"probability"` beside an authored roll is not mistaken for chance.
 
 A refused ornament has both counts zero and reason `"probability"`; its ordinary
 source hit still exists. An admitted ratchet counts its main hit and tails (2–8),
