@@ -104,6 +104,14 @@ and 1 more for each of the two visits that reach it, so a plain `x` costs 3 unit
 named calls. The overcount is deliberate and safe in the only direction that matters — it can
 refuse a pattern the renderer would have survived, never admit one it would not.
 
+Unit tests count actual `render_step` and `render_atom` entries and every Euclid slot,
+including inactive slots. The counter fails during traversal if it exceeds either the
+pattern's parsed work bound or the global cap. This replaces the machine-speed-dependent
+batch timeout (t-581); it checks the work proof without making a latency claim. The counter
+exists only in unit-test builds and does not cover an arbitrary hang inside unmetered
+arithmetic or sorting. Exact-count cases check the meter separately from the parser's
+conservative price, and a deliberately under-budgeted silent pattern checks early failure.
+
 4096 is a provisional policy cap on output that a real piece may argue up; it carries no claim
 about Part grids, since the leaf is not wired to a Part yet. 2²⁰ is a practicality cap with
 headroom over the dense patterns a piece is likely to write: the event-saturating
