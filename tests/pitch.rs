@@ -305,9 +305,14 @@ fn value_preparation_refuses_periods_it_cannot_hold_exactly() {
     let pattern = format!("<{inner} {}>", vec!["~"; 64].join(" "));
     let error = ValueLane::parse(&pattern, 1).unwrap_err();
     assert!(
-        error.contains("prepared value period exceeds 4096"),
+        error.contains("repeats every 4355 cycles") && error.contains("limited to 4096"),
         "{error}"
     );
+    let unrepresentable = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53]
+        .map(|n| format!("<c1{}>", " ~".repeat(n - 1)))
+        .join(" ");
+    let error = ValueLane::parse(&unrepresentable, 1).unwrap_err();
+    assert!(error.contains("cycle period exceeds u64"), "{error}");
     // A supported sparse period holds indefinitely, including the very last silent cycle.
     let pattern = format!("<c1 {}>", vec!["~"; 4095].join(" "));
     let lane = ValueLane::parse(&pattern, 1).unwrap();

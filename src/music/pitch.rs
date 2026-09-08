@@ -63,14 +63,20 @@ impl TryFrom<ValueLaneFile> for ValueLane {
         let parsed = Pattern::parse(&file.pattern)
             .map_err(|e| format!("pattern {:?}: {e}", file.pattern))?;
         let refuse = |why: String| format!("pattern {:?}: {why}", file.pattern);
-        let cycles = parsed
-            .period_cycles()
-            .filter(|&n| n <= MAX_HELD_CYCLES)
-            .ok_or_else(|| {
-                refuse(format!(
-                    "prepared value period exceeds {MAX_HELD_CYCLES} cycles"
-                ))
-            })?;
+        let cycles = match parsed.period_cycles() {
+            None => {
+                return Err(refuse(
+                    "the pattern's cycle period exceeds u64; its value period cannot be prepared"
+                        .into(),
+                ));
+            }
+            Some(n) if n > MAX_HELD_CYCLES => {
+                return Err(refuse(format!(
+                    "the pattern repeats every {n} cycles; prepared value periods are limited to {MAX_HELD_CYCLES}"
+                )));
+            }
+            Some(n) => n,
+        };
         let (work, events) = parsed.render_bounds();
         if work
             .checked_mul(cycles)
