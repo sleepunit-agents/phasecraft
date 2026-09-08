@@ -676,6 +676,22 @@ fn kit_errors_in_a_library_file_name_that_file_not_the_composition() {
         e.contains(&lib) && e.contains("kit.bad") && e.contains("kit.nowhere"),
         "{e}"
     );
+    // A control mapping, inline and through an alias: the rule is output-only, so it holds
+    // in the kit file, and the file is named either way (Mark's third read of #11, at 8c99f0e).
+    let e = read("[library.kit.bad]\nnote=36\n[library.kit.bad.controls.cutoff]\ncc=200\n")
+        .unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("cc 200"),
+        "{e}"
+    );
+    let e = read(
+        "[library.behaviors.'local.bad']\noutput={note=36,controls={cutoff={cc=74,channel=99}}}\n[library.kit]\nbad='local.bad'\n",
+    )
+    .unwrap_err();
+    assert!(
+        e.contains(&lib) && e.contains("kit.bad") && e.contains("channel 99"),
+        "{e}"
+    );
     // A duplicate names the file that declared the second copy.
     temp.write("kits/first.toml", "[library.kit.thud]\nnote=40\n");
     temp.write("kits/second.toml", "[library.kit.thud]\nnote=41\n");
@@ -882,4 +898,107 @@ fn an_instrument_that_declares_nothing_is_a_listed_gap_that_never_plays() {
     // The voice may close its own gap by declaring the control on its output.
     let ok = Composition::parse("tempo=132\nseed=1\n[library.kit.sub]\nnote=48\nchannel=2\n[part]\nid='sub'\nkit='sub'\ncompose=['std.backbeat','std.no_accent']\n[part.output.controls.cutoff]\ncc=74\n[part.parameters.cutoff]\nvalue=0.5\n").unwrap();
     assert_eq!(ok.parts[0].output.controls["cutoff"].cc, 74);
+}
+
+#[test]
+fn kit_control_mappings_are_checked_where_written_whether_or_not_a_voice_uses_them() {
+    // Mark's third read of #11 (at 8c99f0e): the where-written invariant held for an output's
+    // channel, note and gate but not for its `controls`, because the mapping rules lived in
+    // `accent::validate`, which only a Part ran. So every case below LOADED unused, and was
+    // refused only once a Part bound it — the bound refusals being the proof these were
+    // invalid under the existing rule, not a new restriction. The output-only half of that
+    // rule now lives in `Output::validate`; the profile-dependent half stays at the Part.
+    let piece = |kit: &str| {
+        format!(
+            "tempo=132\nseed=1\n{kit}[part]\nid='x'\ncompose=['std.backbeat','std.no_accent']\n[part.output]\nnote=36\n"
+        )
+    };
+    let err = |kit: &str| Composition::parse(&piece(kit)).unwrap_err();
+    // Each mapping fault, written inline and reached through an alias.
+    for (mapping, expect) in [
+        ("cc=200", "cc 200"),
+        ("cc=74,channel=99", "channel 99"),
+        ("cc=74,default=2.0", "default 2"),
+        ("cc=74,default=nan", "default NaN"),
+    ] {
+        let e = err(&format!(
+            "[library.kit.bad]\nnote=36\ncontrols={{cutoff={{{mapping}}}}}\n"
+        ));
+        assert!(
+            e.contains("kit.bad") && e.contains("\"cutoff\"") && e.contains(expect),
+            "inline {mapping}: {e}"
+        );
+        let e = err(&format!(
+            "[library.behaviors.'local.bad']\noutput={{note=36,controls={{cutoff={{{mapping}}}}}}}\n[library.kit]\nbad='local.bad'\n"
+        ));
+        assert!(
+            e.contains("kit.bad") && e.contains("\"cutoff\"") && e.contains(expect),
+            "alias {mapping}: {e}"
+        );
+    }
+    // A blank control name, both ways.
+    let e = err("[library.kit.bad]\nnote=36\ncontrols={''={cc=74}}\n");
+    assert!(
+        e.contains("kit.bad") && e.contains("cannot be empty"),
+        "{e}"
+    );
+    let e = err(
+        "[library.behaviors.'local.bad']\noutput={note=36,controls={''={cc=74}}}\n[library.kit]\nbad='local.bad'\n",
+    );
+    assert!(
+        e.contains("kit.bad") && e.contains("cannot be empty"),
+        "{e}"
+    );
+    // More mappings than an accent profile can drive is an output-only fact too.
+    let nine: String = (1..=9).map(|i| format!("c{i}={{cc={i}}},")).collect();
+    let e = err(&format!(
+        "[library.kit.bad]\nnote=36\ncontrols={{{nine}}}\n"
+    ));
+    assert!(e.contains("kit.bad") && e.contains("at most 8"), "{e}");
+    // The good entry still loads unused — valid cc, channel and default.
+    Composition::parse(&piece(
+        "[library.kit.synth]\nnote=60\ncontrols={cutoff={cc=74,channel=2,default=0.5}}\n",
+    ))
+    .unwrap();
+}
+
+#[test]
+fn a_voice_cannot_rescue_a_bad_kit_control_mapping_by_overlaying_it() {
+    // Mark's reproduction at 8c99f0e: a kit's `cutoff = {cc = 200}` bound by a Part that
+    // overlays `[part.output.controls.cutoff] cc = 74` loaded, because `merge` replaced the
+    // cc before anything checked the kit's own table. The entry is refused where it is written.
+    let bound = |kit: &str, overlay: &str| {
+        Composition::parse(&format!(
+            "tempo=132\nseed=1\n{kit}[part]\nid='x'\nkit='synth'\ncompose=['std.backbeat','std.no_accent']\n[part.output.controls.cutoff]\n{overlay}\n"
+        ))
+    };
+    let e = bound(
+        "[library.kit.synth]\nnote=60\ncontrols={cutoff={cc=200}}\n",
+        "cc=74",
+    )
+    .unwrap_err();
+    assert!(e.contains("kit.synth") && e.contains("cc 200"), "{e}");
+    let e = bound(
+        "[library.behaviors.'local.synth']\noutput={note=60,controls={cutoff={cc=200}}}\n[library.kit]\nsynth='local.synth'\n",
+        "cc=74",
+    )
+    .unwrap_err();
+    assert!(e.contains("kit.synth") && e.contains("cc 200"), "{e}");
+    // The valid mapping binds, and the Part may still overlay it.
+    let c = bound(
+        "[library.kit.synth]\nnote=60\ncontrols={cutoff={cc=74}}\n",
+        "cc=75",
+    )
+    .unwrap();
+    assert_eq!(c.parts[0].output.controls["cutoff"].cc, 75);
+    // The profile-dependent half stays at the Part: a response with no mapping to drive is
+    // refused there, and a kit entry — which has no profile — is never blamed for it.
+    let e = Composition::parse(
+        "tempo=132\nseed=1\n[library.kit.synth]\nnote=60\ncontrols={cutoff={cc=74}}\n[part]\nid='x'\nkit='synth'\ncompose=['std.backbeat','std.no_accent']\n[part.profile.controls.level]\nboost=0.2\n",
+    )
+    .unwrap_err();
+    assert!(
+        e.contains("Part \"x\"") && e.contains("matching output.controls"),
+        "{e}"
+    );
 }

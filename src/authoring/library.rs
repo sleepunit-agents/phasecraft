@@ -113,6 +113,10 @@ fn names(value: Value, field: &str) -> Result<Vec<String>, String> {
 /// be *declared* as a table or as a behavior name, but what an alias RESOLVES to is the output
 /// itself and can only be a table — so the resolved value is checked here rather than through
 /// `instrument`, whose string branch would read it as one more alias and drop it again.
+/// `Output::validate` covers the table's `controls` too (cc range, channel, default, name,
+/// count): those are output-only rules, so they hold here with no Part in view. What stays
+/// at the Part is the response half — a profile control with no mapping to drive — because a
+/// kit entry has no profile to be judged against.
 fn output_table(body: &Value) -> Result<Value, String> {
     let Value::Table(output) = body else {
         return Err(format!(

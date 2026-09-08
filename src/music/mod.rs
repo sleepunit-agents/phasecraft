@@ -161,9 +161,12 @@ pub struct Output {
     pub controls: std::collections::BTreeMap<String, accent::ControlOutput>,
 }
 impl Output {
-    /// The range rules every output is held to. One definition, read both by a Part's
+    /// The range rules every output is held to — channel, note, gate, and each control
+    /// mapping's cc/channel/default/name/count. One definition, read both by a Part's
     /// validation and by the kit read (`authoring::library`), so a `[library.kit.<name>]`
     /// entry is refused where it is written by exactly the rule the Part would refuse it by.
+    /// What is *not* here is anything that needs a profile to judge — that is
+    /// `accent::validate_responses`, and a kit entry has no profile to be judged against.
     pub fn validate(&self) -> Result<(), String> {
         if !(1..=16).contains(&self.channel) || self.note > 127 {
             return Err(format!(
@@ -177,6 +180,7 @@ impl Output {
                 self.gate_ticks
             ));
         }
+        accent::validate_outputs(&self.controls)?;
         Ok(())
     }
 }
@@ -372,7 +376,7 @@ impl Part {
         }
         self.groove.validate()?;
         self.ornaments.validate(self.subdivision.0)?;
-        accent::validate(&self.profile.controls, &self.output.controls)?;
+        accent::validate_responses(&self.profile.controls, &self.output.controls)?;
         for (name, lane) in &self.parameters {
             if !self.output.controls.contains_key(name) {
                 return Err(format!(

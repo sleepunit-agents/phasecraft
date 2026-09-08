@@ -85,7 +85,9 @@ errors like any library name.
 
 **Every kit entry is valid where it is written, whether or not a voice uses it.**
 An output table is checked as the Part would check it — shape *and* range: channel
-1..16, note 0..127, gate within the bar — the moment its file is read, so
+1..16, note 0..127, gate within the bar, and every `controls` mapping (a continuous
+CC in 1–31, 33–63 or 70–95, channel 1..16, `default` within 0..1, a name, at most
+eight) — the moment its file is read, so
 `note = 200` in an instrument no Part binds to is refused, and a Part that does
 bind to it cannot rescue it by overlaying its own `note`. An alias is resolved once
 every library has loaded (built-ins, the project's `libraries`, imports, then the
@@ -99,6 +101,9 @@ resolve to: at that point the value is the output.) The error names the entry, t
 bad value or the unresolved target, **and the file the entry was written in** — an
 imported kit's fault is reported against the kit file, not against the composition
 that imported it.
+The one rule a kit entry is *not* held to is the half that needs a profile to judge:
+a `profile.controls` response with no mapping to drive, or a response's own ranges.
+A kit entry has no profile, so that check stays at the Part that binds one.
 
 **What an instrument declares, it is held to; what it does not declare is a gap.**
 A kit entry that lists a `controls` table declares what the instrument can hear:
