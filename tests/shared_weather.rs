@@ -319,3 +319,14 @@ fn wire_deduplicates_held_bars_and_stop_restores_both_kit_defaults() {
         );
     }
 }
+
+#[test]
+fn settled_clamped_target_survives_large_origin_cancellation() {
+    let mut lane = lane("[-1e16]");
+    lane.range = [1.0, 1e16];
+    lane.start = 1e16;
+    lane.validate().unwrap();
+    let value = lane.sample("weather", 0, 15 * BAR, &mut Cache::default());
+    assert_eq!(value.target, 1.0);
+    assert_eq!(value.value, 1.0);
+}

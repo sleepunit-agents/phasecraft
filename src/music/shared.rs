@@ -139,7 +139,10 @@ impl Lane {
         Sample {
             name: key,
             tick,
-            value: origin + (target - origin) * progress,
+            // A convex sum preserves a clamped small target beside a very large
+            // origin; origin + (target-origin) can cancel the target at progress=1.
+            value: (origin * (1.0 - progress) + target * progress)
+                .clamp(self.range[0], self.range[1]),
             occurrence,
             origin,
             target,
