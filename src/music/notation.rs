@@ -1473,12 +1473,18 @@ mod tests {
     fn every_accepted_pattern_terminates() {
         // The bound is proved at parse, so `cycle` stays infallible. What this test establishes
         // is *termination*: nothing that parses walks the 2^30-slot traversal that hung the
-        // renderer at 61bf6ba. It is not a latency test. The two-second budget is a batch
-        // ceiling over six patterns and four cycles each; it is not a per-cycle maximum and it
-        // makes no sub-millisecond claim — at the cap a single cycle takes tens of milliseconds
-        // on this host (see MAX_WORK, and t-494 for the transport-deadline question). The
-        // budget is a hang detector with room to spare, not a threshold anyone tuned: the batch
-        // measured 339 ms in a debug build on the art LXC, 2026-09-07.
+        // renderer at 61bf6ba. It is not a latency test. The ceiling is a batch budget over six
+        // patterns and four cycles each; it is not a per-cycle maximum and it makes no
+        // sub-millisecond claim — at the cap a single cycle takes tens of milliseconds on a fast
+        // host (see MAX_WORK, and t-494 for the transport-deadline question).
+        //
+        // Ceiling rationale (t-581): the batch measured 339 ms in a debug build on the art LXC
+        // (2026-09-07) and 2.06–2.49 s on the slowest CI runner (macos-15-intel, debug). 30 s
+        // gives ~12× headroom over the slowest observed runner while remaining a genuine hang
+        // detector — a regression back to the 2^30-slot traversal would trip it in well under a
+        // second of sleep. The long-run fix (an in-loop work-step counter that is deterministic
+        // across runners) is tracked in t-581; that requires touching the render function
+        // signatures and is Mark's call.
         let worst = [
             "[x(64,64)](64,64)",
             // Zero events, ~787k render steps: a silent traversal admitted by a wide margin on
@@ -1500,7 +1506,7 @@ mod tests {
             }
         }
         assert!(
-            start.elapsed() < std::time::Duration::from_secs(2),
+            start.elapsed() < std::time::Duration::from_secs(30),
             "accepted patterns took {:?}",
             start.elapsed()
         );
