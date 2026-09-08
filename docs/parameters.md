@@ -160,3 +160,5 @@ A local `automation` override replaces an inherited `ramp`, and vice versa. Expl
 `ramp` and `automation` in the same lane are rejected. Existing single ramps remain
 compatible. Trace samples show segment number, zero-based cycle, curve and progress;
 the player presents one-based cycle numbers. `breathing` is the prepared-909 example.
+
+Shared transport weather and explicit control/burst followers are described in [shared-lanes.md](shared-lanes.md).

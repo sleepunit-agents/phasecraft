@@ -10,6 +10,7 @@ pub mod process;
 pub mod resolve;
 pub mod rhythm;
 pub mod router;
+pub mod shared;
 pub mod time;
 use rhythm::Expression;
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,8 @@ pub const STEP_TICKS: u64 = PPQN / 4;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(try_from = "CompositionFile")]
 pub struct Composition {
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub lanes: std::collections::BTreeMap<String, shared::Lane>,
     pub tempo: f64,
     pub seed: u64,
     #[serde(default = "four")]
@@ -43,6 +46,8 @@ pub struct Composition {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CompositionFile {
+    #[serde(default)]
+    lanes: std::collections::BTreeMap<String, shared::Lane>,
     tempo: f64,
     seed: u64,
     #[serde(default = "four")]
@@ -74,6 +79,7 @@ impl TryFrom<CompositionFile> for Composition {
             }
         };
         let mut c = Self {
+            lanes: file.lanes,
             tempo: file.tempo,
             seed: file.seed,
             phrase_bars: file.phrase_bars,
@@ -373,6 +379,7 @@ impl Composition {
         }
         self.evaluation_order()?;
         process::validate_carry(self)?;
+        shared::validate(self)?;
         if let Some(arrangement) = &self.arrangement {
             arrangement.validate(self.tempo)?;
         }

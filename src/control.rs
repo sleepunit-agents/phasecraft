@@ -300,6 +300,7 @@ impl Live {
                         p.output.controls.get(n).and_then(|out| {
                             p.parameters
                                 .get(n)
+                                .filter(|v| v.follow.is_none())
                                 .map(|v| v.value)
                                 .or_else(|| p.profile.controls.get(n).map(|v| v.base))
                                 .or(out.default)
@@ -364,6 +365,7 @@ impl Live {
                 p.parameters.insert(
                     n.into(),
                     ParameterLane {
+                        follow: None,
                         value,
                         ramp: None,
                         automation: None,

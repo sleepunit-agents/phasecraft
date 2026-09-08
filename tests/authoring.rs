@@ -342,6 +342,15 @@ fn all_packaged_examples_have_ordered_complete_midi_pairs() {
         let mut controls = std::collections::HashMap::new();
         for step in 0..64 {
             let (_, events) = resolve_step(&c, step);
+            // Notes may use an explicitly declared gate (the weather snare releases
+            // after one full sixteenth). Bound pairs by the score, not a fixed cell.
+            let gate_limit = c
+                .at_step(step)
+                .parts
+                .iter()
+                .map(|p| p.output.gate_ticks)
+                .max()
+                .unwrap();
             assert!(events.windows(2).all(|e| e[0].tick <= e[1].tick));
             for e in events {
                 if e.parameter {
@@ -358,18 +367,22 @@ fn all_packaged_examples_have_ordered_complete_midi_pairs() {
                         assert_eq!(e.bytes[2], reset);
                     }
                 } else if e.bytes[0] & 0xf0 == 0x90 {
-                    assert!(active.insert(key, e.tick).is_none());
+                    assert!(active.insert(key, (e.tick, gate_limit)).is_none());
                 } else {
-                    let on = active
+                    let (on, gate_limit) = active
                         .remove(&key)
                         .expect("note-off must follow its note-on");
-                    assert!(e.tick > on && e.tick < on + 240);
+                    assert!(
+                        e.tick > on && e.tick <= on + gate_limit,
+                        "{}: note exceeded declared gate",
+                        path.display()
+                    );
                 }
             }
         }
         // Only hits anticipated from the first unrendered step may still be open.
         assert!(
-            active.values().all(|&on| on >= 63 * 240),
+            active.values().all(|&(on, _)| on >= 63 * 240),
             "{}",
             path.display()
         );

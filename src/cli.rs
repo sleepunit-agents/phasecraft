@@ -134,6 +134,9 @@ pub fn run() -> Result<(), String> {
                 for gap in &report.gaps {
                     println!("Gap {gap}");
                 }
+                for row in &report.shared_lanes {
+                    println!("{row}");
+                }
                 if report.valid {
                     println!(
                         "Valid ({} compositions{})",

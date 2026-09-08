@@ -178,6 +178,9 @@ pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
                             shape()
                         ));
                     }
+                    "burst" if part.ornaments.gate.is_some() => {
+                        ("ratchet", "admission", ProbabilityMode::Continuous)
+                    }
                     "burst" => match &part.ornaments.ratchet {
                         Some(r) => ("ratchet", "admission", r.probability_mode),
                         None if part
@@ -345,6 +348,8 @@ pub struct SharedAccentTrace {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct StepTrace {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lanes: Vec<super::shared::Sample>,
     /// Every admitted structural child reads, including children suppressed by ownership.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub values: Vec<super::process::ValueRead>,
@@ -523,6 +528,7 @@ fn resolve_part(
         },
     });
     StepTrace {
+        lanes: Vec::new(),
         values: Vec::new(),
         sounding: None,
         cell_ticks: part.subdivision.0,

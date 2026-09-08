@@ -1,0 +1,31 @@
+# until-stop weather + its three actual readers. Static hat rhythm stands in for retained memory.
+# Kit decay routes/defaults are the prepared 909 declarations. No timing walk or hardware audition.
+tempo = 126
+seed = 91827
+[lanes.weather]
+start = 4
+range = [0, 8]
+carry = "always"
+target = { every = { bars = 11 }, delta = [-2, -1, 0, 1, 2], ramp = { bars = 4 } }
+
+[parts.hat]
+trigger.rhythm = { steps = 16, pulses = 6 }
+accent.rhythm = { steps = 16, pulses = 0 }
+profile.base = 100
+output.note = 42
+output.channel = 10
+output.controls.decay = { cc = 76, channel = 15, default = 0.7007874015748031 }
+parameters.decay = { follows = "weather", op = "scale-default", low = 0.70, high = 1.30, unclipped = true }
+velocity = { pattern = "1.0 0.62 0.78 0.55 0.9 0.6 0.7", per = "event", clock = "attacks", carry = "always" }
+
+[parts.snare]
+trigger.pattern = "~ x ~ [x x*3?]"
+accent.rhythm = { steps = 16, pulses = 0 }
+profile.base = 100
+output.note = 38
+output.channel = 10
+output.gate_ticks = 240 # one sixteenth before the release-based decay starts
+output.controls.decay = { cc = 38, channel = 15, default = 1.0 }
+parameters.decay = { follows = "weather", op = "scale-default", low = 0.70, high = 1.30 }
+ornaments.gate = { follows = "weather", op = "range", low = 0.02, high = 0.25 }
+velocity = { pattern = "0.95 0.6", per = "event", clock = "attacks", cycle = 16 }

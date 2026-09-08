@@ -43,6 +43,7 @@ fn eight_bar_ramp_crosses_phrases_and_holds_endpoint_in_musical_time() {
     assert_eq!(lane.at(100 * 3840), 1.0);
     assert_eq!(lane.at(u64::MAX), 1.0);
     let delayed = ParameterLane {
+        follow: None,
         automation: None,
         value: 1.0,
         ramp: Some(Ramp {
@@ -97,6 +98,7 @@ fn emphasis_tracks_the_moving_base_and_stop_restores_start_value_without_kit_def
     p.parameters.insert(
         "cutoff".into(),
         ParameterLane {
+            follow: None,
             automation: None,
             value: 0.0,
             ramp: Some(Ramp {
@@ -188,6 +190,7 @@ fn invalid_timelines_fail_and_late_samples_do_not_burst() {
         bad.parts[0].parameters.insert(
             "cutoff".into(),
             ParameterLane {
+                follow: None,
                 automation: None,
                 value: v,
                 ramp: Some(Ramp {
@@ -355,6 +358,7 @@ fn partial_control_send_failure_still_restores_kit_default() {
 fn automation_segments_curves_holds_cycles_and_delayed_start() {
     use phasecraft::music::parameter::{Automation, Curve, Segment};
     let mut lane = ParameterLane {
+        follow: None,
         value: 0.0,
         ramp: None,
         automation: Some(Automation {

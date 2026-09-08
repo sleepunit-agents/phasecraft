@@ -11,13 +11,60 @@ pub const CONTROL_TICKS: u64 = PPQN / 24;
 pub const MAX_SAMPLES_PER_STEP: usize = (STEP_TICKS / CONTROL_TICKS) as usize + 2;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "ParameterFile", into = "ParameterFile")]
 pub struct ParameterLane {
+    pub follow: Option<super::shared::Follower>,
     pub value: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ramp: Option<Ramp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub automation: Option<Automation>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+enum ParameterFile {
+    Fixed(FixedParameter),
+    Follow(super::shared::Follower),
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct FixedParameter {
+    value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ramp: Option<Ramp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    automation: Option<Automation>,
+}
+impl TryFrom<ParameterFile> for ParameterLane {
+    type Error = String;
+    fn try_from(file: ParameterFile) -> Result<Self, String> {
+        Ok(match file {
+            ParameterFile::Fixed(f) => Self {
+                value: f.value,
+                ramp: f.ramp,
+                automation: f.automation,
+                follow: None,
+            },
+            ParameterFile::Follow(f) => Self {
+                value: 0.0,
+                ramp: None,
+                automation: None,
+                follow: Some(f),
+            },
+        })
+    }
+}
+impl From<ParameterLane> for ParameterFile {
+    fn from(p: ParameterLane) -> Self {
+        match p.follow {
+            Some(f) => Self::Follow(f),
+            None => Self::Fixed(FixedParameter {
+                value: p.value,
+                ramp: p.ramp,
+                automation: p.automation,
+            }),
+        }
+    }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -148,6 +195,13 @@ fn normalized(v: f64) -> bool {
 }
 impl ParameterLane {
     pub fn validate(&self) -> Result<(), String> {
+        if self.follow.is_some()
+            && (self.ramp.is_some() || self.automation.is_some() || self.value != 0.0)
+        {
+            return Err(
+                "followed parameter cannot also have a fixed value, ramp, or automation".into(),
+            );
+        }
         if !normalized(self.value) {
             return Err("parameter.value must be finite and within 0..1".into());
         }
@@ -224,7 +278,9 @@ pub fn resolve_window(
 ) -> (Vec<ParameterTrace>, Vec<MidiEvent>) {
     let names: std::collections::BTreeSet<_> = part
         .parameters
-        .keys()
+        .iter()
+        .filter(|(_, p)| p.follow.is_none())
+        .map(|(name, _)| name)
         .chain(
             part.profile
                 .controls

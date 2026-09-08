@@ -149,6 +149,8 @@ pub fn load_draft(path: &Path) -> Result<Loaded, String> {
 
 #[derive(Serialize)]
 pub struct Validation {
+    /// Shared-source control reach and publication bounds.
+    pub shared_lanes: Vec<String>,
     pub valid: bool,
     pub files: Vec<String>,
     pub errors: Vec<String>,
@@ -158,6 +160,7 @@ pub struct Validation {
 }
 pub fn validate(path: &Path) -> Validation {
     let mut report = Validation {
+        shared_lanes: vec![],
         valid: true,
         files: vec![],
         errors: vec![],
@@ -182,12 +185,19 @@ pub fn validate(path: &Path) -> Validation {
                 report.files.push(path.display().to_string());
                 match load_draft(&path) {
                     Err(e) => report.errors.push(e),
-                    Ok(loaded) => report.gaps.extend(
-                        loaded
-                            .gaps
-                            .iter()
-                            .map(|gap| format!("{}: {gap}", path.display())),
-                    ),
+                    Ok(loaded) => {
+                        report.shared_lanes.extend(
+                            crate::music::shared::report(&loaded.composition)
+                                .into_iter()
+                                .map(|row| format!("{}: {row}", path.display())),
+                        );
+                        report.gaps.extend(
+                            loaded
+                                .gaps
+                                .iter()
+                                .map(|gap| format!("{}: {gap}", path.display())),
+                        );
+                    }
                 }
             }
         }
