@@ -1,4 +1,5 @@
 use phasecraft::{
+    music::time::NoteValue,
     music::{Composition, ProbabilityMode},
     music::{resolve::*, rhythm::*},
 };
@@ -483,6 +484,59 @@ fn a_pin_on_a_dotted_grid_is_counted_inside_the_bar_it_names() {
     )
     .unwrap();
     assert_eq!(pinned_ticks(&straight, 64), vec![35 * 240]);
+}
+// The one supported cell longer than a bar: `1/1.` is 5760 ticks against a 3840-tick bar, so
+// its onsets fall at 0, 5760, 11520, ... and every third bar holds none at all.
+const DOTTED_WHOLE: &str = "subdivision='1/1.'\ntrigger.rhythm={steps=1,pulses=1}";
+#[test]
+fn a_bar_the_grid_steps_over_is_named_not_panicked_on() {
+    // Counting slots down from the last inclusive index — `(bar_end - 1) / cell - first + 1` —
+    // underflows here: bar 3 spans [7680, 11520), `first` is 2, and the last index is 1. Under
+    // overflow checks that panics before the invalid-slot error can name the empty bar.
+    assert_eq!(NoteValue::parse("1/1.").unwrap().0, 5760);
+    for bar in [3, 6] {
+        let err = pinned(
+            DOTTED_WHOLE,
+            &format!("[[pins]]\nat={{roll='fire',voice='hat',bar={bar},slot=1}}\nu=0.123"),
+        )
+        .unwrap_err();
+        assert!(err.contains(&format!("no onset in bar {bar}")), "{err}");
+        // The error still carries the pin's shape, like every other refusal on this path.
+        assert!(err.contains("roll = \"fire\""), "{err}");
+    }
+    // The bars that do hold their one onset are unaffected, and slot 2 is refused by count.
+    for bar in [1, 2, 4, 5, 7] {
+        let at = |slot| {
+            format!("[[pins]]\nat={{roll='fire',voice='hat',bar={bar},slot={slot}}}\nu=0.123")
+        };
+        assert!(pinned(DOTTED_WHOLE, &at(1)).is_ok(), "bar {bar} slot 1");
+        let err = pinned(DOTTED_WHOLE, &at(2)).unwrap_err();
+        assert!(err.contains(&format!("1 slots in bar {bar}")), "{err}");
+    }
+    // Every supported grid, over two phrases of bars, at the slots where a count is decided:
+    // the first, the last, and the one past it. No shape panics, and a pin is accepted exactly
+    // where the bar it names really holds that slot — including when it holds none.
+    for cell in [1, 2, 4, 8, 16, 32, 64]
+        .iter()
+        .flat_map(|d| ["", "T", "."].iter().map(move |s| format!("1/{d}{s}")))
+    {
+        let part = format!("subdivision='{cell}'\ntrigger.rhythm={{steps=1,pulses=1}}");
+        let ticks = NoteValue::parse(&cell).unwrap().0;
+        for bar in 1..=8u64 {
+            let start = (bar - 1) * 3840;
+            let slots = (start + 3840).div_ceil(ticks) - start.div_ceil(ticks);
+            for slot in [1, slots.max(1), slots + 1] {
+                let pin = format!(
+                    "[[pins]]\nat={{roll='fire',voice='hat',bar={bar},slot={slot}}}\nu=0.123"
+                );
+                assert_eq!(
+                    pinned(&part, &pin).is_ok(),
+                    slot <= slots,
+                    "{cell} bar {bar} slot {slot} of {slots}"
+                );
+            }
+        }
+    }
 }
 #[test]
 fn the_pin_cap_is_enforced_on_the_authored_list() {

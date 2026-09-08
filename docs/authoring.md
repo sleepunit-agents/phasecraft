@@ -61,7 +61,10 @@ grid is continuous — step *n* is at tick *n·cell* — and a dotted cell does 
 3840-tick bar, so bars hold different numbers of onsets and only the first starts on a bar
 line. A `1/8.` Part (720 ticks) has six slots in bar 1, at ticks 0…3600, and five in bar 2,
 the first at 4320; `bar = 2, slot = 1` is that 4320. The error for a slot past the end names
-the count for the bar it was asked about, because there is no single count.
+the count for the bar it was asked about, because there is no single count. That count can
+be zero: `1/1.` is 5760 ticks, longer than a bar, so its onsets fall at 0, 5760, 11520, …
+and every third bar holds none at all. No slot addresses such a bar, and a pin that names
+one is refused for the empty bar, not for its slot number.
 
 `velocity` is drawn wherever the touch closure runs, which any one of `groove.offbeat_gain`,
 `groove.after_gap` or `groove.humanize` opens — not `humanize` alone. `timing` is drawn on

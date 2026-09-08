@@ -139,7 +139,21 @@ pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
                 // address into an earlier bar and rejects a slot that exists (Mark, #9 review).
                 let bar_start = (at.bar - 1) * BAR_TICKS;
                 let first = bar_start.div_ceil(cell);
-                let slots = (bar_start + BAR_TICKS - 1) / cell - first + 1;
+                // Both ends rounded up, exclusive end minus start: the count is the number of
+                // grid onsets in [bar_start, bar_start + BAR_TICKS), and it is never negative.
+                // Counting down from the last inclusive index instead underflows on a bar the
+                // grid steps clean over — `1/1.` is 5760 ticks, so bar 3 spans [7680, 11520) and
+                // holds no onset at all — and the panic lands before the error that would have
+                // named the empty bar (Mark, #9 review).
+                let slots = (bar_start + BAR_TICKS).div_ceil(cell) - first;
+                if slots == 0 {
+                    return Err(format!(
+                        "{}: {voice:?} has no onset in bar {}; its subdivision is longer than a \
+                         bar and steps over that one entirely",
+                        shape(),
+                        at.bar
+                    ));
+                }
                 if at.slot == 0 || at.slot > slots {
                     return Err(format!(
                         "{}: slot is 1-based and {voice:?} has {slots} slots in bar {}",
