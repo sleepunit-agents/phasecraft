@@ -297,3 +297,115 @@ fn the_lane_refuses_what_it_does_not_walk_naming_the_string_and_the_token() {
         piece(extra);
     }
 }
+
+#[test]
+fn value_preparation_refuses_periods_it_cannot_hold_exactly() {
+    // Only cycle 0 of 65*67 sounds. The former 4096-cycle search forgot c1 at cycle 4097.
+    let inner = format!("<c1 {}>", vec!["~"; 66].join(" "));
+    let pattern = format!("<{inner} {}>", vec!["~"; 64].join(" "));
+    let error = ValueLane::parse(&pattern, 1).unwrap_err();
+    assert!(
+        error.contains("prepared value period exceeds 4096"),
+        "{error}"
+    );
+    // A supported sparse period holds indefinitely, including the very last silent cycle.
+    let pattern = format!("<c1 {}>", vec!["~"; 4095].join(" "));
+    let lane = ValueLane::parse(&pattern, 1).unwrap();
+    assert_eq!(lane.sample(0), lane.sample(4095 * BAR_TICKS));
+    assert_eq!(lane.sample(0), lane.sample(8191 * BAR_TICKS));
+}
+
+#[test]
+fn prepared_values_match_a_forward_held_source() {
+    use phasecraft::music::notation::Pattern;
+    for text in [
+        "~ eb1",
+        "<~ ~ c1> ~",
+        "{c1 ~ eb1 ~ ~}%3",
+        "<c1 <~ eb1 ~>>",
+        "c1@3 [~ eb1]",
+        "<~ <c1 ~>>",
+    ] {
+        let pattern = Pattern::parse(text).unwrap();
+        let lane = ValueLane::parse(text, 1).unwrap();
+        let mut held = None;
+        for cycle in 0..18 {
+            let events = pattern.cycle(cycle);
+            let mut next = 0;
+            for position in 0..BAR_TICKS {
+                while next < events.len() && events[next].onset.ticks(BAR_TICKS) <= position {
+                    held = Some(events[next].token.clone());
+                    next += 1;
+                }
+                assert_eq!(
+                    lane.sample(cycle * BAR_TICKS + position),
+                    held,
+                    "{text} cycle {cycle} tick {position}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn value_preparation_bounds_total_work_and_events_before_rendering() {
+    let error = ValueLane::parse("<c1 [~(1024,1024)](256,256)>", 1).unwrap_err();
+    assert!(error.contains("preparation work bound"), "{error}");
+    let values = vec!["c1"; 17].join(" ");
+    let error = ValueLane::parse(&format!("[<{values}>(64,64)](64,64)"), 1).unwrap_err();
+    assert!(error.contains("event bound"), "{error}");
+}
+
+fn timing_piece(pattern: &str, bar: u64, slot: u64, roll: f64) -> Composition {
+    piece(&format!(
+        "[parts.sub.note]\npattern = {pattern:?}\n[parts.sub.groove.humanize]\ntiming_ticks = 24\nmode = 'continuous'\n[[pins]]\nat = {{roll='timing',voice='sub',bar={bar},slot={slot}}}\nu = {roll}"
+    ))
+}
+
+#[test]
+fn a_timing_pin_crosses_a_value_onset_and_trace_matches_the_wire() {
+    for (roll, tick, note) in [(0.0, 1896, 36), (0.5, 1920, 39), (0.99, 1944, 39)] {
+        let c = timing_piece("c1 eb1", 1, 9, roll);
+        let ons = notes(&c, 1);
+        assert!(ons.contains(&(tick, note)), "{ons:?}");
+        let traces = resolve_step(&c, 8).0;
+        let event = traces[0].event.as_ref().unwrap();
+        assert_eq!((event.tick, event.note), (tick, Some(note)));
+        assert_eq!(
+            event
+                .groove
+                .as_ref()
+                .unwrap()
+                .touch
+                .as_ref()
+                .unwrap()
+                .timing_roll,
+            roll
+        );
+    }
+}
+
+#[test]
+fn a_timing_pin_at_a_value_cycle_line_obeys_bar_ownership() {
+    // A cycle line is also a bar line. An early requested onset is clipped to that line,
+    // so it must sample eb1 in cycle 1, never reach back to c1 in cycle 0.
+    for (roll, tick) in [(0.0, BAR_TICKS), (0.5, BAR_TICKS), (0.99, BAR_TICKS + 24)] {
+        let c = timing_piece("<c1 eb1>", 2, 1, roll);
+        let ons = notes(&c, 2);
+        assert!(ons.contains(&(tick, 39)), "{ons:?}");
+        let traces = resolve_step(&c, 16).0;
+        let event = traces[0].event.as_ref().unwrap();
+        assert_eq!((event.tick, event.note), (tick, Some(39)));
+        assert_eq!(
+            event
+                .groove
+                .as_ref()
+                .unwrap()
+                .touch
+                .as_ref()
+                .unwrap()
+                .timing_roll,
+            roll
+        );
+    }
+}

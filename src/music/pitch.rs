@@ -17,12 +17,19 @@
 use super::notation::{Pattern, Token};
 use super::{Part, STEP_TICKS};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 pub const BAR_TICKS: u64 = STEP_TICKS * 16;
-/// The furthest a sample walks back through silent cycles before reading the initialisation.
-/// A pattern repeats after `period_cycles()`, so a walk of one period that finds nothing has
-/// proven the pattern silent everywhere; this cap covers periods past `u64` or past 4096.
+/// Consumer preparation limits, checked before rendering any cycles.
 pub const MAX_HELD_CYCLES: u64 = 4096;
+const MAX_PREPARE_WORK: u64 = 1 << 20;
+const MAX_PREPARE_EVENTS: u64 = 65536;
+
+#[derive(Clone, Debug)]
+struct ValueEvent {
+    tick: u64,
+    token: Token,
+}
 
 /// A value pattern on a Part: the authored string, parsed once, over `cycle_bars` bars.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -30,7 +37,9 @@ pub const MAX_HELD_CYCLES: u64 = 4096;
 pub struct ValueLane {
     pub pattern: String,
     pub cycle_bars: u32,
-    parsed: Pattern,
+    parsed: Arc<Pattern>,
+    period_ticks: u64,
+    events: Arc<[ValueEvent]>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -53,10 +62,51 @@ impl TryFrom<ValueLaneFile> for ValueLane {
         }
         let parsed = Pattern::parse(&file.pattern)
             .map_err(|e| format!("pattern {:?}: {e}", file.pattern))?;
+        let refuse = |why: String| format!("pattern {:?}: {why}", file.pattern);
+        let cycles = parsed
+            .period_cycles()
+            .filter(|&n| n <= MAX_HELD_CYCLES)
+            .ok_or_else(|| {
+                refuse(format!(
+                    "prepared value period exceeds {MAX_HELD_CYCLES} cycles"
+                ))
+            })?;
+        let (work, events) = parsed.render_bounds();
+        if work
+            .checked_mul(cycles)
+            .is_none_or(|n| n > MAX_PREPARE_WORK)
+        {
+            return Err(refuse(format!(
+                "value preparation work bound exceeds {MAX_PREPARE_WORK} renderer visits"
+            )));
+        }
+        if events
+            .checked_mul(cycles)
+            .is_none_or(|n| n > MAX_PREPARE_EVENTS)
+        {
+            return Err(refuse(format!(
+                "prepared value event bound exceeds {MAX_PREPARE_EVENTS}"
+            )));
+        }
+        let cycle_ticks = u64::from(file.cycle_bars) * BAR_TICKS;
+        let period_ticks = cycle_ticks
+            .checked_mul(cycles)
+            .ok_or_else(|| refuse("prepared value period exceeds the u64 tick grid".into()))?;
+        let mut events = Vec::new();
+        for k in 0..cycles {
+            for event in parsed.cycle(k) {
+                events.push(ValueEvent {
+                    tick: k * cycle_ticks + event.onset.ticks(cycle_ticks),
+                    token: event.token,
+                });
+            }
+        }
         Ok(Self {
             pattern: file.pattern,
             cycle_bars: file.cycle_bars,
-            parsed,
+            parsed: Arc::new(parsed),
+            period_ticks,
+            events: events.into(),
         })
     }
 }
@@ -79,30 +129,20 @@ impl ValueLane {
     pub fn cycle_ticks(&self) -> u64 {
         u64::from(self.cycle_bars) * BAR_TICKS
     }
-    /// The held value at `tick`: the token of the last event at or before it. A cycle with no
-    /// event at or before the position reads the last event of the nearest earlier cycle that
-    /// has one, at most `MAX_HELD_CYCLES` back; `None` is the source before its first value.
+    /// Read the last value at or before `tick` from the complete prepared period. Before the
+    /// first value ever, return `None`; later periods hold the previous period's final value.
+    /// No cycle is rendered here, and silence never expires an already established value.
     pub fn sample(&self, tick: u64) -> Option<Token> {
-        let cycle_ticks = self.cycle_ticks();
-        let k = tick / cycle_ticks;
-        let position = tick % cycle_ticks;
-        if let Some(event) = self
-            .parsed
-            .cycle(k)
-            .iter()
-            .rev()
-            .find(|e| e.onset.ticks(cycle_ticks) <= position)
-        {
-            return Some(event.token.clone());
-        }
-        let reach = self
-            .parsed
-            .period_cycles()
-            .unwrap_or(MAX_HELD_CYCLES)
-            .min(MAX_HELD_CYCLES);
-        (k.saturating_sub(reach)..k)
-            .rev()
-            .find_map(|j| self.parsed.cycle(j).last().map(|e| e.token.clone()))
+        let position = tick % self.period_ticks;
+        let end = self.events.partition_point(|e| e.tick <= position);
+        end.checked_sub(1)
+            .and_then(|i| self.events.get(i))
+            .or_else(|| {
+                (tick >= self.period_ticks)
+                    .then(|| self.events.last())
+                    .flatten()
+            })
+            .map(|e| e.token.clone())
     }
 }
 

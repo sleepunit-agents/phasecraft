@@ -40,14 +40,20 @@ event at or before *t*. Before the lane's first value ever, it reads its initial
 cycle with no event at or before the position reads the last event of the nearest earlier
 cycle that has one — the value is *held across the cycle line*, which is what makes
 `~ eb1` on a voice that hits on beat 1 read the kit note in bar 1 and `eb1` from bar 2 on.
-The walk back is bounded by the pattern's period (a full silent period proves the pattern
-silent everywhere) and by 4096 cycles when the period is longer or unrepresentable.
+The complete pattern period is prepared at load and searched at each attack. A held value
+never expires during silence. Patterns whose period exceeds 4096 cycles or is unrepresentable
+are refused at load; preparation also refuses conservative totals above 1,048,576 renderer
+visits or 65,536 events. These are value-consumer limits, separate from the notation grammar.
+The visit budget is a work bound, not a wall-clock latency guarantee.
 
 Every **sounding attack** samples at its own tick: the main hit, each ratchet tail, a flam
 grace. A grace that lands before a value boundary sounds the earlier value and its main hit
 the later one. The lanes are sampled where every attack has its final tick — after groove
 offsets and ornament expansion — and the result is stamped on the event as `note`, which is
-what `to_midi` sends and what `inspect` prints. A Part with neither lane carries no `note`
+what `to_midi` sends and what `inspect` prints. A `timing` pin can therefore change the
+sounding note when it moves an attack across a value onset. Value cycle lines are whole-bar
+boundaries: bar ownership clips an early attack to its own bar, so a timing pin cannot
+reach back across that line to select the previous cycle's value. A Part with neither lane carries no `note`
 field on its events, so an unpitched piece's trace and MIDI are byte-identical to before.
 
 Under an arrangement or a router the tick is the section's or scene's musical tick, the
