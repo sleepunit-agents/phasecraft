@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 #[serde(default, deny_unknown_fields)]
 pub struct Ornaments {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub gate: Option<super::shared::Follower>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ratchet: Option<Ratchet>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flam: Option<Flam>,
@@ -88,7 +90,7 @@ impl ExpansionTrace {
 }
 impl Ornaments {
     pub fn is_default(&self) -> bool {
-        self.ratchet.is_none() && self.flam.is_none()
+        self.ratchet.is_none() && self.flam.is_none() && self.gate.is_none()
     }
     pub fn validate(&self, cell: u64) -> Result<(), String> {
         if let Some(r) = &self.ratchet
@@ -116,13 +118,13 @@ impl Ornaments {
         &self,
         dice: Dice,
         id: &str,
-        identity: impl Fn(ProbabilityMode) -> u64,
+        identity: impl Fn(&str, ProbabilityMode) -> u64,
         event: &MusicalEvent,
         cell: u64,
         bounds: std::ops::Range<u64>,
     ) -> (Vec<MusicalEvent>, OrnamentTrace) {
         let (lower, upper) = (bounds.start, bounds.end);
-        let roll = |lane, mode| dice.roll(id, lane, identity(mode), "admission");
+        let roll = |lane, mode| dice.roll(id, lane, identity(lane, mode), "admission");
         let ratchet_draw = self
             .ratchet
             .as_ref()

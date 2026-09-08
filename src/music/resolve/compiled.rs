@@ -2,6 +2,9 @@ use super::*;
 
 /// Compiled dependency order and bounded raw-decision cache, owned by one immutable snapshot.
 pub struct Compiled {
+    shared_seed: u64,
+    shared_cache: crate::music::shared::Cache,
+    transport_shift: u64,
     composition: Composition,
     order: Vec<usize>,
     indices: std::collections::BTreeMap<String, usize>,
@@ -18,6 +21,9 @@ pub struct Compiled {
 }
 impl Compiled {
     pub fn new(c: &Composition) -> Self {
+        Self::with_shared_seed(c, c.seed)
+    }
+    fn with_shared_seed(c: &Composition, shared_seed: u64) -> Self {
         let indices: std::collections::BTreeMap<_, _> = c
             .parts
             .iter()
@@ -36,20 +42,28 @@ impl Compiled {
             .map(|a| {
                 a.sections
                     .iter()
-                    .map(|s| Self::new(&s.composition))
+                    .map(|s| Self::with_shared_seed(&s.composition, shared_seed))
                     .collect()
             })
             .unwrap_or_default();
         let scenes = c
             .router
             .as_ref()
-            .map(|r| r.scenes.iter().map(|s| Self::new(&s.composition)).collect())
+            .map(|r| {
+                r.scenes
+                    .iter()
+                    .map(|s| Self::with_shared_seed(&s.composition, shared_seed))
+                    .collect()
+            })
             .unwrap_or_default();
         let period = c
             .router
             .as_ref()
             .map_or(0, |r| r.period_ticks(c).expect("validated composition"));
         Self {
+            shared_seed,
+            shared_cache: Default::default(),
+            transport_shift: 0,
             composition: c.clone(),
             order,
             indices,
@@ -64,6 +78,21 @@ impl Compiled {
             carry_history: Default::default(),
             moves: Vec::new(),
         }
+    }
+    fn set_transport_shift(&mut self, shift: u64) {
+        if self.transport_shift != shift {
+            self.transport_shift = shift;
+            self.cells.clear();
+            self.cell_keys.clear();
+            self.value_prefix.clear();
+        }
+    }
+    fn lane_samples(&mut self, tick: u64) -> Vec<crate::music::shared::Sample> {
+        self.composition
+            .lanes
+            .iter()
+            .map(|(name, lane)| lane.sample(name, self.shared_seed, tick, &mut self.shared_cache))
+            .collect()
     }
     /// The router's move log through the return that `tick` falls in.
     pub fn moves_through(&mut self, tick: u64) -> &[crate::music::router::Move] {
@@ -103,6 +132,7 @@ impl Compiled {
                 let length = u64::from(located.section.bars) * 16 - located.local_step;
                 let end = (cursor + length * STEP_TICKS).min(target);
                 let from = located.musical_step * STEP_TICKS;
+                self.sections[index].set_transport_shift(cursor - from);
                 self.sections[index].spend_carried(from, from + end - cursor, &mut state);
                 cursor = end;
             } else if let Some(r) = &self.composition.router {
@@ -227,6 +257,7 @@ impl Compiled {
                     crate::music::arrangement::resets(&s.section.composition, step * STEP_TICKS)
                 });
             self.sections[index].value_base = self.carry_at((step - local_step) * STEP_TICKS);
+            self.sections[index].set_transport_shift(shift);
             let (mut traces, mut midi) = self.sections[index].window(musical_step, lower, upper);
             for e in &mut midi {
                 e.tick += shift;
@@ -257,6 +288,7 @@ impl Compiled {
     fn window(&mut self, step: u64, lower: u64, upper: u64) -> (Vec<StepTrace>, Vec<MidiEvent>) {
         let start = step * STEP_TICKS;
         let end = ((step + 1) * STEP_TICKS).min(upper);
+        let samples = self.lane_samples(start + self.transport_shift);
         let mut traces = Vec::new();
         let mut midi = Vec::new();
         // Sorted IDs preserve provenance order independently of display order.
@@ -349,9 +381,47 @@ impl Compiled {
                 })
                 .collect();
             history.sort_by_key(|h| h.0);
-            let (parameters, controls) =
+            let (mut parameters, controls) =
                 crate::music::parameter::resolve_window(&part, start, end, &audible, &history);
             midi.extend(controls);
+            if (start + self.transport_shift).is_multiple_of(4 * crate::music::PPQN) {
+                for (name, param) in &part.parameters {
+                    let Some(f) = &param.follow else {
+                        continue;
+                    };
+                    let output = &part.output.controls[name];
+                    let lane = &self.composition.lanes[&f.follows];
+                    let sample = samples.iter().find(|s| s.name == f.follows).unwrap();
+                    let base = f.mapped(lane, sample.value, output.default.unwrap_or(1.0));
+                    let amount = base.clamp(0.0, 1.0);
+                    let value = crate::music::accent::midi_value(amount);
+                    let channel = output.channel.unwrap_or(part.output.channel);
+                    midi.push(MidiEvent {
+                        tick: start,
+                        bytes: [0xb0 | (channel - 1), output.cc, value],
+                        reset_value: None,
+                        boundary_reset: false,
+                        parameter: true,
+                        stop_value: Some(crate::music::accent::midi_value(
+                            output.default.unwrap_or(0.0),
+                        )),
+                    });
+                    parameters.push(crate::music::parameter::ParameterTrace {
+                        name: name.clone(),
+                        channel,
+                        cc: output.cc,
+                        samples: vec![crate::music::parameter::ParameterSample {
+                            tick: start,
+                            base,
+                            emphasis: 0.0,
+                            amount,
+                            value,
+                            automation: None,
+                            envelope: None,
+                        }],
+                    });
+                }
+            }
             if !start.is_multiple_of(cell) || part_traces.is_empty() {
                 // A display snapshot between slow-grid onsets is explicitly a rest.
                 let mut trace = self.raw_at(start)[index].clone();
@@ -370,6 +440,7 @@ impl Compiled {
                 part_traces[0].sounding = Some(audible);
             }
             part_traces[0].parameters = parameters;
+            part_traces[0].lanes = samples.clone();
             traces.extend(part_traces);
         }
         midi.sort_by_key(midi_order);
@@ -504,6 +575,18 @@ impl Compiled {
         let lower = lower.max(step * cell / bar * bar);
         let upper = upper.min((step * cell / bar + 1) * bar);
         let mut trace = self.raw_at(step * cell)[index].clone();
+        let gate_probability = part.ornaments.gate.as_ref().map(|f| {
+            let lane = &self.composition.lanes[&f.follows];
+            let value = lane
+                .sample(
+                    &f.follows,
+                    self.shared_seed,
+                    step * cell + self.transport_shift,
+                    &mut self.shared_cache,
+                )
+                .value;
+            f.mapped(lane, value, 1.0)
+        });
         let literal = trace.trigger.rhythm.literal_attack();
         let span = literal.map_or(cell, |a| a.span_ticks);
         use crate::music::groove::{GrooveTrace, RunContour};
@@ -629,12 +712,23 @@ impl Compiled {
                 .min(span - 1)
                 .min(end.saturating_sub(event.tick + 1))
                 .max(1);
-            let expansion = expansion_for(&part, literal);
+            let mut expansion = expansion_for(&part, literal);
+            if let (Some(probability), Some(ratchet)) = (gate_probability, &mut expansion.ratchet) {
+                ratchet.probability = probability;
+                ratchet.probability_mode = ProbabilityMode::Continuous;
+            }
             if !expansion.is_default() {
                 let (mut hits, ornaments) = expansion.expand(
                     c.dice(),
                     &part.id,
-                    |mode| decision_identity(c, cell, step, mode),
+                    |lane, mode| {
+                        let source = if lane == "ratchet" && gate_probability.is_some() {
+                            (step * cell + self.transport_shift) / cell
+                        } else {
+                            step
+                        };
+                        decision_identity(c, cell, source, mode)
+                    },
                     event,
                     span,
                     lower..end,

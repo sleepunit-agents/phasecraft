@@ -251,6 +251,7 @@ fn maximum_control_load_is_bounded_and_every_attack_has_a_matching_reset() {
             part.parameters.insert(
                 name.clone(),
                 phasecraft::music::parameter::ParameterLane {
+                    follow: None,
                     automation: None,
                     value: 0.4,
                     ramp: None,
