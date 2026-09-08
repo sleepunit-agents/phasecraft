@@ -516,6 +516,11 @@ fn a_bar_the_grid_steps_over_is_named_not_panicked_on() {
     // Every supported grid, over two phrases of bars, at the slots where a count is decided:
     // the first, the last, and the one past it. No shape panics, and a pin is accepted exactly
     // where the bar it names really holds that slot — including when it holds none.
+    //
+    // The expected count is the grid's onsets in the bar, enumerated tick by tick — not the
+    // engine's closed form (`end.div_ceil(cell) - start.div_ceil(cell)`). With the closed form
+    // as its own oracle this sweep could only catch a panic, never a count that is off by one:
+    // code and assertion would move together. Enumeration owes the formula nothing.
     for cell in [1, 2, 4, 8, 16, 32, 64]
         .iter()
         .flat_map(|d| ["", "T", "."].iter().map(move |s| format!("1/{d}{s}")))
@@ -524,7 +529,7 @@ fn a_bar_the_grid_steps_over_is_named_not_panicked_on() {
         let ticks = NoteValue::parse(&cell).unwrap().0;
         for bar in 1..=8u64 {
             let start = (bar - 1) * 3840;
-            let slots = (start + 3840).div_ceil(ticks) - start.div_ceil(ticks);
+            let slots = (start..start + 3840).filter(|t| t % ticks == 0).count() as u64;
             for slot in [1, slots.max(1), slots + 1] {
                 let pin = format!(
                     "[[pins]]\nat={{roll='fire',voice='hat',bar={bar},slot={slot}}}\nu=0.123"
