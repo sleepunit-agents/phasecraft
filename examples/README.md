@@ -136,3 +136,10 @@ journey files include their own definitions so copying one file is sufficient.
 
 See [the current coverage map](../docs/current-coverage.md) and
 [the arrangement contract](../docs/arrangement.md) for exact scope and clock behavior.
+
+## Run the Line live integration
+
+[`run-the-line-driving-drums`](run-the-line-driving-drums/README.md) is a self-contained
+170 BPM project for the existing loopMIDI/prepared 909 route. It plays the written
+kick/snare figure as an explicitly straight first audition, alongside the original
+set's remaining tracks. Open its `phasecraft.toml` in Player.

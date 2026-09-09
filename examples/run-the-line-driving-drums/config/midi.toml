@@ -1,0 +1,4 @@
+# Existing loopMIDI → prepared 909 route. Change only if your port has another name.
+port = "Phasecraft"
+lookahead_ms = 100
+send_clock = true

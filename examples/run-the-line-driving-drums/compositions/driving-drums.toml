@@ -1,0 +1,24 @@
+# Straight first audition from until-stop/run-the-line/auditions/driving-drums.toml.
+# The full scene's groove/nudge, bass, atmosphere and router are outside this audition.
+tempo = 170
+seed = 4471
+phrase_bars = 4
+
+[parts.kick]
+use = "kit.prepared.kick"
+trigger.pattern = "x ~ [~ x] ~"
+accent.rhythm = { steps = 16, pulses = 0 }
+profile.base = 127
+profile.boost = 0
+output.gate_ticks = 240
+velocity = { pattern = "1 0.9", per = "step", cycle = 16 }
+
+[parts.snare]
+use = "kit.prepared.snare"
+trigger.pattern = "~ x ~ x"
+accent.rhythm = { steps = 16, pulses = 0 }
+profile.base = 127
+profile.boost = 0
+output.gate_ticks = 240
+velocity = { pattern = "0.95", per = "step", cycle = 16 }
+# No groove, nudge or humanize in the straight reference. No CC automation.
