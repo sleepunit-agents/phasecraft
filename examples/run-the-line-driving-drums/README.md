@@ -35,7 +35,21 @@ but nothing goes to the MIDI port. Omit `--bars 8` for an indefinite live loop.
 Every Play starts from the beginning; this is not an Ableton-slaved seek/resume
 transport. Stop before changing tempo or restarting the comparison.
 
-The source contract is [until-stop Run the Line DRIVING-DRUMS.md](https://github.com/sleepunit-agents/until-stop/blob/mark/driving-drums-example-20260908/run-the-line/DRIVING-DRUMS.md).
-Its separate audition scene leaves the authored driving scene unchanged. No live
+The source contract is [until-stop Run the Line DRIVING-DRUMS.md](https://github.com/sleepunit-agents/until-stop/blob/8b8c2596bbbcf315158818dc244771ac1d6eadd7/run-the-line/DRIVING-DRUMS.md).
+Its isolated audition transport selects only kick/snare; the native project transcribes
+that selection into its own composition, with no router or always-on layers. No live
 capture or listening result is claimed by this project. Next: restore written
 feel in a checked comparison and implement the bass's real four-bar note holds.
+
+To compare this transcription with a local checkout of the source, run
+`python3 tools/check_driving_drums_source.py /path/to/until-stop` from the native
+repository. It checks the source witness, selected voices, trigger/value patterns,
+routing, gates, full-scale accent and transport clock. It refuses an explicit
+source trigger cycle that this one-bar transcription does not translate.
+
+Verification for developers: `cargo test --locked --test driving_drums` checks the
+exact eight-bar event stream and deterministic Stop cleanup, including absence of
+control output. On an idle host, run `cargo test --locked --test driving_drums
+-- --ignored` to record the real transport into memory: 64 note messages, 768 clock
+pulses, Start and Stop, with no CCs. The timed check is opt-in because host stalls
+can cause the transport to drop late notes; it is not a hardware capture.
