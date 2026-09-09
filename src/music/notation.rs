@@ -215,7 +215,10 @@ impl Pattern {
     }
     /// Events of cycle `k`, sorted by onset; simultaneous events keep source order.
     pub fn cycle(&self, k: u64) -> Vec<Event> {
-        let mut out = Vec::new();
+        self.render_cycle(k).events
+    }
+    fn render_cycle(&self, k: u64) -> RenderOutput {
+        let mut out = RenderOutput::new(self.work_bound);
         for seq in &self.stack {
             render_seq(
                 seq,
@@ -226,7 +229,7 @@ impl Pattern {
                 &mut out,
             );
         }
-        out.sort_by_key(|e| e.onset);
+        out.events.sort_by_key(|e| e.onset);
         out
     }
     /// Cycle `k` on the tick grid: `tick = k * cycle_ticks + floor(cycle_ticks * onset)`.
@@ -521,13 +524,44 @@ fn too_much_work() -> String {
     format!("pattern may take more than {MAX_WORK} render steps in one cycle")
 }
 
+/// Unit tests meter the real traversal as it runs, including silent Euclid slots. This
+/// checks the parser's conservative work proof without a machine-speed-dependent timeout.
+/// Production builds carry only the events; the meter and its assertions compile out.
+struct RenderOutput {
+    events: Vec<Event>,
+    #[cfg(test)]
+    remaining_work: u64,
+    #[cfg(test)]
+    work: u64,
+}
+impl RenderOutput {
+    fn new(_work_bound: u64) -> Self {
+        Self {
+            events: Vec::new(),
+            #[cfg(test)]
+            remaining_work: _work_bound.min(MAX_WORK),
+            #[cfg(test)]
+            work: 0,
+        }
+    }
+    #[inline]
+    fn visit(&mut self) {
+        #[cfg(test)]
+        {
+            assert!(self.remaining_work > 0, "render exceeded parsed work bound");
+            self.remaining_work -= 1;
+            self.work += 1;
+        }
+    }
+}
+
 fn render_seq(
     steps: &[Step],
     start: Ratio,
     span: Ratio,
     k: u64,
     inh: Inherit,
-    out: &mut Vec<Event>,
+    out: &mut RenderOutput,
 ) {
     let (shares, total) = weights(steps).expect("weights proved finite by parse");
     let mut prefix: u128 = 0;
@@ -538,7 +572,15 @@ fn render_seq(
         prefix += share;
     }
 }
-fn render_step(step: &Step, start: Ratio, span: Ratio, k: u64, inh: Inherit, out: &mut Vec<Event>) {
+fn render_step(
+    step: &Step,
+    start: Ratio,
+    span: Ratio,
+    k: u64,
+    inh: Inherit,
+    out: &mut RenderOutput,
+) {
+    out.visit();
     let inh = Inherit {
         ratchet: step.ratchet.or(inh.ratchet),
         draw: step.draw || inh.draw,
@@ -548,15 +590,24 @@ fn render_step(step: &Step, start: Ratio, span: Ratio, k: u64, inh: Inherit, out
     };
     let cell = span * Ratio::new(1, e.steps);
     for i in 0..e.steps {
+        out.visit();
         if e.active(i) {
             render_atom(&step.atom, start + cell.mul_int(i), cell, k, inh, out);
         }
     }
 }
-fn render_atom(atom: &Atom, start: Ratio, span: Ratio, k: u64, inh: Inherit, out: &mut Vec<Event>) {
+fn render_atom(
+    atom: &Atom,
+    start: Ratio,
+    span: Ratio,
+    k: u64,
+    inh: Inherit,
+    out: &mut RenderOutput,
+) {
+    out.visit();
     match atom {
         Atom::Rest => {}
-        Atom::Token(token) => out.push(Event {
+        Atom::Token(token) => out.events.push(Event {
             onset: start,
             span,
             token: token.clone(),
@@ -1470,40 +1521,66 @@ mod tests {
     }
 
     #[test]
-    fn every_accepted_pattern_terminates() {
-        // The bound is proved at parse, so `cycle` stays infallible. What this test establishes
-        // is *termination*: nothing that parses walks the 2^30-slot traversal that hung the
-        // renderer at 61bf6ba. It is not a latency test. The two-second budget is a batch
-        // ceiling over six patterns and four cycles each; it is not a per-cycle maximum and it
-        // makes no sub-millisecond claim — at the cap a single cycle takes tens of milliseconds
-        // on this host (see MAX_WORK, and t-494 for the transport-deadline question). The
-        // budget is a hang detector with room to spare, not a threshold anyone tuned: the batch
-        // measured 339 ms in a debug build on the art LXC, 2026-09-07.
+    fn accepted_patterns_stay_within_parsed_work_bound() {
+        // The actual render_step/render_atom calls and every Euclid slot are metered in
+        // unit-test builds. Exceeding the parsed bound panics DURING traversal, so an
+        // underestimated silent expansion fails without waiting for it to finish. This
+        // measures traversal work, not latency or arbitrary nontermination outside those
+        // metered operations (for example, a loop introduced inside Ratio arithmetic).
         let worst = [
             "[x(64,64)](64,64)",
-            // Zero events, ~787k render steps: a silent traversal admitted by a wide margin on
+            // Zero events, ~787k charged work units: a silent traversal admitted by a wide margin on
             // output and a narrow one on work, which is the case that says the work bound is
             // what admits it. Not the most expensive accepted pattern — `(341,341)` here costs
             // exactly 2^20 — just the one this suite has always carried.
             "[~(1024,1024)](256,256)",
-            // The most expensive pattern the grammar admits at all: exactly MAX_WORK.
+            // The parser charges this silent pattern exactly MAX_WORK.
             "[~(1024,1024)](341,341)",
             "x(1024,1024)",
             "<[x(32,32)](32,32) [~(512,512)](2,512)>",
             "{[x(16,16)](16,16)}%16",
         ];
-        let start = std::time::Instant::now();
         for text in worst {
             let p = Pattern::parse(text).unwrap_or_else(|e| panic!("{text}: {e}"));
             for k in 0..4 {
-                assert!(p.cycle(k).len() as u64 <= MAX_EVENTS);
+                let rendered = p.render_cycle(k);
+                assert!(
+                    rendered.events.len() as u64 <= p.event_bound,
+                    "{text}, cycle {k}"
+                );
+                assert!(rendered.work <= p.work_bound, "{text}, cycle {k}");
             }
         }
-        assert!(
-            start.elapsed() < std::time::Duration::from_secs(2),
-            "accepted patterns took {:?}",
-            start.elapsed()
-        );
+    }
+
+    #[test]
+    fn work_meter_counts_silent_slots_and_composite_visits() {
+        // Independent counts: a plain leaf visits step + atom; Euclid adds every slot
+        // plus an atom for each pulse. Composites visit their children through that same
+        // path. The parse bound may include extra conservative work for leaf handling.
+        for (text, counts) in [
+            ("~", [2, 2]),
+            ("x(1,8)", [10, 10]),
+            ("[x, ~]", [6, 6]),
+            ("<x [x x]>", [4, 8]),
+            ("{x ~}%3", [8, 8]),
+            ("[~(2,2)](2,2)", [15, 15]),
+        ] {
+            let p = parse(text);
+            for (k, expected) in counts.into_iter().enumerate() {
+                assert_eq!(p.render_cycle(k as u64).work, expected, "{text}, cycle {k}");
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "render exceeded parsed work bound")]
+    fn underestimated_silent_traversal_fails_inside_the_slot_loop() {
+        let mut p = parse("~(1,1024)");
+        // Simulate a parser regression that only budgets calls, omitting inactive slots.
+        // The one atom is silent: an output-count guard would never catch this traversal.
+        p.work_bound = 3;
+        p.cycle(0);
     }
 
     #[test]
