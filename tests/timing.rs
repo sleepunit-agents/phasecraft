@@ -164,6 +164,91 @@ fn flam_grace_survives_at_bar_start() {
     balanced(&events);
 }
 #[test]
+fn flam_grace_stops_at_a_section_entry() {
+    // The bar floor is relaxed for a clamped downbeat attack; the section entry is not.
+    // Below a section's entry tick no window holds the source: the outgoing window's
+    // sources stop before it and the incoming window's MIDI starts at it, so a grace
+    // admitted there is an expansion no window can own. Found by Mark's review of #20.
+    use phasecraft::music::ornament::SuppressionReason::LowerBound;
+    let spacing = 40u64; // 1/64T at PPQN 960
+    let bar = PPQN * 4;
+    let c = Composition::parse(
+        "tempo=132\nseed=123\nphrase_bars=1\n[parts.hat]\nuse='techno.closed_hat'\n\
+         trigger.rhythm={steps=1,pulses=1}\nornaments.flam={spacing='1/64T'}\n\
+         [phrases.A]\n[arrangement]\n\
+         sections=[{phrase='A',bars=1},{phrase='A',bars=2,phase='continue'}]\n",
+    )
+    .unwrap();
+    // Step 16 is the second section's first step, on the bar. Its grace would land at
+    // `bar - spacing`, inside the outgoing section. Suppressed, and off the wire.
+    let entry = resolve_step(&c, 16).0.remove(0);
+    let flam = entry.ornaments.unwrap().flam.unwrap();
+    assert_eq!((flam.admitted_count, flam.emitted_count), (1, 0));
+    assert_eq!(flam.suppression_reason, Some(LowerBound));
+    assert!(entry.extra_events.is_empty());
+    // The internal bar boundary one bar later is inside the same section: relaxed.
+    let internal = resolve_step(&c, 32).0.remove(0);
+    let flam = internal.ornaments.unwrap().flam.unwrap();
+    assert_eq!((flam.admitted_count, flam.emitted_count), (1, 1));
+    assert_eq!(internal.extra_events[0].tick, 2 * bar - spacing);
+    let wire = onsets(
+        &(0..48)
+            .flat_map(|s| resolve_step(&c, s).1)
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        !wire.contains(&(bar - spacing)),
+        "grace crossed a section entry"
+    );
+    assert!(
+        wire.contains(&(2 * bar - spacing)),
+        "internal bar grace lost"
+    );
+}
+#[test]
+fn flam_grace_stops_at_a_scene_entry() {
+    // Router entry reaches compute_cell through the same floor as a section: the scene
+    // visit's entered_tick is the hard bound. A return group over one 16-step voice
+    // rolls every bar, so every bar start here is also a scene entry (t-492 follow-up).
+    use phasecraft::music::ornament::SuppressionReason::LowerBound;
+    let spacing = 40u64;
+    let bar = PPQN * 4;
+    let c = Composition::parse(
+        "tempo=132\nseed=123\nstart='a'\n[parts.hat]\nuse='techno.closed_hat'\n\
+         trigger.rhythm={steps=16,pulses=16}\nornaments.flam={spacing='1/64T'}\n\
+         [scenes]\na={}\nb={}\n[router]\nevery={returns='g'}\n[router.routes]\n\
+         a={a=0.5,b=0.5}\nb={a=0.5,b=0.5}\n[returns.g]\n\
+         align=[\"voices.hat.trigger.cycle\"]\n",
+    )
+    .unwrap();
+    for step in [16u64, 32] {
+        let trace = resolve_step(&c, step).0.remove(0);
+        assert_eq!(
+            trace.scene.as_ref().unwrap().entered_tick,
+            step * STEP_TICKS,
+            "step {step} should be a scene entry"
+        );
+        let flam = trace.ornaments.unwrap().flam.unwrap();
+        assert_eq!((flam.admitted_count, flam.emitted_count), (1, 0));
+        assert_eq!(flam.suppression_reason, Some(LowerBound));
+        assert!(trace.extra_events.is_empty());
+    }
+    // Mid-scene attacks keep their graces.
+    let inside = resolve_step(&c, 17).0.remove(0);
+    assert_eq!(inside.extra_events[0].tick, 17 * STEP_TICKS - spacing);
+    let wire = onsets(
+        &(0..48)
+            .flat_map(|s| resolve_step(&c, s).1)
+            .collect::<Vec<_>>(),
+    );
+    for entry in [bar, 2 * bar] {
+        assert!(
+            !wire.contains(&(entry - spacing)),
+            "grace crossed the scene entry at {entry}"
+        );
+    }
+}
+#[test]
 fn compiled_random_access_matches_fresh_snapshots_and_edits_invalidate_decisions() {
     let c = song(
         "subdivision='1/16T'\ngroove.run='ramp_up'\ntrigger.probability=0.7\nornaments.ratchet={count=3,probability=0.4}",

@@ -73,11 +73,26 @@ Part's subdivisions; after-gap and run-contour lengths count local source positi
 Offbeat emphasis and parameter automation remain tied to absolute musical time.
 
 Bars are clean ownership boundaries. Main hits cannot anticipate into a preceding
-bar; an opening grace note that would cross the bar is omitted. Repeats and note-offs
-finish inside their owning bar. Thus a source edit or temporary performance change
-can take over on a bar without an old anticipated hit or gate leaking into it. This
-also applies to the beginning and end of a section. Cross-bar pickups are not yet
-supported. Automation continues independently across these bar boundaries.
+bar. Repeats and note-offs finish inside their owning bar. Thus a source edit or
+temporary performance change can take over on a bar without an old anticipated hit
+or gate leaking into it. Automation continues independently across these bar
+boundaries.
+
+A flam grace is the one exception, and only in the case the bar floor itself
+creates. When an attack is clamped to the bar start — its onset is exactly the bar
+tick — the main hit has no room to pull its grace back inside the bar, so the grace
+is admitted one `flam.spacing` into the preceding bar and dispatched from the
+adjacent preceding planning window. An attack *above* the bar start (a positive
+`delay_ticks` or humanize offset) keeps the strict bound: its grace and note-off
+would straddle the bar-start step boundary, so the grace is omitted and the trace
+reports `"lower_bound"`.
+
+Section and scene entries are not relaxed. The entry tick — and tick zero — is a
+hard admission boundary: no window on either side of it will dispatch a source
+below it, so a grace never crosses one. A downbeat flam on the first step of a
+section or of a router scene visit is suppressed with `"lower_bound"`, exactly as
+at tick zero. Cross-bar pickups authored as such are still not supported; the
+relaxation above is a bound repair, not a pickup feature.
 
 MIDI is dispatched by event time, including early hits in the preceding planning
 window. Controls are sampled through rests and at all ornament onsets/releases.
@@ -144,9 +159,12 @@ coincident attacks merge and before MIDI is divided into scheduling windows. It
 is not a final MIDI note count. `"upper_bound"` means ratchet attacks lacked room
 for their release before the exclusive expansion bound; this bound may be the
 bar/section end or the next source's reserved earliest onset. `"lower_bound"`
-means an admitted flam's grace preceded the allowed start (including tick-zero
-underflow). For example, a probability-1 downbeat flam reports admitted 1, emitted
-0, `"lower_bound"` on every bar. An intact expansion has a `null` reason.
+means an admitted flam's grace preceded the allowed start. That start is the bar
+floor, relaxed by one `flam.spacing` when the attack sits exactly on it, and never
+below the section/scene entry or tick zero. So a probability-1 downbeat flam
+reports admitted 1, emitted 1 on an internal bar, and admitted 1, emitted 0,
+`"lower_bound"` at tick zero and at each section or scene entry. An intact
+expansion has a `null` reason.
 
 The previous fields retain their meanings: `ratchet_count` is the requested
 ratchet count or 1 after refusal, and `flam_active` says the grace survived the
