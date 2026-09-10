@@ -1,5 +1,5 @@
 use phasecraft::music::{
-    Composition, STEP_TICKS,
+    Composition, PPQN, STEP_TICKS,
     resolve::{Compiled, Dice, MidiEvent, realize, resolve_step},
     time::NoteValue,
 };
@@ -122,6 +122,8 @@ fn anticipation_and_flam_are_dispatched_in_the_previous_window_but_not_previous_
     assert!(onsets(&events).contains(&210));
     assert!(!onsets(&events).contains(&(3840 - 30)));
     assert!(onsets(&events).contains(&3840));
+    // Bar 2 main is clamped to the bar start — its grace must still survive (t-492).
+    assert!(onsets(&events).contains(&(3840 - 40))); // 1/64T = 40 ticks
     balanced(&events);
     assert_eq!(
         resolve_step(&c, 1).0[0]
@@ -134,6 +136,32 @@ fn anticipation_and_flam_are_dispatched_in_the_previous_window_but_not_previous_
             .advance_ticks,
         30
     );
+}
+#[test]
+fn flam_grace_survives_at_bar_start() {
+    // Every flam whose attack lands in the first `spacing` ticks of a bar was losing
+    // its grace — silently and deterministically (t-492, fe3cda6). Verify that a
+    // downbeat attack (tick = bar_start) produces its grace in the preceding window.
+    let spacing = 40u64; // 1/64T at PPQN 960
+    let bar = PPQN * 4;
+    let c = song("ornaments.flam={spacing='1/64T'}");
+    let events = render(&c, 3 * 16); // three bars
+    let onsets = onsets(&events);
+    // Bar 1 downbeat (tick 0): no grace possible — can't go negative.
+    assert!(!onsets.contains(&0u64.wrapping_sub(spacing)));
+    // Bar 2 downbeat (tick = bar): grace must appear at bar - spacing.
+    assert!(onsets.contains(&bar), "main at bar 2 start missing");
+    assert!(
+        onsets.contains(&(bar - spacing)),
+        "grace for bar 2 downbeat missing (bar-start flam grace bug, t-492)"
+    );
+    // Bar 3 downbeat (tick = 2 * bar): same.
+    assert!(onsets.contains(&(2 * bar)), "main at bar 3 start missing");
+    assert!(
+        onsets.contains(&(2 * bar - spacing)),
+        "grace for bar 3 downbeat missing"
+    );
+    balanced(&events);
 }
 #[test]
 fn compiled_random_access_matches_fresh_snapshots_and_edits_invalidate_decisions() {
@@ -387,8 +415,10 @@ fn ornament_trace_separates_gate_refusal_from_boundary_suppression() {
 fn downbeat_flam_trace_records_spent_attack_every_bar() {
     use phasecraft::music::ornament::SuppressionReason::LowerBound;
     let c = song("ornaments.flam={spacing='1/64T'}");
-    for step in [0, 16, 32, 48] {
-        let trace = resolve_step(&c, step).0.remove(0);
+    // Step 0: attack on tick 0 — grace would land before tick 0, impossible (t-492 fix
+    // only applies when the attack is clamped to a bar start > 0).
+    {
+        let trace = resolve_step(&c, 0).0.remove(0);
         let ornaments = trace.ornaments.unwrap();
         assert!(ornaments.ratchet.is_none());
         let flam = ornaments.flam.unwrap();
@@ -396,6 +426,21 @@ fn downbeat_flam_trace_records_spent_attack_every_bar() {
         assert_eq!(flam.suppression_reason, Some(LowerBound));
         assert!(!ornaments.flam_active);
         assert!(trace.extra_events.is_empty());
+        assert_eq!(trace.event.unwrap().tick, 0);
+    }
+    // Steps 16, 32, 48: attacks clamped to bar start. The grace now crosses into the
+    // previous bar and is dispatched from the adjacent preceding window (t-492 fix).
+    for step in [16u64, 32, 48] {
+        let trace = resolve_step(&c, step).0.remove(0);
+        let ornaments = trace.ornaments.unwrap();
+        assert!(ornaments.ratchet.is_none());
+        let flam = ornaments.flam.unwrap();
+        assert_eq!((flam.admitted_count, flam.emitted_count), (1, 1));
+        assert!(flam.suppression_reason.is_none());
+        assert!(ornaments.flam_active);
+        // The grace is in extra_events with tick = bar_start - spacing.
+        assert_eq!(trace.extra_events.len(), 1);
+        assert_eq!(trace.extra_events[0].tick, step * STEP_TICKS - 40); // 1/64T = 40 ticks
         assert_eq!(trace.event.unwrap().tick, step * STEP_TICKS);
     }
     assert!(resolve_step(&song(""), 0).0[0].ornaments.is_none());
