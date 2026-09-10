@@ -725,9 +725,7 @@ impl Compiled {
                 // For attacks above the bar start (positive humanize) the grace note-off
                 // would straddle the bar-start step boundary; keep the original bound.
                 let flam_lower = if event.tick <= lower {
-                    lower.saturating_sub(
-                        part.ornaments.flam.as_ref().map_or(0, |f| f.spacing.0),
-                    )
+                    lower.saturating_sub(part.ornaments.flam.as_ref().map_or(0, |f| f.spacing.0))
                 } else {
                     lower
                 };

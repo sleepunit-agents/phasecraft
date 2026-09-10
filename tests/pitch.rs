@@ -151,13 +151,18 @@ fn every_attack_samples_at_its_own_tick_including_a_flam_grace() {
     let c = piece(
         "[parts.sub.note]\npattern = \"c1 eb1\"\n[parts.sub.ornaments.flam]\nspacing = \"1/32\"\nprobability = 1.0",
     );
+    // The next bar's downbeat is itself flammed: its grace lands a thirty-second before the
+    // barline, inside this bar's last step, and so samples eb1 there — while its main hit
+    // opens the next bar on c1. Before t-492 that grace was dropped, because the attack it
+    // belongs to sits at the bar start.
     let ons = notes(&c, 1);
     assert_eq!(
         ons,
         vec![
             (0, 36),
             (8 * STEP_TICKS - STEP_TICKS / 2, 36),
-            (8 * STEP_TICKS, 39)
+            (8 * STEP_TICKS, 39),
+            (16 * STEP_TICKS - STEP_TICKS / 2, 39)
         ]
     );
 }
