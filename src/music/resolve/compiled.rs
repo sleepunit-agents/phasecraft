@@ -572,6 +572,10 @@ impl Compiled {
         let cell = part.subdivision.0;
         // Bars own their attacks and releases, so snapshot swaps never strand a tail.
         let bar = crate::music::PPQN * 4;
+        // The section/scene entry is a hard admission boundary: no window on either side
+        // of it will dispatch a source below it, so nothing may reach past it. The bar
+        // floor is the softer of the two and is the only one a grace may cross.
+        let entry_lower = lower;
         let lower = lower.max(step * cell / bar * bar);
         let upper = upper.min((step * cell / bar + 1) * bar);
         let mut trace = self.raw_at(step * cell)[index].clone();
@@ -718,6 +722,22 @@ impl Compiled {
                 ratchet.probability_mode = ProbabilityMode::Continuous;
             }
             if !expansion.is_default() {
+                // A flam grace reaches into the previous bar when the main attack was
+                // clamped to the bar start. Allow it to cross only in that case: when
+                // event.tick == lower the main had no room to pull the grace back, and
+                // the grace is dispatched by the adjacent preceding window's lookahead.
+                // For attacks above the bar start (positive humanize) the grace note-off
+                // would straddle the bar-start step boundary; keep the original bound.
+                // Never past `entry_lower`: at a section/scene entry the preceding window
+                // holds no source that could dispatch the grace and the entering window
+                // starts after it, so relaxing there admits an event no window owns.
+                let flam_lower = if event.tick <= lower {
+                    lower
+                        .saturating_sub(part.ornaments.flam.as_ref().map_or(0, |f| f.spacing.0))
+                        .max(entry_lower)
+                } else {
+                    lower
+                };
                 let (mut hits, ornaments) = expansion.expand(
                     c.dice(),
                     &part.id,
@@ -731,7 +751,7 @@ impl Compiled {
                     },
                     event,
                     span,
-                    lower..end,
+                    flam_lower..end,
                 );
                 // Store the main hit separately for existing consumers; extras are audible events too.
                 if let Some(main) = hits.iter().position(|h| h.tick == event.tick) {
