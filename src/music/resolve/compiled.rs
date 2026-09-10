@@ -636,8 +636,10 @@ impl Compiled {
                     }
                     ProbabilityMode::Continuous => step,
                 };
-                let roll = c.dice().roll(&part.id, "groove", identity, "ghost").u;
+                let ghost_draw = c.dice().roll(&part.id, "groove", identity, "ghost");
+                let roll = ghost_draw.u;
                 let ghost = !event.accent.active && roll < g.ghost_probability;
+                let ghost_pinned = ghost_draw.pinned.is_some();
                 let touch = g.draws_touch().then(|| {
                     let offbeat = (step * cell) % crate::music::PPQN == crate::music::PPQN / 2;
                     let after_gap = g.after_gap.as_ref().is_some_and(|gap| {
@@ -648,12 +650,13 @@ impl Compiled {
                     // One address for both touch draws, and the one `resolve_pins` resolves a
                     // `timing` or `velocity` pin to.
                     let identity = decision_identity(c, cell, step, g.touch_mode());
-                    let (timing_roll, requested_jitter_ticks) =
+                    let (timing_roll, requested_jitter_ticks, timing_pinned) =
                         g.timing_jitter_identity(c.dice(), &part.id, identity);
-                    let velocity_roll = c
-                        .dice()
-                        .roll(&part.id, "groove", identity, "humanize_velocity")
-                        .u;
+                    let velocity_draw =
+                        c.dice()
+                            .roll(&part.id, "groove", identity, "humanize_velocity");
+                    let velocity_roll = velocity_draw.u;
+                    let velocity_pinned = velocity_draw.pinned.is_some();
                     crate::music::groove::TouchTrace {
                         offbeat,
                         offbeat_factor: if offbeat { g.offbeat_gain } else { 1.0 },
@@ -667,9 +670,11 @@ impl Compiled {
                         velocity_roll,
                         requested_jitter_ticks,
                         velocity_jitter_factor: 1.0 + (velocity_roll * 2.0 - 1.0) * h.velocity,
+                        timing_pinned,
+                        velocity_pinned,
                     }
                 });
-                let requested = offset(&part, c, step);
+                let (requested, _) = offset(&part, c, step);
                 let onset =
                     (event.tick as i128 + i128::from(requested)).max(i128::from(lower)) as u64;
                 let offset = onset as i64 - event.tick as i64;
@@ -684,6 +689,7 @@ impl Compiled {
                     requested_gate_ticks: part.output.gate_ticks,
                     ghost_roll: roll,
                     ghost,
+                    ghost_pinned,
                     run_before: before,
                     run_after: after,
                     velocity_factor: g.contour(before, after)
@@ -692,6 +698,7 @@ impl Compiled {
                             t.offbeat_factor * t.gap_factor * t.velocity_jitter_factor
                         }),
                     touch,
+                    gate_timing_pinned: false, // filled in below after gate is bounded
                 });
             }
         }
@@ -702,7 +709,16 @@ impl Compiled {
                 Some(p) => p.schedule().next_after(step * cell).unwrap_or(upper),
                 None => (step + 1) * cell,
             };
-            let next_tick = next_source as i128 + i128::from(offset(&part, c, next_source / cell));
+            let (next_offset, next_timing_pinned) = offset(&part, c, next_source / cell);
+            // Record that the *next* step's timing pin was consumed here to bound THIS step's gate.
+            // A pin at step+1 that only moves the gate of step, never its own onset, would otherwise
+            // be invisible in the trace — see t-517.
+            if next_timing_pinned {
+                if let Some(groove) = event.groove.as_mut() {
+                    groove.gate_timing_pinned = true;
+                }
+            }
+            let next_tick = next_source as i128 + i128::from(next_offset);
             let next_first = (next_tick
                 - i128::from(part.ornaments.flam.as_ref().map_or(0, |f| f.spacing.0)))
             .max(i128::from(event.tick + 2)) as u64;
@@ -748,28 +764,33 @@ fn position_text(tick: u64) -> String {
     let step = tick / STEP_TICKS;
     format!("{}.{}.{}", step / 16 + 1, step / 4 % 4 + 1, step % 4 + 1)
 }
-fn offset(part: &Part, c: &Composition, step: u64) -> i64 {
+/// Returns `(offset_ticks, timing_pinned)`. `timing_pinned` is true when the humanize_timing
+/// draw for this step was forced by a `[[pins]]` entry. The caller must surface this on the
+/// appropriate trace: for the onset site it is already in `TouchTrace.timing_pinned`; for the
+/// gate-bounding site (step + 1 consulted to bound step's gate) it belongs on
+/// `GrooveTrace.gate_timing_pinned` — see t-517.
+fn offset(part: &Part, c: &Composition, step: u64) -> (i64, bool) {
     let cell = part.subdivision.0;
     let swing = if step % 2 == 1 {
         ((part.groove.swing - 0.5) * 2.0 * cell as f64).round() as i64
     } else {
         0
     };
-    let jitter = part
-        .groove
-        .timing_jitter_identity(
-            c.dice(),
-            &part.id,
-            decision_identity(c, cell, step, part.groove.touch_mode()),
-        )
-        .1;
-    (part.groove.delay_ticks + swing + jitter).clamp(
-        if anticipates(part) {
-            -(cell as i64 / 4)
-        } else {
-            0
-        },
-        cell as i64 - 2,
+    let (_, jitter, timing_pinned) = part.groove.timing_jitter_identity(
+        c.dice(),
+        &part.id,
+        decision_identity(c, cell, step, part.groove.touch_mode()),
+    );
+    (
+        (part.groove.delay_ticks + swing + jitter).clamp(
+            if anticipates(part) {
+                -(cell as i64 / 4)
+            } else {
+                0
+            },
+            cell as i64 - 2,
+        ),
+        timing_pinned,
     )
 }
 /// A groove that asks to move early opens the anticipation window (a quarter of the

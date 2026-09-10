@@ -60,22 +60,27 @@ pub struct Dice<'a> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Draw {
     pub u: f64,
-    pub pinned: bool,
+    /// The index into the composition's `[[pins]]` list that forced this draw,
+    /// or `None` when the roll was hashed normally. Carrying the index rather than
+    /// a bare bool lets consumers join back to the authored pin without re-resolving
+    /// the address from first principles — see t-514.
+    pub pinned: Option<usize>,
 }
 impl Dice<'_> {
     pub fn roll(&self, part: &str, lane: &str, event: u64, decision: &str) -> Draw {
-        let pinned = self.pins.iter().find(|pin| {
+        let pinned = self.pins.iter().enumerate().find_map(|(i, pin)| {
             let a = &pin.address;
-            a.event == event && a.part == part && a.lane == lane && a.decision == decision
+            (a.event == event && a.part == part && a.lane == lane && a.decision == decision)
+                .then_some(i)
         });
         match pinned {
-            Some(pin) => Draw {
-                u: pin.u,
-                pinned: true,
+            Some(index) => Draw {
+                u: self.pins[index].u,
+                pinned: Some(index),
             },
             None => Draw {
                 u: decision_roll(self.seed, part, lane, event, decision),
-                pinned: false,
+                pinned: None,
             },
         }
     }
@@ -413,7 +418,7 @@ fn admission(
         event_identity,
         probability,
         roll: draw.u,
-        pinned: draw.pinned,
+        pinned: draw.pinned.is_some(),
         admitted,
     }
 }
@@ -479,7 +484,7 @@ fn resolve_part(
                     event_identity,
                     probability: lane.probability,
                     roll: draw.u,
-                    pinned: draw.pinned,
+                    pinned: draw.pinned.is_some(),
                     admitted,
                 },
             }

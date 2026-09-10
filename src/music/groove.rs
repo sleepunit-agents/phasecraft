@@ -54,6 +54,17 @@ pub struct TouchTrace {
     pub velocity_roll: f64,
     pub requested_jitter_ticks: i64,
     pub velocity_jitter_factor: f64,
+    /// The timing draw for this step's onset was forced by a `[[pins]]` entry.
+    /// Written only when true; mirrors `ExpansionTrace.pinned` — the roll value
+    /// is still in `timing_roll`, and the flag says it was authored, not hashed.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub timing_pinned: bool,
+    /// The velocity draw for this step was forced by a `[[pins]]` entry.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub velocity_pinned: bool,
+}
+fn is_false(v: &bool) -> bool {
+    !v
 }
 impl Default for Groove {
     fn default() -> Self {
@@ -126,7 +137,7 @@ impl Groove {
         id: &str,
         step: u64,
         phrase_steps: u64,
-    ) -> (f64, i64) {
+    ) -> (f64, i64, bool) {
         let h = self.humanize.clone().unwrap_or_default();
         let identity = match h.mode {
             ProbabilityMode::PhraseLocked => step % phrase_steps,
@@ -134,17 +145,20 @@ impl Groove {
         };
         self.timing_jitter_identity(dice, id, identity)
     }
+    /// Returns `(roll, jitter_ticks, pinned)`. `pinned` is true when the roll was forced
+    /// by a `[[pins]]` entry; the caller must surface it on whichever trace owns this draw.
     pub fn timing_jitter_identity(
         &self,
         dice: super::resolve::Dice,
         id: &str,
         identity: u64,
-    ) -> (f64, i64) {
+    ) -> (f64, i64, bool) {
         let h = self.humanize.clone().unwrap_or_default();
-        let roll = dice.roll(id, "groove", identity, "humanize_timing").u;
+        let draw = dice.roll(id, "groove", identity, "humanize_timing");
         (
-            roll,
-            ((roll * 2.0 - 1.0) * h.timing_ticks as f64).round() as i64,
+            draw.u,
+            ((draw.u * 2.0 - 1.0) * h.timing_ticks as f64).round() as i64,
+            draw.pinned.is_some(),
         )
     }
     pub fn onset_offset(
@@ -189,9 +203,21 @@ pub struct GrooveTrace {
     pub requested_gate_ticks: u64,
     pub ghost_roll: f64,
     pub ghost: bool,
+    /// The ghost draw was forced by a `[[pins]]` entry. Written only when true.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ghost_pinned: bool,
     pub run_before: usize,
     pub run_after: usize,
     pub velocity_factor: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub touch: Option<TouchTrace>,
+    /// The timing draw for the *next* step (step + 1) was forced by a `[[pins]]` entry
+    /// when it was consulted to bound THIS step's gate length. Written only when true.
+    ///
+    /// A pin at address `e` is consulted by two sites: the onset draw at `e`, and the
+    /// gate-bounding computation at `e - 1` that calls `offset(e)`. This flag names the
+    /// second consumption so the pins report can attribute it to the correct authored
+    /// pin rather than reporting it as an unexplained gate truncation — see t-517.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub gate_timing_pinned: bool,
 }

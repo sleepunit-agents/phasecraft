@@ -643,3 +643,182 @@ fn a_continuous_pin_lands_once_per_pass_of_its_step_on_the_clock_it_is_counted_a
         1
     );
 }
+
+// t-514: Draw.pinned carries the pin's index into the authored list, not merely a bool.
+// This lets consumers join back to the authored pin without re-resolving the address.
+#[test]
+fn draw_pinned_carries_the_authored_pin_index_not_a_bare_bool() {
+    use phasecraft::music::resolve::{Address, Dice, Draw, Pin, PinAt};
+    let pins = vec![
+        Pin {
+            at: PinAt {
+                roll: "fire".into(),
+                voice: Some("kick".into()),
+                accent: None,
+                bar: 1,
+                slot: 1,
+            },
+            u: 0.1,
+            address: Address {
+                part: "kick".into(),
+                lane: "trigger".into(),
+                event: 0,
+                decision: "admission".into(),
+            },
+        },
+        Pin {
+            at: PinAt {
+                roll: "fire".into(),
+                voice: Some("kick".into()),
+                accent: None,
+                bar: 1,
+                slot: 2,
+            },
+            u: 0.2,
+            address: Address {
+                part: "kick".into(),
+                lane: "trigger".into(),
+                event: 1,
+                decision: "admission".into(),
+            },
+        },
+    ];
+    let dice = Dice {
+        seed: 42,
+        pins: &pins,
+    };
+    // The first pin (index 0) should be returned with pinned = Some(0).
+    let hit0 = dice.roll("kick", "trigger", 0, "admission");
+    assert_eq!(
+        hit0,
+        Draw {
+            u: 0.1,
+            pinned: Some(0)
+        }
+    );
+    // The second pin (index 1) should be returned with pinned = Some(1).
+    let hit1 = dice.roll("kick", "trigger", 1, "admission");
+    assert_eq!(
+        hit1,
+        Draw {
+            u: 0.2,
+            pinned: Some(1)
+        }
+    );
+    // A roll that matches no pin returns None.
+    let miss = dice.roll("kick", "trigger", 99, "admission");
+    assert!(miss.pinned.is_none());
+}
+
+// t-511: ghost_pinned, timing_pinned, and velocity_pinned appear on the groove/touch trace
+// when those draws are forced by authored pins. Written only when true; omitted otherwise.
+#[test]
+fn touch_trace_carries_pinned_flags_for_ghost_timing_and_velocity() {
+    // A hat that fires every step with ghost, humanize timing, and humanize velocity active —
+    // the full set of touch draws — so all three flags can be exercised.
+    let c = Composition::parse(
+        "tempo=132\nseed=91827\nphrase_bars=4\n\
+         [parts.hat]\nuse='techno.closed_hat'\n\
+         trigger.rhythm={steps=1,pulses=1}\ntrigger.probability=1.0\n\
+         groove.ghost_probability=0.5\n\
+         groove.humanize={timing_ticks=10,velocity=0.3}\n\
+         [[pins]]\nat={roll='ghost',voice='hat',bar=1,slot=1}\nu=0.99\n\
+         [[pins]]\nat={roll='timing',voice='hat',bar=1,slot=1}\nu=0.123\n\
+         [[pins]]\nat={roll='velocity',voice='hat',bar=1,slot=1}\nu=0.456",
+    )
+    .unwrap();
+    let step0_json = serde_json::to_string(&resolve(&c, 0)).unwrap();
+    // All three pins are at step 0: ghost_pinned on GrooveTrace, timing_pinned and
+    // velocity_pinned on TouchTrace.
+    assert!(
+        step0_json.contains("\"ghost_pinned\":true"),
+        "ghost_pinned missing: {step0_json}"
+    );
+    assert!(
+        step0_json.contains("\"timing_pinned\":true"),
+        "timing_pinned missing: {step0_json}"
+    );
+    assert!(
+        step0_json.contains("\"velocity_pinned\":true"),
+        "velocity_pinned missing: {step0_json}"
+    );
+    // An unpinned step carries no pin flags at all.
+    let step1_json = serde_json::to_string(&resolve(&c, 1)).unwrap();
+    assert!(
+        !step1_json.contains("ghost_pinned"),
+        "unexpected ghost_pinned at step 1: {step1_json}"
+    );
+    assert!(
+        !step1_json.contains("timing_pinned"),
+        "unexpected timing_pinned at step 1: {step1_json}"
+    );
+    assert!(
+        !step1_json.contains("velocity_pinned"),
+        "unexpected velocity_pinned at step 1: {step1_json}"
+    );
+}
+
+// t-517: A timing pin at step e is consumed by two different decisions: the onset of e
+// (site 2) and the gate length of e-1 (site 3 — offset(e) bounds the gate of e-1).
+// gate_timing_pinned on GrooveTrace makes site 3 recoverable without re-deriving the
+// address at the consumer.
+#[test]
+fn gate_timing_pinned_names_the_consuming_decision_when_next_step_pin_bounds_this_gate() {
+    // Step 1 (bar 1 slot 2) has an event. The gate-bounding call reads offset(step=2),
+    // which consults the timing pin at bar 1 slot 3. So step 1's GrooveTrace should carry
+    // gate_timing_pinned=true even though step 1 itself has no timing pin.
+    let c = Composition::parse(
+        "tempo=132\nseed=91827\nphrase_bars=4\n\
+         [parts.hat]\nuse='techno.closed_hat'\n\
+         trigger.rhythm={steps=1,pulses=1}\ntrigger.probability=1.0\n\
+         groove.humanize={timing_ticks=10,velocity=0.0}\n\
+         [[pins]]\nat={roll='timing',voice='hat',bar=1,slot=3}\nu=0.789",
+    )
+    .unwrap();
+    // Step 1's main event groove should have gate_timing_pinned set — the gate-bounding
+    // call consumed the timing pin at slot 3 (step 2).
+    let step1 = resolve(&c, 1);
+    let step1_groove = step1
+        .event
+        .as_ref()
+        .and_then(|e| e.groove.as_ref())
+        .expect("step 1 must have an event with a groove trace");
+    assert!(
+        step1_groove.gate_timing_pinned,
+        "gate_timing_pinned should be true on step 1 (next step's pin bounded its gate)"
+    );
+    // Step 1's own onset draw is not pinned: timing_pinned must be false.
+    assert!(
+        !step1_groove
+            .touch
+            .as_ref()
+            .map_or(false, |t| t.timing_pinned),
+        "step 1 should not have timing_pinned (pin is at slot 3, not slot 2)"
+    );
+    // Step 2 (slot 3) is where the pin's address lives: timing_pinned appears on its event.
+    let step2 = resolve(&c, 2);
+    let step2_groove = step2
+        .event
+        .as_ref()
+        .and_then(|e| e.groove.as_ref())
+        .expect("step 2 must have an event with a groove trace");
+    assert!(
+        step2_groove
+            .touch
+            .as_ref()
+            .map_or(false, |t| t.timing_pinned),
+        "step 2 must carry timing_pinned (the pin is at bar 1 slot 3)"
+    );
+    // Step 0's own event groove should NOT have gate_timing_pinned — the next-step timing
+    // draw for step 1 (slot 2) is not pinned; only slot 3 is.
+    let step0 = resolve(&c, 0);
+    let step0_gate_timing_pinned = step0
+        .event
+        .as_ref()
+        .and_then(|e| e.groove.as_ref())
+        .map_or(false, |g| g.gate_timing_pinned);
+    assert!(
+        !step0_gate_timing_pinned,
+        "step 0 should not have gate_timing_pinned (slot 2 / step 1 has no timing pin)"
+    );
+}
