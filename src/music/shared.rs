@@ -34,14 +34,17 @@ pub struct Target {
 pub struct Follower {
     pub follows: String,
     pub op: Operation,
-    pub low: f64,
-    pub high: f64,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub unclipped: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub low: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub high: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unclipped: Option<bool>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Operation {
+    Direct,
     Range,
     ScaleDefault,
 }
@@ -158,11 +161,19 @@ impl Lane {
 }
 impl Follower {
     pub fn mapped(&self, lane: &Lane, value: f64, default: f64) -> f64 {
-        let fraction = (value - lane.range[0]) / (lane.range[1] - lane.range[0]);
-        let mapped = self.low + (self.high - self.low) * fraction;
         match self.op {
-            Operation::Range => mapped,
-            Operation::ScaleDefault => mapped * default,
+            Operation::Direct => value,
+            Operation::Range | Operation::ScaleDefault => {
+                let low = self.low.expect("validated mapping span");
+                let high = self.high.expect("validated mapping span");
+                let fraction = (value - lane.range[0]) / (lane.range[1] - lane.range[0]);
+                let mapped = low + (high - low) * fraction;
+                if self.op == Operation::ScaleDefault {
+                    mapped * default
+                } else {
+                    mapped
+                }
+            }
         }
     }
     pub fn validate(
@@ -174,8 +185,19 @@ impl Follower {
         let lane = lanes
             .get(&self.follows)
             .ok_or_else(|| format!("unknown shared lane {:?}", self.follows))?;
-        if !self.low.is_finite() || !self.high.is_finite() || !(self.high - self.low).is_finite() {
-            return Err("follower span must be finite".into());
+        if self.op == Operation::Direct {
+            if self.low.is_some() || self.high.is_some() || self.unclipped.is_some() {
+                return Err(
+                    "direct takes the lane value unchanged; omit low, high and unclipped".into(),
+                );
+            }
+        } else {
+            let (Some(low), Some(high)) = (self.low, self.high) else {
+                return Err("mapping follower requires low and high".into());
+            };
+            if !low.is_finite() || !high.is_finite() || !(high - low).is_finite() {
+                return Err("follower span must be finite".into());
+            }
         }
         if gate && self.op != Operation::Range {
             return Err("ratchet gate requires op = range".into());
@@ -185,8 +207,13 @@ impl Follower {
         }
         for edge in lane.range {
             let value = self.mapped(lane, edge, default.unwrap_or(1.0));
-            if !value.is_finite() || ((gate || self.unclipped) && !(0.0..=1.0).contains(&value)) {
-                return Err("follower reaches outside 0..1 (gate or unclipped promise)".into());
+            if !value.is_finite()
+                || ((gate || self.op == Operation::Direct || self.unclipped.unwrap_or(false))
+                    && !(0.0..=1.0).contains(&value))
+            {
+                return Err(
+                    "follower reaches outside 0..1 (direct, gate or unclipped promise)".into(),
+                );
             }
         }
         Ok(())
@@ -303,12 +330,14 @@ pub fn report(c: &Composition) -> Vec<String> {
                 ));
             }
             if let Some(f) = &p.ornaments.gate {
+                let a = f.low.expect("validated gate span");
+                let b = f.high.expect("validated gate span");
                 rows.push(format!(
                     "{label} {} burst gate follows {}: {:.6}..{:.6}; main unaffected",
                     p.id,
                     f.follows,
-                    f.low.min(f.high),
-                    f.low.max(f.high)
+                    a.min(b),
+                    a.max(b)
                 ));
             }
         }
