@@ -713,10 +713,8 @@ impl Compiled {
             // Record that the *next* step's timing pin was consumed here to bound THIS step's gate.
             // A pin at step+1 that only moves the gate of step, never its own onset, would otherwise
             // be invisible in the trace — see t-517.
-            if next_timing_pinned {
-                if let Some(groove) = event.groove.as_mut() {
-                    groove.gate_timing_pinned = true;
-                }
+            if next_timing_pinned && let Some(groove) = event.groove.as_mut() {
+                groove.gate_timing_pinned = true;
             }
             let next_tick = next_source as i128 + i128::from(next_offset);
             let next_first = (next_tick

@@ -789,10 +789,7 @@ fn gate_timing_pinned_names_the_consuming_decision_when_next_step_pin_bounds_thi
     );
     // Step 1's own onset draw is not pinned: timing_pinned must be false.
     assert!(
-        !step1_groove
-            .touch
-            .as_ref()
-            .map_or(false, |t| t.timing_pinned),
+        !step1_groove.touch.as_ref().is_some_and(|t| t.timing_pinned),
         "step 1 should not have timing_pinned (pin is at slot 3, not slot 2)"
     );
     // Step 2 (slot 3) is where the pin's address lives: timing_pinned appears on its event.
@@ -803,10 +800,7 @@ fn gate_timing_pinned_names_the_consuming_decision_when_next_step_pin_bounds_thi
         .and_then(|e| e.groove.as_ref())
         .expect("step 2 must have an event with a groove trace");
     assert!(
-        step2_groove
-            .touch
-            .as_ref()
-            .map_or(false, |t| t.timing_pinned),
+        step2_groove.touch.as_ref().is_some_and(|t| t.timing_pinned),
         "step 2 must carry timing_pinned (the pin is at bar 1 slot 3)"
     );
     // Step 0's own event groove should NOT have gate_timing_pinned — the next-step timing
@@ -816,7 +810,7 @@ fn gate_timing_pinned_names_the_consuming_decision_when_next_step_pin_bounds_thi
         .event
         .as_ref()
         .and_then(|e| e.groove.as_ref())
-        .map_or(false, |g| g.gate_timing_pinned);
+        .is_some_and(|g| g.gate_timing_pinned);
     assert!(
         !step0_gate_timing_pinned,
         "step 0 should not have gate_timing_pinned (slot 2 / step 1 has no timing pin)"
