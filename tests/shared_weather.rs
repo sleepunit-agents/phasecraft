@@ -330,3 +330,144 @@ fn settled_clamped_target_survives_large_origin_cancellation() {
     assert_eq!(value.target, 1.0);
     assert_eq!(value.value, 1.0);
 }
+
+const DIRECT: &str = r#"
+tempo = 126
+seed = 91827
+[lanes.level]
+start = 0.5
+range = [0.2, 0.8]
+carry = "always"
+target = { every = { bars = 2 }, delta = [0.3], ramp = { bars = 1 } }
+[parts.hat]
+trigger.rhythm = { steps = 16, pulses = 4 }
+accent.rhythm = { steps = 16, pulses = 0 }
+profile.base = 100
+output.note = 42
+output.controls.decay = { cc = 76, default = 0.25 }
+parameters.decay = { follows = "level", op = "direct" }
+"#;
+
+#[test]
+fn direct_control_uses_raw_lane_value_not_normalized_range_or_kit_default() {
+    for (start, initial) in [(0.2, 25), (0.5, 64), (0.8, 102)] {
+        for default in [", default = 0.25", ""] {
+            let source = DIRECT
+                .replace("start = 0.5", &format!("start = {start}"))
+                .replace(", default = 0.25", default);
+            let c = Composition::parse(&source).unwrap();
+            let mut compiled = Compiled::new(&c);
+            let (_, events) = compiled.resolve_step(0);
+            let cc = events.iter().find(|e| e.parameter).unwrap();
+            assert_eq!(cc.bytes[1..], [76, initial]);
+            assert!(compiled.resolve_step(1).1.iter().all(|e| !e.parameter));
+            let report = phasecraft::music::shared::report(&c).join("\n");
+            assert!(
+                report.contains("raw 0.200000..0.800000, control 0.200000..0.800000, direct"),
+                "{report}"
+            );
+        }
+    }
+}
+
+#[test]
+fn direct_roundtrip_keeps_span_absent_and_ramp_output_seekable() {
+    let c = Composition::parse(DIRECT).unwrap();
+    let serialized = toml::to_string(&c).unwrap();
+    let value: toml::Value = toml::from_str(&serialized).unwrap();
+    let reader = &value["parts"][0]["parameters"]["decay"];
+    assert_eq!(reader["op"].as_str(), Some("direct"));
+    for key in ["low", "high", "unclipped"] {
+        assert!(reader.get(key).is_none(), "serialized unwanted {key}");
+    }
+    let copy = Composition::parse(&serialized).unwrap();
+    let mut forward = Compiled::new(&c);
+    let mut replay = Compiled::new(&copy);
+    let expected: Vec<_> = (0..80).map(|step| forward.resolve_step(step).1).collect();
+    for (step, cc) in [(64, 102), (0, 64), (48, 102), (32, 64)] {
+        let events = replay.resolve_step(step).1;
+        assert_eq!(events, expected[step as usize]);
+        assert_eq!(events.iter().find(|e| e.parameter).unwrap().bytes[2], cc);
+    }
+}
+
+#[test]
+fn direct_rejects_mapping_fields_and_unrepresentable_reach_at_load() {
+    for (old, new) in [
+        ("op = \"direct\"", "op = \"direct\", low = 0.2"),
+        ("op = \"direct\"", "op = \"direct\", high = 0.8"),
+        ("op = \"direct\"", "op = \"direct\", unclipped = true"),
+        ("op = \"direct\"", "op = \"direct\", unclipped = false"),
+        ("op = \"direct\"", "op = \"range\""),
+        ("op = \"direct\"", "op = \"scale-default\", low = 0.2"),
+        ("range = [0.2, 0.8]", "range = [-0.1, 0.8]"),
+        ("range = [0.2, 0.8]", "range = [0.2, 1.1]"),
+        ("follows = \"level\"", "follows = \"missing\""),
+    ] {
+        assert!(
+            Composition::parse(&DIRECT.replace(old, new)).is_err(),
+            "accepted {new}"
+        );
+    }
+    let explicit_zero = DIRECT.replace("op = \"direct\"", "op = \"direct\", low = 0.0, high = 0.0");
+    assert!(
+        Composition::parse(&explicit_zero)
+            .unwrap_err()
+            .contains("omit low, high and unclipped")
+    );
+    let gate = DIRECT.replace(
+        "parameters.decay = { follows = \"level\", op = \"direct\" }",
+        "ornaments.gate = { follows = \"level\", op = \"direct\" }",
+    );
+    assert!(
+        Composition::parse(&gate)
+            .unwrap_err()
+            .contains("ratchet gate requires op = range")
+    );
+}
+
+#[test]
+fn follower_diagnostics_name_reach_promise_and_separate_non_finite_mapping() {
+    use phasecraft::music::shared::Follower;
+    let lanes = std::collections::BTreeMap::from([("weather".into(), lane("[0]"))]);
+    for (fields, default, gate, expected) in [
+        (
+            "op='direct'",
+            None,
+            false,
+            "direct takes the lane value unchanged",
+        ),
+        (
+            "op='range'\nlow=0\nhigh=8",
+            None,
+            true,
+            "a ratchet gate is a probability",
+        ),
+        (
+            "op='range'\nlow=0\nhigh=8\nunclipped=true",
+            None,
+            false,
+            "unclipped = true promises",
+        ),
+    ] {
+        let f: Follower = toml::from_str(&format!("follows='weather'\n{fields}")).unwrap();
+        let error = f.validate(&lanes, default, gate).unwrap_err();
+        assert!(
+            error.contains("lane \"weather\" (range 0..8) reaches 8 outside 0..1"),
+            "{error}"
+        );
+        assert!(error.contains(expected), "{error}");
+    }
+    let f: Follower =
+        toml::from_str("follows='weather'\nop='scale-default'\nlow=0\nhigh=1e308\nunclipped=true")
+            .unwrap();
+    let error = f.validate(&lanes, Some(2.0), false).unwrap_err();
+    assert!(
+        error.contains("lane \"weather\" (range 0..8) produces non-finite value"),
+        "{error}"
+    );
+    assert!(
+        !error.contains("promise") && !error.contains("outside 0..1"),
+        "{error}"
+    );
+}

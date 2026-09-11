@@ -48,6 +48,32 @@ otherwise retain their meanings. `range` linearly maps the source range onto the
 reader's span; `scale-default` also multiplies the control's declared output default.
 Descending spans are permitted. Continuous results clamp to 0..1 before MIDI rounding;
 gate spans must already fit 0..1. `unclipped` rejects a mapping whose endpoints clip.
+
+A continuous control can instead take a normalized lane value unchanged:
+
+```toml
+[lanes.level]
+start = 0.5
+range = [0.2, 0.8]
+carry = "always"
+target = { every = { bars = 2 }, delta = [0.3], ramp = { bars = 1 } }
+
+[parts.hat.parameters.decay]
+follows = "level"
+op = "direct"
+```
+
+`direct` requires the lane's entire declared range to fit 0..1. For example, a
+lane with range `[0.2, 0.8]` publishes 0.2/0.5/0.8 as CC 25/64/102, regardless of
+the kit default. It neither normalizes the lane range nor multiplies a default.
+The original weather study's 0..8 lane therefore requires a mapping operation;
+using `direct` with it is a load error. Omit `low`, `high`, and `unclipped` for
+`direct`; mapping operations still require both endpoints. Burst gates retain
+`op = "range"`. Direct controls use the same barline publication, quantization,
+deduplication, scene reset, and stop lifecycle as mapped controls. Load reports
+show their declared reach. This is the existing companion ENGINES follower contract
+and `check.py` direct/no-span rule; it adds no source or timing-walk support.
+
 A followed control cannot also have a fixed/ramped/automated value or accent response.
 Active followed controls must have distinct channel/CC targets.
 
@@ -79,7 +105,7 @@ settled targets per compiled snapshot. Missing history is replayed exactly; a di
 cold seek costs linear work in elapsed decisions and has no constant-time deadline
 guarantee. New compiled snapshots reconstruct under the new score; no live retained
 state journal migrates across edits. Event-clocked shared sources, walks, lane-following
-doors, and direct followers are outside this slice.
+doors are outside this slice.
 
 The example-first contract is until-stop `WEATHER.md` and its default-checked
 `trace_weather.py`. That document uses the existing hypothetical TRACE delta deck;
