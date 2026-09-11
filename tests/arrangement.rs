@@ -232,15 +232,30 @@ fn missed_grid_positions(stderr: &str) -> u64 {
         .unwrap_or(0)
 }
 
-/// The first reload boundary at or after which every observed row is silent.
-/// Reloads apply only at `step % 16 == 0`, so a natural rest inside the
-/// rhythm cannot be mistaken for the edit taking effect.
-fn first_silent_boundary(rows: &[serde_json::Value]) -> Option<u64> {
-    (0..=64).step_by(16).map(|b| b as u64).find(|b| {
-        rows.iter()
-            .filter(|r| r["step"].as_u64().unwrap() >= *b)
-            .all(|r| r["event"].is_null())
-    })
+/// A watched edit is picked up at the first reload boundary after it is
+/// written; reloads happen only at `step % 16 == 0`.
+fn next_boundary(step: u64) -> u64 {
+    step / 16 * 16 + 16
+}
+
+fn step(row: &serde_json::Value) -> u64 {
+    row["step"].as_u64().unwrap()
+}
+
+/// The trigger probability in force at a row, as the engine recorded it.
+/// This witnesses the edit's arrival directly. A silent suffix does not:
+/// the rhythm rests between pulses, so silence starting at some step only
+/// bounds the arrival, and the last pulse before a boundary can fall
+/// several steps short of it.
+fn probability(row: &serde_json::Value) -> f64 {
+    row["trigger"]["probability"].as_f64().unwrap()
+}
+
+/// Whether the rhythm placed a pulse here — the rows whose event presence
+/// carries information. At probability 1.0 every pulse sounds; at 0.0 none
+/// does. A rest is `event: null` either way and proves nothing.
+fn is_pulse(row: &serde_json::Value) -> bool {
+    row["trigger"]["rhythm"]["active"].as_bool().unwrap()
 }
 
 #[test]
@@ -306,24 +321,49 @@ fn watched_arrangements_reject_layout_edits_and_accept_musical_edits() {
         stderr.contains("restart playback to change arrangement layout"),
         "{stderr}"
     );
-    // The musical edit is accepted, and only at a reload boundary after it.
-    let silent = first_silent_boundary(&rows)
-        .unwrap_or_else(|| panic!("probability=0.0 never took effect: {stderr}"));
-    assert!(
-        silent > musical_edit,
-        "silence at {silent} precedes the edit at {musical_edit}: {stderr}"
-    );
-    let (before, after): (Vec<_>, Vec<_>) = rows
+    // The musical edit is accepted at the first reload boundary after it was
+    // written, and not one step earlier: the probability in force at each row
+    // locates the arrival, so an off-boundary application cannot hide in a rest.
+    let boundary = next_boundary(musical_edit);
+    if let Some(early) = rows
         .iter()
-        .partition(|r| r["step"].as_u64().unwrap() < silent);
-    // Both regions must be witnessed: an unobserved region makes `all()` vacuous.
+        .find(|r| probability(r) == 0.0 && step(r) < boundary)
+    {
+        panic!(
+            "edit written at {musical_edit} applied at step {}, before boundary {boundary}: {stderr}",
+            step(early)
+        );
+    }
+    if let Some(late) = rows
+        .iter()
+        .find(|r| probability(r) == 1.0 && step(r) >= boundary)
+    {
+        panic!(
+            "edit written at {musical_edit} had not applied by step {}, past boundary {boundary}: {stderr}",
+            step(late)
+        );
+    }
+    // A stall can abandon every row on one side of the boundary, which would
+    // make the assertions below vacuously true. Require a pulse on each side.
+    let (sounding, silenced): (Vec<_>, Vec<_>) = rows
+        .iter()
+        .filter(|r| is_pulse(r))
+        .partition(|r| step(r) < boundary);
     assert!(
-        before.iter().any(|r| !r["event"].is_null()),
-        "nothing sounded before {silent}: {stderr}"
+        !sounding.is_empty(),
+        "no pulse observed before boundary {boundary}: {stderr}"
     );
     assert!(
-        !after.is_empty(),
-        "no row observed at or after {silent}: {stderr}"
+        !silenced.is_empty(),
+        "no pulse observed at or after boundary {boundary}: {stderr}"
+    );
+    assert!(
+        sounding.iter().all(|r| r["event"].is_object()),
+        "a pulse before boundary {boundary} did not sound: {stderr}"
+    );
+    assert!(
+        silenced.iter().all(|r| r["event"].is_null()),
+        "a pulse at or after boundary {boundary} still sounded: {stderr}"
     );
 }
 

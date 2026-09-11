@@ -318,6 +318,24 @@ fn next_boundary(step: u64) -> u64 {
     step / 16 * 16 + 16
 }
 
+fn step(row: &serde_json::Value) -> u64 {
+    row["step"].as_u64().unwrap()
+}
+
+/// The trigger probability in force at a row, as the engine recorded it.
+/// This witnesses which configuration was live there. Silence does not: the
+/// kick rests three steps in four, so a reload applied off-boundary leaves
+/// the same silent suffix behind as one applied on it.
+fn probability(row: &serde_json::Value) -> f64 {
+    row["trigger"]["probability"].as_f64().unwrap()
+}
+
+/// Whether the rhythm placed a pulse here — the rows whose event presence
+/// carries information. A rest is `event: null` either way.
+fn is_pulse(row: &serde_json::Value) -> bool {
+    row["trigger"]["rhythm"]["active"].as_bool().unwrap()
+}
+
 #[test]
 fn watched_project_libraries_apply_at_boundaries_and_reject_invalid_edits() {
     use std::io::{BufRead, BufReader};
@@ -396,28 +414,42 @@ fn watched_project_libraries_apply_at_boundaries_and_reject_invalid_edits() {
         next_boundary(rejected),
         next_boundary(restored),
     );
-    let region = |lo: u64, hi: u64| -> Vec<&serde_json::Value> {
-        rows.iter()
-            .filter(|r| (lo..hi).contains(&r["step"].as_u64().unwrap()))
-            .collect()
-    };
-    // Every region must be witnessed: an unobserved one makes `all()` vacuous.
-    for (lo, hi) in [(0, a), (a, b), (b, c), (c, 64)] {
-        assert!(
-            !region(lo, hi).is_empty(),
-            "no row in [{lo},{hi}): {stderr}"
+    // The valid edit silences the kick from the first boundary; the invalid one
+    // is refused at the second without reverting it; the restore lands at the
+    // third. Read that off the probability in force at each row, which says
+    // which configuration was live there — an off-boundary application cannot
+    // hide in a rest, and a region the stall abandoned cannot be mistaken for
+    // one that agreed.
+    let expected = |s: u64| if (a..c).contains(&s) { 0.0 } else { 1.0 };
+    if let Some(row) = rows.iter().find(|r| probability(r) != expected(step(r))) {
+        panic!(
+            "at step {} the trigger probability was {}, expected {}; \
+             edits written at {applied}/{rejected}/{restored}, boundaries {a}/{b}/{c}: {stderr}",
+            step(row),
+            probability(row),
+            expected(step(row))
         );
     }
-    assert!(region(0, a).iter().any(|r| r["event"].is_object()));
-    // The valid edit silences the kick, and the invalid one is refused without
-    // reverting it — so the silence runs from the first boundary to the third.
+    // Every region must be witnessed by a pulse, or the assertions below are
+    // vacuously true on a run whose rows were abandoned after a stall.
+    for (lo, hi) in [(0, a), (a, c), (c, 64)] {
+        assert!(
+            rows.iter()
+                .any(|r| is_pulse(r) && (lo..hi).contains(&step(r))),
+            "no pulse observed in [{lo},{hi}): {stderr}"
+        );
+    }
+    let (silenced, sounding): (Vec<_>, Vec<_>) = rows
+        .iter()
+        .filter(|r| is_pulse(r))
+        .partition(|r| (a..c).contains(&step(r)));
     assert!(
-        region(a, c).iter().all(|r| r["event"].is_null()),
-        "{stderr}"
+        silenced.iter().all(|r| r["event"].is_null()),
+        "a pulse in [{a},{c}) still sounded: {stderr}"
     );
     assert!(
-        region(c, 64).iter().any(|r| r["event"].is_object()),
-        "{stderr}"
+        sounding.iter().all(|r| r["event"].is_object()),
+        "a pulse outside [{a},{c}) did not sound: {stderr}"
     );
     assert!(stderr.contains("Reload rejected"), "{stderr}");
 }
