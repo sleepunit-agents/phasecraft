@@ -58,8 +58,9 @@ sample's absolute transport tick, not necessarily a step boundary.
 
 `lanes.drift.every` can join a return group's `align`: its fixed period is seven
 slots even though the values do not repeat. With a sixteen-slot trigger it returns
-every 112 slots, or seven bars. This clock reference applies to walks; weather's
-nested target interval is not spelled `lanes.weather.every`.
+every 112 slots, or seven bars. This clock reference applies only to walks. Target
+lanes such as weather have no member clock in this engine, under any spelling;
+their nested target interval cannot be named as a return-group member.
 
 Existing followers map from the walk's `bounds`, just as they map from weather's
 `range`. Continuous controls still sample **only on barlines**, so a sub-bar change
