@@ -216,6 +216,56 @@ fn realized_windows_handle_absent_parts_and_a_finite_end() {
     );
 }
 
+/// Grid positions the transport abandoned after a producer stall, as the
+/// engine reports them. A trace row is emitted per position it kept, so
+/// `rows.len() + missed` is the invariant, not `rows.len()` alone.
+fn missed_grid_positions(stderr: &str) -> u64 {
+    stderr
+        .lines()
+        .find_map(|l| {
+            l.strip_prefix("Producer missed ")?
+                .split(' ')
+                .next()?
+                .parse()
+                .ok()
+        })
+        .unwrap_or(0)
+}
+
+/// A watched edit is picked up at the first reload boundary after it is
+/// written; reloads happen only at `step % 16 == 0`.
+///
+/// What the assertions keyed to this can and cannot prove: they establish
+/// that the probability in force AGREES with this boundary on every row the
+/// trace observed. They do not establish that the reload applied at exactly
+/// this step. If the transport abandoned the rows immediately around it,
+/// agreement over the rows that survive is still satisfied by an application
+/// anywhere inside the unobserved gap. Compatibility with the boundary is not
+/// proof of the boundary — don't read it as one. (Mark, reviewing t-527.)
+fn next_boundary(step: u64) -> u64 {
+    step / 16 * 16 + 16
+}
+
+fn step(row: &serde_json::Value) -> u64 {
+    row["step"].as_u64().unwrap()
+}
+
+/// The trigger probability in force at a row, as the engine recorded it.
+/// This witnesses the edit's arrival directly. A silent suffix does not:
+/// the rhythm rests between pulses, so silence starting at some step only
+/// bounds the arrival, and the last pulse before a boundary can fall
+/// several steps short of it.
+fn probability(row: &serde_json::Value) -> f64 {
+    row["trigger"]["probability"].as_f64().unwrap()
+}
+
+/// Whether the rhythm placed a pulse here — the rows whose event presence
+/// carries information. At probability 1.0 every pulse sounds; at 0.0 none
+/// does. A rest is `event: null` either way and proves nothing.
+fn is_pulse(row: &serde_json::Value) -> bool {
+    row["trigger"]["rhythm"]["active"].as_bool().unwrap()
+}
+
 #[test]
 fn watched_arrangements_reject_layout_edits_and_accept_musical_edits() {
     use std::{
@@ -235,28 +285,93 @@ fn watched_arrangements_reject_layout_edits_and_accept_musical_edits() {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    // A stalled producer abandons grid positions, so a row's index is not its
+    // musical step and the exact step an edit was keyed to may never be
+    // observed. Fire each edit on the first row at or after its step and
+    // remember where it actually landed; assert against that, not an index.
     let mut rows = vec![];
+    let mut musical_edit = None;
+    let mut layout_edit = None;
     for line in BufReader::new(child.stdout.take().unwrap()).lines() {
         let row: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
-        match row["step"].as_u64().unwrap() {
-            0 => fs::write(&file, source.replace("bars=4", "bars=2")).unwrap(),
-            16 => fs::write(
+        let step = row["step"].as_u64().unwrap();
+        if layout_edit.is_none() {
+            fs::write(&file, source.replace("bars=4", "bars=2")).unwrap();
+            layout_edit = Some(step);
+        } else if musical_edit.is_none() && step >= 16 {
+            fs::write(
                 &file,
                 source.replace("trigger.probability=1.0", "trigger.probability=0.0"),
             )
-            .unwrap(),
-            _ => (),
+            .unwrap();
+            musical_edit = Some(step);
         }
         rows.push(row);
     }
     let output = child.wait_with_output().unwrap();
-    assert!(output.status.success());
-    assert_eq!(rows.len(), 64);
-    assert!(rows.iter().all(|r| r["section"]["bars"] == 4));
-    assert!(rows[32..].iter().all(|r| r["event"].is_null()));
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(output.status.success(), "{stderr}");
+    assert_eq!(
+        rows.len() as u64 + missed_grid_positions(&stderr),
+        64,
+        "{stderr}"
+    );
+    let layout_edit = layout_edit.expect("no trace row observed, so no edit was made");
+    let musical_edit =
+        musical_edit.unwrap_or_else(|| panic!("no row at or after step 16: {stderr}"));
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("restart playback to change arrangement layout")
+        layout_edit < 16,
+        "layout edit landed at {layout_edit}: {stderr}"
+    );
+    // The layout edit is refused for the whole run: every section stays 4 bars.
+    assert!(rows.iter().all(|r| r["section"]["bars"] == 4));
+    assert!(
+        stderr.contains("restart playback to change arrangement layout"),
+        "{stderr}"
+    );
+    // The musical edit is accepted at the first reload boundary after it was
+    // written, and not one step earlier: the probability in force at each row
+    // locates the arrival, so an off-boundary application cannot hide in a rest.
+    let boundary = next_boundary(musical_edit);
+    if let Some(early) = rows
+        .iter()
+        .find(|r| probability(r) == 0.0 && step(r) < boundary)
+    {
+        panic!(
+            "edit written at {musical_edit} applied at step {}, before boundary {boundary}: {stderr}",
+            step(early)
+        );
+    }
+    if let Some(late) = rows
+        .iter()
+        .find(|r| probability(r) == 1.0 && step(r) >= boundary)
+    {
+        panic!(
+            "edit written at {musical_edit} had not applied by step {}, past boundary {boundary}: {stderr}",
+            step(late)
+        );
+    }
+    // A stall can abandon every row on one side of the boundary, which would
+    // make the assertions below vacuously true. Require a pulse on each side.
+    let (sounding, silenced): (Vec<_>, Vec<_>) = rows
+        .iter()
+        .filter(|r| is_pulse(r))
+        .partition(|r| step(r) < boundary);
+    assert!(
+        !sounding.is_empty(),
+        "no pulse observed before boundary {boundary}: {stderr}"
+    );
+    assert!(
+        !silenced.is_empty(),
+        "no pulse observed at or after boundary {boundary}: {stderr}"
+    );
+    assert!(
+        sounding.iter().all(|r| r["event"].is_object()),
+        "a pulse before boundary {boundary} did not sound: {stderr}"
+    );
+    assert!(
+        silenced.iter().all(|r| r["event"].is_null()),
+        "a pulse at or after boundary {boundary} still sounded: {stderr}"
     );
 }
 

@@ -296,6 +296,54 @@ fn original_release_provenance_is_byte_identical_for_35_bars() {
     }
 }
 
+/// Grid positions the transport abandoned after a producer stall, as the
+/// engine reports them. A trace row is emitted per position it kept, so
+/// `rows.len() + missed` is the invariant, not `rows.len()` alone.
+fn missed_grid_positions(stderr: &str) -> u64 {
+    stderr
+        .lines()
+        .find_map(|l| {
+            l.strip_prefix("Producer missed ")?
+                .split(' ')
+                .next()?
+                .parse()
+                .ok()
+        })
+        .unwrap_or(0)
+}
+
+/// A watched edit is picked up at the first reload boundary after it is
+/// written; reloads happen only at `step % 16 == 0`.
+///
+/// What the assertions keyed to this can and cannot prove: they establish
+/// that the probability in force AGREES with this boundary on every row the
+/// trace observed. They do not establish that the reload applied at exactly
+/// this step. If the transport abandoned the rows immediately around it,
+/// agreement over the rows that survive is still satisfied by an application
+/// anywhere inside the unobserved gap. Compatibility with the boundary is not
+/// proof of the boundary — don't read it as one. (Mark, reviewing t-527.)
+fn next_boundary(step: u64) -> u64 {
+    step / 16 * 16 + 16
+}
+
+fn step(row: &serde_json::Value) -> u64 {
+    row["step"].as_u64().unwrap()
+}
+
+/// The trigger probability in force at a row, as the engine recorded it.
+/// This witnesses which configuration was live there. Silence does not: the
+/// kick rests three steps in four, so a reload applied off-boundary leaves
+/// the same silent suffix behind as one applied on it.
+fn probability(row: &serde_json::Value) -> f64 {
+    row["trigger"]["probability"].as_f64().unwrap()
+}
+
+/// Whether the rhythm placed a pulse here — the rows whose event presence
+/// carries information. A rest is `event: null` either way.
+fn is_pulse(row: &serde_json::Value) -> bool {
+    row["trigger"]["rhythm"]["active"].as_bool().unwrap()
+}
+
 #[test]
 fn watched_project_libraries_apply_at_boundaries_and_reject_invalid_edits() {
     use std::io::{BufRead, BufReader};
@@ -325,33 +373,91 @@ fn watched_project_libraries_apply_at_boundaries_and_reject_invalid_edits() {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    // A stalled producer abandons grid positions, so a row's index is not its
+    // musical step and the exact step an edit was keyed to may never be
+    // observed. Fire each edit on the first row at or after its step and
+    // remember where it actually landed; assert against that, not an index.
     let mut rows = vec![];
+    let mut edits: Vec<u64> = vec![];
     for line in BufReader::new(child.stdout.take().unwrap()).lines() {
         let row: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
-        match row["step"].as_u64().unwrap() {
-            0 => fs::write(
-                &library,
-                format!(
-                    "{original}\n[library.behaviors.\"my.techno_kick\".trigger]\nprobability=0\n"
-                ),
-            )
-            .unwrap(),
-            16 => fs::write(&library, "invalid TOML !").unwrap(),
-            32 => fs::write(&library, &original).unwrap(),
+        let step = row["step"].as_u64().unwrap();
+        match edits.len() {
+            0 => {
+                fs::write(
+                    &library,
+                    format!(
+                        "{original}\n[library.behaviors.\"my.techno_kick\".trigger]\nprobability=0\n"
+                    ),
+                )
+                .unwrap();
+                edits.push(step);
+            }
+            1 if step >= 16 => {
+                fs::write(&library, "invalid TOML !").unwrap();
+                edits.push(step);
+            }
+            2 if step >= 32 => {
+                fs::write(&library, &original).unwrap();
+                edits.push(step);
+            }
             _ => (),
         }
         rows.push(row);
     }
     let output = child.wait_with_output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(output.status.success(), "{stderr}");
+    assert_eq!(
+        rows.len() as u64 + missed_grid_positions(&stderr),
+        64,
+        "{stderr}"
     );
-    assert_eq!(rows.len(), 64);
-    assert!(rows[0]["event"].is_object());
-    assert!(rows[16]["event"].is_null());
-    assert!(rows[32]["event"].is_null());
-    assert!(rows[48]["event"].is_object());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("Reload rejected"));
+    let [applied, rejected, restored] = edits[..] else {
+        panic!("only {} of 3 edits were reached: {stderr}", edits.len())
+    };
+    // Each edit is picked up at the first reload boundary after it was written.
+    let (a, b, c) = (
+        next_boundary(applied),
+        next_boundary(rejected),
+        next_boundary(restored),
+    );
+    // The valid edit silences the kick from the first boundary; the invalid one
+    // is refused at the second without reverting it; the restore lands at the
+    // third. Read that off the probability in force at each row, which says
+    // which configuration was live there — an off-boundary application cannot
+    // hide in a rest, and a region the stall abandoned cannot be mistaken for
+    // one that agreed.
+    let expected = |s: u64| if (a..c).contains(&s) { 0.0 } else { 1.0 };
+    if let Some(row) = rows.iter().find(|r| probability(r) != expected(step(r))) {
+        panic!(
+            "at step {} the trigger probability was {}, expected {}; \
+             edits written at {applied}/{rejected}/{restored}, boundaries {a}/{b}/{c}: {stderr}",
+            step(row),
+            probability(row),
+            expected(step(row))
+        );
+    }
+    // Every region must be witnessed by a pulse, or the assertions below are
+    // vacuously true on a run whose rows were abandoned after a stall.
+    for (lo, hi) in [(0, a), (a, c), (c, 64)] {
+        assert!(
+            rows.iter()
+                .any(|r| is_pulse(r) && (lo..hi).contains(&step(r))),
+            "no pulse observed in [{lo},{hi}): {stderr}"
+        );
+    }
+    let (silenced, sounding): (Vec<_>, Vec<_>) = rows
+        .iter()
+        .filter(|r| is_pulse(r))
+        .partition(|r| (a..c).contains(&step(r)));
+    assert!(
+        silenced.iter().all(|r| r["event"].is_null()),
+        "a pulse in [{a},{c}) still sounded: {stderr}"
+    );
+    assert!(
+        sounding.iter().all(|r| r["event"].is_object()),
+        "a pulse outside [{a},{c}) did not sound: {stderr}"
+    );
+    assert!(stderr.contains("Reload rejected"), "{stderr}");
 }
