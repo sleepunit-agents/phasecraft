@@ -758,14 +758,14 @@ fn touch_trace_carries_pinned_flags_for_ghost_timing_and_velocity() {
     );
 }
 
-// t-517: A timing pin at step e is consumed by two different decisions: the onset of e
-// (site 2) and the gate length of e-1 (site 3 — offset(e) bounds the gate of e-1).
-// gate_timing_pinned on GrooveTrace makes site 3 recoverable without re-deriving the
+// t-517: A timing pin at step e is consumed by up to three decisions: the touch closure at
+// e, the onset offset of e, and the gate length of the event that reserves e (offset(e) bounds
+// it). gate_timing_pinned on the event makes the third recoverable without re-deriving the
 // address at the consumer.
 #[test]
 fn gate_timing_pinned_names_the_consuming_decision_when_next_step_pin_bounds_this_gate() {
     // Step 1 (bar 1 slot 2) has an event. The gate-bounding call reads offset(step=2),
-    // which consults the timing pin at bar 1 slot 3. So step 1's GrooveTrace should carry
+    // which consults the timing pin at bar 1 slot 3. So step 1's event should carry
     // gate_timing_pinned=true even though step 1 itself has no timing pin.
     let c = Composition::parse(
         "tempo=132\nseed=91827\nphrase_bars=4\n\
@@ -778,19 +778,23 @@ fn gate_timing_pinned_names_the_consuming_decision_when_next_step_pin_bounds_thi
     // Step 1's main event groove should have gate_timing_pinned set — the gate-bounding
     // call consumed the timing pin at slot 3 (step 2).
     let step1 = resolve(&c, 1);
-    let step1_groove = step1
-        .event
+    let step1_event = step1.event.as_ref().expect("step 1 must have an event");
+    let step1_groove = step1_event
+        .groove
         .as_ref()
-        .and_then(|e| e.groove.as_ref())
-        .expect("step 1 must have an event with a groove trace");
+        .expect("step 1 must have a groove trace");
     assert!(
-        step1_groove.gate_timing_pinned,
+        step1_event.gate_timing_pinned,
         "gate_timing_pinned should be true on step 1 (next step's pin bounded its gate)"
     );
-    // Step 1's own onset draw is not pinned: timing_pinned must be false.
+    // Step 1's own onset draw is not pinned: neither flag for its own address is set.
     assert!(
         !step1_groove.touch.as_ref().is_some_and(|t| t.timing_pinned),
         "step 1 should not have timing_pinned (pin is at slot 3, not slot 2)"
+    );
+    assert!(
+        !step1_event.onset_timing_pinned,
+        "step 1's own onset draw is not pinned (pin is at slot 3, not slot 2)"
     );
     // Step 2 (slot 3) is where the pin's address lives: timing_pinned appears on its event.
     let step2 = resolve(&c, 2);
@@ -803,16 +807,144 @@ fn gate_timing_pinned_names_the_consuming_decision_when_next_step_pin_bounds_thi
         step2_groove.touch.as_ref().is_some_and(|t| t.timing_pinned),
         "step 2 must carry timing_pinned (the pin is at bar 1 slot 3)"
     );
-    // Step 0's own event groove should NOT have gate_timing_pinned — the next-step timing
+    assert!(
+        step2.event.as_ref().is_some_and(|e| e.onset_timing_pinned),
+        "step 2's onset offset consumed the same pin"
+    );
+    // Step 0's event should NOT have gate_timing_pinned — the next-step timing
     // draw for step 1 (slot 2) is not pinned; only slot 3 is.
     let step0 = resolve(&c, 0);
-    let step0_gate_timing_pinned = step0
-        .event
-        .as_ref()
-        .and_then(|e| e.groove.as_ref())
-        .is_some_and(|g| g.gate_timing_pinned);
     assert!(
-        !step0_gate_timing_pinned,
+        !step0.event.as_ref().is_some_and(|e| e.gate_timing_pinned),
         "step 0 should not have gate_timing_pinned (slot 2 / step 1 has no timing pin)"
+    );
+}
+
+// Mark's review of #22 at 98ff64cc, P2: a timing pin is consumed by `compiled::offset` on
+// every admitted event and again for the next-onset reservation — neither site requires a
+// touch configuration, and the gate site does not require a groove at all. Both consumers
+// must record the provenance where they consume it, or a neutral-amount pin (no humanize:
+// zero jitter ticks, unchanged output) vanishes from the trace entirely.
+#[test]
+fn onset_timing_pin_is_recorded_without_a_touch_configuration() {
+    // delay_ticks alone: the groove is non-default (so a GrooveTrace exists) but draws_touch()
+    // is false, so the touch closure never runs. The onset offset draw still consults the pin.
+    let c = Composition::parse(
+        "tempo=132\nseed=91827\nphrase_bars=4\n\
+         [parts.hat]\nuse='techno.closed_hat'\n\
+         trigger.rhythm={steps=1,pulses=1}\ntrigger.probability=1.0\n\
+         groove.delay_ticks=5\n\
+         [[pins]]\nat={roll='timing',voice='hat',bar=1,slot=2}\nu=0.5",
+    )
+    .unwrap();
+    let step1 = resolve(&c, 1);
+    let event = step1.event.as_ref().expect("step 1 must have an event");
+    let groove = event
+        .groove
+        .as_ref()
+        .expect("delay_ticks makes the groove non-default, so a trace exists");
+    assert!(
+        groove.touch.is_none(),
+        "this configuration must not open the touch closure, or it tests the wrong site"
+    );
+    assert_eq!(
+        groove.offset_ticks, 5,
+        "the pin is neutral: no humanize means zero jitter ticks and the offset is the delay"
+    );
+    assert!(
+        event.onset_timing_pinned,
+        "step 1's onset offset consumed the timing pin at bar 1 slot 2: {}",
+        serde_json::to_string(&step1).unwrap()
+    );
+    // An unpinned neighbour carries no flag.
+    let step3 = resolve(&c, 3);
+    assert!(
+        !step3.event.as_ref().is_some_and(|e| e.onset_timing_pinned),
+        "step 3 has no timing pin"
+    );
+}
+
+#[test]
+fn gate_timing_pin_is_recorded_under_a_default_groove() {
+    // No groove at all: `event.groove` is None, so there is no GrooveTrace to hang the flag
+    // on — but the gate-bounding call still reads offset(step 2) and still consults the pin.
+    let c = Composition::parse(
+        "tempo=132\nseed=91827\nphrase_bars=4\n\
+         [parts.hat]\nuse='techno.closed_hat'\n\
+         trigger.rhythm={steps=1,pulses=1}\ntrigger.probability=1.0\n\
+         [[pins]]\nat={roll='timing',voice='hat',bar=1,slot=3}\nu=0.789",
+    )
+    .unwrap();
+    let step1 = resolve(&c, 1);
+    let event = step1.event.as_ref().expect("step 1 must have an event");
+    assert!(
+        event.groove.is_none(),
+        "a default groove writes no GrooveTrace, or this tests the wrong site"
+    );
+    assert!(
+        event.gate_timing_pinned,
+        "step 1's gate reserved the next onset and consumed the pin at slot 3: {}",
+        serde_json::to_string(&step1).unwrap()
+    );
+    // The pin's own address: step 2's onset draw is not made under a default groove
+    // (`offset` is only called for the onset when the groove is non-default), so the only
+    // consumer is step 1's gate. Step 2 itself carries no onset flag.
+    let step2 = resolve(&c, 2);
+    assert!(
+        !step2.event.as_ref().is_some_and(|e| e.onset_timing_pinned),
+        "a default groove makes no onset offset draw, so nothing is pinned at step 2"
+    );
+    // Step 0's gate reserves step 1, which has no pin.
+    let step0 = resolve(&c, 0);
+    assert!(
+        !step0.event.as_ref().is_some_and(|e| e.gate_timing_pinned),
+        "step 0 reserves step 1, which carries no timing pin"
+    );
+}
+
+// t-517, audible counterfactual (Mark's review of #22): the consultation tests above prove the
+// flag is written; this one proves the flag names a decision that is heard. A silent step's
+// timing pin still shortens the *sounding* previous event's gate, because the gate reserves the
+// next structural onset whether or not that onset fires. Only the pin's value changes between
+// the two compositions.
+#[test]
+fn a_silent_steps_timing_pin_shortens_the_previous_sounding_gate() {
+    let sounding = |u: &str| {
+        let c = Composition::parse(&format!(
+            "tempo=132\nseed=91827\nphrase_bars=4\n\
+             [parts.hat]\nuse='techno.closed_hat'\n\
+             trigger.rhythm={{steps=2,pulses=1,rotation=1}}\ntrigger.probability=1.0\n\
+             output.gate_ticks=239\n\
+             groove.humanize={{timing_ticks=30,velocity=0.0}}\n\
+             [[pins]]\nat={{roll='timing',voice='hat',bar=1,slot=3}}\nu={u}"
+        ))
+        .unwrap();
+        // Step 2 (bar 1 slot 3) is where the pin lives, and it never fires.
+        assert!(
+            !resolve(&c, 2).trigger.admitted,
+            "step 2 must stay silent, or this tests an ordinary onset pin"
+        );
+        let step1 = resolve(&c, 1);
+        let event = step1.event.expect("step 1 sounds");
+        (event.duration_ticks, event.gate_timing_pinned)
+    };
+    // u = 0.999 pushes the reserved onset late: the gate keeps its full requested length.
+    assert_eq!(sounding("0.999"), (239, true));
+    // u = 0.0 pulls it 30 ticks early: the same authored gate is cut to 232.
+    assert_eq!(sounding("0.0"), (232, true));
+    // The flag records consultation, not proof of shortening — it is true in both cases.
+    // An event whose reserved onset carries no pin does not set it.
+    let c = Composition::parse(
+        "tempo=132\nseed=91827\nphrase_bars=4\n\
+         [parts.hat]\nuse='techno.closed_hat'\n\
+         trigger.rhythm={steps=2,pulses=1,rotation=1}\ntrigger.probability=1.0\n\
+         output.gate_ticks=239\n\
+         groove.humanize={timing_ticks=30,velocity=0.0}\n\
+         [[pins]]\nat={roll='timing',voice='hat',bar=1,slot=3}\nu=0.0",
+    )
+    .unwrap();
+    assert!(
+        !resolve(&c, 3).event.is_some_and(|e| e.gate_timing_pinned),
+        "step 3 reserves step 4, which carries no pin"
     );
 }

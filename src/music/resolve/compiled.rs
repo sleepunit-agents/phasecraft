@@ -678,7 +678,11 @@ impl Compiled {
                         velocity_pinned,
                     }
                 });
-                let (requested, _) = offset(&part, c, step);
+                let (requested, onset_timing_pinned) = offset(&part, c, step);
+                // The onset consumer records itself. The touch closure above reads the same
+                // die, but it does not always run; this call does, for every admitted event
+                // of a non-default groove — see t-517 / Mark's #22 review.
+                event.onset_timing_pinned = onset_timing_pinned;
                 let onset =
                     (event.tick as i128 + i128::from(requested)).max(i128::from(lower)) as u64;
                 let offset = onset as i64 - event.tick as i64;
@@ -702,7 +706,6 @@ impl Compiled {
                             t.offbeat_factor * t.gap_factor * t.velocity_jitter_factor
                         }),
                     touch,
-                    gate_timing_pinned: false, // filled in below after gate is bounded
                 });
             }
         }
@@ -714,11 +717,13 @@ impl Compiled {
                 None => (step + 1) * cell,
             };
             let (next_offset, next_timing_pinned) = offset(&part, c, next_source / cell);
-            // Record that the *next* step's timing pin was consumed here to bound THIS step's gate.
-            // A pin at step+1 that only moves the gate of step, never its own onset, would otherwise
-            // be invisible in the trace — see t-517.
-            if next_timing_pinned && let Some(groove) = event.groove.as_mut() {
-                groove.gate_timing_pinned = true;
+            // Record that the reserved onset's timing pin was consumed here to bound THIS
+            // event's gate. A pin that only shortens the gate of the event before it, never its
+            // own onset, would otherwise be invisible in the trace — see t-517. This lands on
+            // the event, not on the groove trace: the reservation is computed for every admitted
+            // event, including under a default groove, which writes no groove trace at all.
+            if next_timing_pinned {
+                event.gate_timing_pinned = true;
             }
             let next_tick = next_source as i128 + i128::from(next_offset);
             let next_first = (next_tick
@@ -783,10 +788,11 @@ fn position_text(tick: u64) -> String {
     format!("{}.{}.{}", step / 16 + 1, step / 4 % 4 + 1, step % 4 + 1)
 }
 /// Returns `(offset_ticks, timing_pinned)`. `timing_pinned` is true when the humanize_timing
-/// draw for this step was forced by a `[[pins]]` entry. The caller must surface this on the
-/// appropriate trace: for the onset site it is already in `TouchTrace.timing_pinned`; for the
-/// gate-bounding site (step + 1 consulted to bound step's gate) it belongs on
-/// `GrooveTrace.gate_timing_pinned` — see t-517.
+/// draw for this step was forced by a `[[pins]]` entry. Both callers must surface it on the
+/// event they are computing, because neither consumption is conditional on a groove or touch
+/// setting: the onset site writes `MusicalEvent.onset_timing_pinned`, and the site that
+/// reserves the next structural onset to bound the previous event's gate writes
+/// `MusicalEvent.gate_timing_pinned` — see t-517.
 fn offset(part: &Part, c: &Composition, step: u64) -> (i64, bool) {
     let cell = part.subdivision.0;
     let swing = if step % 2 == 1 {

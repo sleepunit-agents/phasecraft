@@ -54,9 +54,13 @@ pub struct TouchTrace {
     pub velocity_roll: f64,
     pub requested_jitter_ticks: i64,
     pub velocity_jitter_factor: f64,
-    /// The timing draw for this step's onset was forced by a `[[pins]]` entry.
-    /// Written only when true; mirrors `ExpansionTrace.pinned` — the roll value
-    /// is still in `timing_roll`, and the flag says it was authored, not hashed.
+    /// The timing draw read by the touch closure — the one behind `timing_roll` and
+    /// `requested_jitter_ticks` — was forced by a `[[pins]]` entry. Written only when true;
+    /// mirrors `ExpansionTrace.pinned` — the roll value is still in `timing_roll`, and the
+    /// flag says it was authored, not hashed. The same die is read again by the onset offset
+    /// and by the previous event's gate reservation; those consumers record themselves on
+    /// `MusicalEvent.onset_timing_pinned` and `MusicalEvent.gate_timing_pinned`, which are
+    /// written whether or not this closure runs.
     #[serde(default, skip_serializing_if = "is_false")]
     pub timing_pinned: bool,
     /// The velocity draw for this step was forced by a `[[pins]]` entry.
@@ -211,13 +215,4 @@ pub struct GrooveTrace {
     pub velocity_factor: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub touch: Option<TouchTrace>,
-    /// The timing draw for the *next* step (step + 1) was forced by a `[[pins]]` entry
-    /// when it was consulted to bound THIS step's gate length. Written only when true.
-    ///
-    /// A pin at address `e` is consulted by two sites: the onset draw at `e`, and the
-    /// gate-bounding computation at `e - 1` that calls `offset(e)`. This flag names the
-    /// second consumption so the pins report can attribute it to the correct authored
-    /// pin rather than reporting it as an unexplained gate truncation — see t-517.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub gate_timing_pinned: bool,
 }

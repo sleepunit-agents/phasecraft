@@ -336,6 +336,28 @@ pub struct MusicalEvent {
     pub controls: Vec<super::accent::ResolvedControl>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub groove: Option<super::groove::GrooveTrace>,
+    /// The `humanize_timing` draw consumed for THIS event's onset offset was forced by a
+    /// `[[pins]]` entry. It lives on the event, not on `GrooveTrace.touch`, because
+    /// `compiled::offset` makes that draw for every admitted event of a non-default groove —
+    /// the touch closure is a separate consumer of the same die and need not run. A pin with
+    /// a neutral amount (no `groove.humanize`: zero jitter ticks, output unchanged) is still a
+    /// forced draw, and this is the only place it is visible. Written only when true.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub onset_timing_pinned: bool,
+    /// The `humanize_timing` draw at the next reserved onset was forced by a `[[pins]]` entry
+    /// when it was consulted to bound THIS event's gate length. Written only when true.
+    ///
+    /// A pin at address `e` is consulted by up to three sites: the touch closure at `e`, the
+    /// onset offset at `e`, and the gate-bounding computation at the event that reserves `e`.
+    /// This flag names the third so the pins report can attribute a shortened gate to the
+    /// authored pin rather than reporting it as an unexplained truncation — see t-517. It
+    /// lives on the event because the gate is bounded for every admitted event, including
+    /// under a default groove, where there is no `GrooveTrace` at all.
+    ///
+    /// The reserved address is the next *structural* onset, not universally `step + 1`: a
+    /// literal schedule reserves its next attack and steps over intervening rests.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub gate_timing_pinned: bool,
 }
 /// A realized window is generic; source cycles need not fit in the window.
 #[derive(Clone, Debug, Serialize)]
@@ -507,6 +529,8 @@ fn resolve_part(
         duration_ticks: part.output.gate_ticks,
         note: None,
         groove: None,
+        onset_timing_pinned: false,
+        gate_timing_pinned: false,
         controls: part
             .profile
             .controls
