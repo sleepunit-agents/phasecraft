@@ -72,3 +72,38 @@ fn walk_faults_name_the_key_and_nested_path() {
         &["expected u32", "lanes.probe.every.slots"],
     );
 }
+
+/// Witness five: a target lane's refusal must close the search, not correct a spelling.
+///
+/// `lanes.weather.every` used to say "target lanes have no top-level every", which reads
+/// as *you spelled it wrong*. The spelling a reader tries next, `lanes.weather.target.every`,
+/// answered "a walk's transport clock is lanes.<name>.every" — the key they started from.
+/// Both hops contain their own key, so both passed the `contains(key)` witness above while
+/// routing a reader in a circle past the fact that a target lane has no member clock at all.
+#[test]
+fn a_target_lane_refusal_closes_the_search_instead_of_redirecting() {
+    use phasecraft::music::router::member_clock;
+    let weather = Composition::parse(include_str!("../examples/quickstart/weather.toml")).unwrap();
+    let said = member_clock(&weather, "lanes.weather.every").unwrap_err();
+    assert!(said.contains("target lanes"), "{said}");
+    assert!(
+        said.contains("any other spelling"),
+        "still reads as a spelling correction: {said}"
+    );
+    assert!(
+        !said.contains("lanes.<name>.every"),
+        "offers a spelling no target lane answers: {said}"
+    );
+    // The keys a reader reaches for next must not hand back the key they came from.
+    for next in [
+        "lanes.weather.target.every",
+        "lanes.weather.target.every.bars",
+    ] {
+        let said = member_clock(&weather, next).unwrap_err();
+        assert!(said.contains(next), "refusal lost its key: {said}");
+        assert!(
+            said.contains("only a walk lane"),
+            "does not say which lane kind answers, so the reader loops: {said}"
+        );
+    }
+}

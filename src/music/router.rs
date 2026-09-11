@@ -93,12 +93,12 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
             match lane {
                 super::shared::Lane::Walk(_) => Ok(Clock::Fixed(lane.every_ticks())),
                 super::shared::Lane::Target(_) => Err(format!(
-                    "{key}: every names a walk's step clock; target lanes have no top-level every"
+                    "{key}: target lanes have no member clock in this engine, under this or any other spelling, so the key cannot be resolved; it is not guessed"
                 )),
             }
         }
         ["lanes", ..] => Err(format!(
-            "{key}: a walk's transport clock is lanes.<name>.every"
+            "{key}: not a lane member clock; only a walk lane has one, spelled lanes.<name>.every"
         )),
         _ => Err(format!(
             "{key}: not a clock this engine can name; a member is voices.<id>.trigger.cycle, voices.<id>.accent.cycle, patterns.<name>.change.every or lanes.<name>.every"
