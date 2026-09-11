@@ -216,6 +216,33 @@ fn realized_windows_handle_absent_parts_and_a_finite_end() {
     );
 }
 
+/// Grid positions the transport abandoned after a producer stall, as the
+/// engine reports them. A trace row is emitted per position it kept, so
+/// `rows.len() + missed` is the invariant, not `rows.len()` alone.
+fn missed_grid_positions(stderr: &str) -> u64 {
+    stderr
+        .lines()
+        .find_map(|l| {
+            l.strip_prefix("Producer missed ")?
+                .split(' ')
+                .next()?
+                .parse()
+                .ok()
+        })
+        .unwrap_or(0)
+}
+
+/// The first reload boundary at or after which every observed row is silent.
+/// Reloads apply only at `step % 16 == 0`, so a natural rest inside the
+/// rhythm cannot be mistaken for the edit taking effect.
+fn first_silent_boundary(rows: &[serde_json::Value]) -> Option<u64> {
+    (0..=64).step_by(16).map(|b| b as u64).find(|b| {
+        rows.iter()
+            .filter(|r| r["step"].as_u64().unwrap() >= *b)
+            .all(|r| r["event"].is_null())
+    })
+}
+
 #[test]
 fn watched_arrangements_reject_layout_edits_and_accept_musical_edits() {
     use std::{
@@ -235,28 +262,68 @@ fn watched_arrangements_reject_layout_edits_and_accept_musical_edits() {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    // A stalled producer abandons grid positions, so a row's index is not its
+    // musical step and the exact step an edit was keyed to may never be
+    // observed. Fire each edit on the first row at or after its step and
+    // remember where it actually landed; assert against that, not an index.
     let mut rows = vec![];
+    let mut musical_edit = None;
+    let mut layout_edit = None;
     for line in BufReader::new(child.stdout.take().unwrap()).lines() {
         let row: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
-        match row["step"].as_u64().unwrap() {
-            0 => fs::write(&file, source.replace("bars=4", "bars=2")).unwrap(),
-            16 => fs::write(
+        let step = row["step"].as_u64().unwrap();
+        if layout_edit.is_none() {
+            fs::write(&file, source.replace("bars=4", "bars=2")).unwrap();
+            layout_edit = Some(step);
+        } else if musical_edit.is_none() && step >= 16 {
+            fs::write(
                 &file,
                 source.replace("trigger.probability=1.0", "trigger.probability=0.0"),
             )
-            .unwrap(),
-            _ => (),
+            .unwrap();
+            musical_edit = Some(step);
         }
         rows.push(row);
     }
     let output = child.wait_with_output().unwrap();
-    assert!(output.status.success());
-    assert_eq!(rows.len(), 64);
-    assert!(rows.iter().all(|r| r["section"]["bars"] == 4));
-    assert!(rows[32..].iter().all(|r| r["event"].is_null()));
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(output.status.success(), "{stderr}");
+    assert_eq!(
+        rows.len() as u64 + missed_grid_positions(&stderr),
+        64,
+        "{stderr}"
+    );
+    let layout_edit = layout_edit.expect("no trace row observed, so no edit was made");
+    let musical_edit =
+        musical_edit.unwrap_or_else(|| panic!("no row at or after step 16: {stderr}"));
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("restart playback to change arrangement layout")
+        layout_edit < 16,
+        "layout edit landed at {layout_edit}: {stderr}"
+    );
+    // The layout edit is refused for the whole run: every section stays 4 bars.
+    assert!(rows.iter().all(|r| r["section"]["bars"] == 4));
+    assert!(
+        stderr.contains("restart playback to change arrangement layout"),
+        "{stderr}"
+    );
+    // The musical edit is accepted, and only at a reload boundary after it.
+    let silent = first_silent_boundary(&rows)
+        .unwrap_or_else(|| panic!("probability=0.0 never took effect: {stderr}"));
+    assert!(
+        silent > musical_edit,
+        "silence at {silent} precedes the edit at {musical_edit}: {stderr}"
+    );
+    let (before, after): (Vec<_>, Vec<_>) = rows
+        .iter()
+        .partition(|r| r["step"].as_u64().unwrap() < silent);
+    // Both regions must be witnessed: an unobserved region makes `all()` vacuous.
+    assert!(
+        before.iter().any(|r| !r["event"].is_null()),
+        "nothing sounded before {silent}: {stderr}"
+    );
+    assert!(
+        !after.is_empty(),
+        "no row observed at or after {silent}: {stderr}"
     );
 }
 
