@@ -245,4 +245,4 @@ Numeric velocity sequences are available as `[parts.NAME.velocity]`: a flat `pat
 `cycle` in sixteenth slots, and event `carry = "always"`. See [event values](event-values.md)
 for admission, boundary spending, scene compatibility, and seek/reload limits.
 
-Shared transport weather and explicit control/burst followers are described in [shared-lanes.md](shared-lanes.md).
+Shared transport weather/walk sources and explicit control/burst followers are described in [shared-lanes.md](shared-lanes.md).

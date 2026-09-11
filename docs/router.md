@@ -41,7 +41,7 @@ What a key resolves to today:
 | `voices.<id>.trigger.cycle` (`parts.` is the same word) | the structural period of that voice's trigger rhythm, in ticks: steps × the voice's subdivision, through Boolean and Part-reference expressions |
 | `voices.<id>.accent.cycle` | the same for its own accent stream |
 | `patterns.<name>.change.every` | **not yet** — patterns are M1.5. Load error naming the key; nothing is guessed |
-| `lanes.<name>.every` | **not yet** — lanes are M1.4. Load error naming the key |
+| `lanes.<name>.every` | a shared walk's fixed step interval (`every.slots` × 240 ticks); its values need not repeat. Unknown lanes and target lanes without this top-level clock are refused |
 | anything else | load error naming the key and the shapes above |
 
 Refusals, all at load and all naming the member:

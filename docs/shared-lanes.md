@@ -1,8 +1,8 @@
-# Shared weather lanes
+# Shared transport lanes
 
 `examples/quickstart/weather.toml` implements until-stop's weather and three readers:
 hat decay, snare decay, and the gate on written snare bursts. The hat rhythm in this
-study is static; retained hat-memory, drift, and the full scene port remain later work.
+study is static; retained hat-memory, timing-offset followers, and the full scene port remain later work.
 
 ```toml
 [lanes.weather]
@@ -24,6 +24,55 @@ and section restarts do not restart its clock or reseed it. Expanded child snaps
 must carry the same lane declarations as the root. Values and the latest target,
 origin, progress, occurrence and roll appear in inspect JSON under `lanes`.
 Those sample ticks are absolute transport ticks even inside restarted sections.
+
+## Held walks
+
+`examples/quickstart/walk.toml` demonstrates a seven-slot walk with two existing
+readers: decay and burst admission. The source declaration matches until-stop's drift:
+
+```toml
+[lanes.drift]
+every = { slots = 7 }
+start = 0
+step = [-10, 0, 10]
+bounds = [-30, 30]
+carry = "always"
+```
+
+A slot is a sixteenth (240 native ticks), regardless of any reader's subdivision.
+The lane holds `start` over ticks 0..1679. At tick 1680 it selects uniformly from
+`step`, adds to the previous value, clamps to `bounds`, and publishes immediately.
+It holds that result until tick 3360, then repeats. At an edge it leans: an outward
+step leaves it on the edge, without reflection or a second draw. Duplicate choices
+provide proportional weight. Reads spend no steps; absent readers and restarted
+sections still use the root seed and absolute transport clock.
+
+The native versioned hash uses owner `drift`, lane `step`, event equal to the
+**absolute step tick** (1680, 3360, ...), and decision `delta`. This gives the
+companion's `drift/step/<tick>` address a native tick coordinate. It is distinct
+from weather's target-occurrence address. Neither walk nor target pins are wired.
+The trace's `occurrence` is the step count (1, 2, ...), `origin` the prior value,
+`target` and `value` the new held value, and `progress` 1 after the first step
+(0 at the initial hold). `roll` is the most recent step's draw; `tick` is the
+sample's absolute transport tick, not necessarily a step boundary.
+
+`lanes.drift.every` can join a return group's `align`: its fixed period is seven
+slots even though the values do not repeat. With a sixteen-slot trigger it returns
+every 112 slots, or seven bars. This clock reference applies to walks; weather's
+nested target interval is not spelled `lanes.weather.every`.
+
+Existing followers map from the walk's `bounds`, just as they map from weather's
+`range`. Continuous controls still sample **only on barlines**, so a sub-bar change
+waits for the next control publication; a burst gate reads the value at each written
+main onset. The example maps -30..30 to a normalized control and a probability.
+It does not apply milliseconds to note timing: that consumer remains M1.10.
+
+Walks require `every.slots` in 1..65536, 1..64 finite non-overflowing `step` choices,
+finite increasing `bounds`, and `start` inside them. The two source shapes are
+exclusive: walk fields cannot be mixed with `target`/`range`, nor target fields with
+`every`/`step`/`bounds`. Only `carry = "always"` is supported.
+
+## Followers
 
 Readers name the operation and own their spans:
 
@@ -72,7 +121,7 @@ using `direct` with it is a load error. Omit `low`, `high`, and `unclipped` for
 `op = "range"`. Direct controls use the same barline publication, quantization,
 deduplication, scene reset, and stop lifecycle as mapped controls. Load reports
 show their declared reach. This is the existing companion ENGINES follower contract
-and `check.py` direct/no-span rule; it adds no source or timing-walk support.
+and `check.py` direct/no-span rule. It applies to either supported source shape.
 
 A followed control cannot also have a fixed/ramped/automated value or accent response.
 Active followed controls must have distinct channel/CC targets.
@@ -90,7 +139,7 @@ On a scene change, outgoing resets precede incoming publications; absent readers
 publish nothing. Router boundaries must be bar-aligned when these lanes are present.
 Stop restores declared kit defaults through the existing dispatcher lifecycle.
 
-A gate reads weather at the written main onset, before groove offsets. It replaces
+A gate reads its source at the written main onset, before groove offsets. It replaces
 the opening probability for both plain `*n` and questioned `*n?` bursts, keeping the
 source's count and spacing. The main hit remains; refused tails spend no velocity
 values. Admitted tails spend even if later suppressed, as in the event-values contract.
@@ -99,13 +148,12 @@ Its native hash address remains the ornament's `ratchet` / `admission` address, 
 a new random family. A configured ratchet and a followed gate may coexist; the gate
 supplies probability. The literal source still supplies count when present.
 
-Limits: at most 16 lanes, 1–64 finite delta choices, every 2–65536 bars, and a positive
-ramp strictly shorter than the decision interval. Checkpoints retain at most 4096
-settled targets per compiled snapshot. Missing history is replayed exactly; a distant
+Limits: at most 16 lanes total. Weather requires 1–64 finite delta choices, every
+2–65536 bars, and a positive ramp strictly shorter than the decision interval.
+Checkpoints retain at most 4096 settled lane values per compiled snapshot. Missing history is replayed exactly; a distant
 cold seek costs linear work in elapsed decisions and has no constant-time deadline
 guarantee. New compiled snapshots reconstruct under the new score; no live retained
-state journal migrates across edits. Event-clocked shared sources, walks, lane-following
-doors are outside this slice.
+state journal migrates across edits. Event-clocked shared sources and lane-following doors remain outside this slice.
 
 The example-first contract is until-stop `WEATHER.md` and its default-checked
 `trace_weather.py`. That document uses the existing hypothetical TRACE delta deck;

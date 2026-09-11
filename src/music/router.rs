@@ -40,8 +40,9 @@ pub enum Clock {
 /// Resolve one member key. The shapes this engine can read today are
 /// `voices.<id>.trigger.cycle`, `voices.<id>.accent.cycle`, and
 /// `voices.<id>.velocity.cycle` (`parts.` is the same word). Velocity per=event
-/// is an event clock even when it has a periodic reset; per=step has a transport period. A key whose owner is not in this engine yet —
-/// `patterns.*` (M1.5), `lanes.*` (M1.4) — is an error that names the key. Nothing is stubbed.
+/// is an event clock even when it has a periodic reset; per=step has a transport period.
+/// `lanes.<name>.every` names a walk's step clock, not a repetition of its values.
+/// `patterns.*` (M1.5) remains an error that names the key. Nothing is stubbed.
 pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
     let segments: Vec<&str> = key.split('.').collect();
     match segments.as_slice() {
@@ -84,8 +85,20 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
         ["patterns", ..] => Err(format!(
             "{key}: patterns are not in this engine yet (M1.5), so the key cannot be resolved; it is not guessed"
         )),
+        ["lanes", name, "every"] => {
+            let lane = c
+                .lanes
+                .get(*name)
+                .ok_or_else(|| format!("{key}: unknown shared lane"))?;
+            match lane {
+                super::shared::Lane::Walk(_) => Ok(Clock::Fixed(lane.every_ticks())),
+                super::shared::Lane::Target(_) => Err(format!(
+                    "{key}: every names a walk's step clock; target lanes have no top-level every"
+                )),
+            }
+        }
         ["lanes", ..] => Err(format!(
-            "{key}: lanes are not in this engine yet (M1.4), so the key cannot be resolved; it is not guessed"
+            "{key}: a walk's transport clock is lanes.<name>.every"
         )),
         _ => Err(format!(
             "{key}: not a clock this engine can name; a member is voices.<id>.trigger.cycle, voices.<id>.accent.cycle, patterns.<name>.change.every or lanes.<name>.every"
@@ -695,7 +708,7 @@ mod tests {
         );
         for (key, says) in [
             ("patterns.hat-memory.change.every", "M1.5"),
-            ("lanes.drift.every", "M1.4"),
+            ("lanes.drift.every", "unknown shared lane"),
             ("voices.hat.velocity", "velocity.cycle"),
             ("weather", "not a clock"),
         ] {
