@@ -789,9 +789,10 @@ fn position_text(tick: u64) -> String {
 }
 /// Returns `(offset_ticks, timing_pinned)`. `timing_pinned` is true when the humanize_timing
 /// draw for this step was forced by a `[[pins]]` entry. Both callers must surface it on the
-/// event they are computing, because neither consumption is conditional on a groove or touch
-/// setting: the onset site writes `MusicalEvent.onset_timing_pinned`, and the site that
-/// reserves the next structural onset to bound the previous event's gate writes
+/// event they are computing, and neither consumption is conditional on a touch setting, but
+/// their scopes differ: the onset site runs only for a non-default groove and writes
+/// `MusicalEvent.onset_timing_pinned`; the site that reserves the next structural onset to
+/// bound the previous event's gate runs for every admitted event and writes
 /// `MusicalEvent.gate_timing_pinned` — see t-517.
 fn offset(part: &Part, c: &Composition, step: u64) -> (i64, bool) {
     let cell = part.subdivision.0;

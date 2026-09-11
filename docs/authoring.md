@@ -101,18 +101,18 @@ closure makes.
 `timing` is the one address more than one decision reads, so the **event** carries its other
 two consumers directly: `onset_timing_pinned` when the forced draw was this event's own onset
 offset, and `gate_timing_pinned` when it was the reserved next onset consulted to bound this
-event's gate. Both are written whether or not a groove or touch setting exists — `timing` is
-drawn for every admitted event of a non-default groove and again for the reservation of every
-admitted event at all — so a pin with a neutral amount (no `groove.humanize`: zero jitter
-ticks, output unchanged) is still a forced draw and is still visible. Two cautions on reading
-them. `gate_timing_pinned` records that the reservation **consulted** the pin, not that the
-gate came out shorter: a gate already bounded by its authored length is unchanged and the flag
-is still true. And the reserved address is the next *structural* onset, not universally
-`step + 1`: a literal schedule reserves its next written attack and steps over intervening
-rests, so the pin that bounds a gate may be several slots away. Pins live with the
-composition, not a phrase:
-every phrase and section inherits them, and the seed is not part of the address, so changing
-the seed rerolls everything except the pinned draws — which is what pins are for.
+event's gate. The two consumers have different scopes, and neither depends on a touch setting:
+the onset consumer runs for every admitted event of a non-default groove, and the reservation
+consumer runs for every admitted event at all — so a pin with a neutral amount (no
+`groove.humanize`: zero jitter ticks, output unchanged) is still a forced draw and is still
+visible. Two cautions on reading them. `gate_timing_pinned` records that the reservation
+**consulted** the pin, not that the gate came out shorter: a gate already bounded by its
+authored length is unchanged and the flag is still true. And the reserved address is the next
+*structural* onset, not universally `step + 1`: a literal schedule reserves its next written
+attack and steps over intervening rests, so the pin that bounds a gate may be several slots
+away. Pins live with the composition, not a phrase: every phrase and section inherits them, and
+the seed is not part of the address, so changing the seed rerolls everything except the pinned
+draws — which is what pins are for.
 
 ## Sharing musical knowledge
 
