@@ -362,7 +362,10 @@ fn direct_control_uses_raw_lane_value_not_normalized_range_or_kit_default() {
             assert_eq!(cc.bytes[1..], [76, initial]);
             assert!(compiled.resolve_step(1).1.iter().all(|e| !e.parameter));
             let report = phasecraft::music::shared::report(&c).join("\n");
-            assert!(report.contains("raw 0.200000..0.800000"), "{report}");
+            assert!(
+                report.contains("raw 0.200000..0.800000, control 0.200000..0.800000, direct"),
+                "{report}"
+            );
         }
     }
 }
@@ -406,6 +409,12 @@ fn direct_rejects_mapping_fields_and_unrepresentable_reach_at_load() {
             "accepted {new}"
         );
     }
+    let explicit_zero = DIRECT.replace("op = \"direct\"", "op = \"direct\", low = 0.0, high = 0.0");
+    assert!(
+        Composition::parse(&explicit_zero)
+            .unwrap_err()
+            .contains("omit low, high and unclipped")
+    );
     let gate = DIRECT.replace(
         "parameters.decay = { follows = \"level\", op = \"direct\" }",
         "ornaments.gate = { follows = \"level\", op = \"direct\" }",
@@ -414,5 +423,51 @@ fn direct_rejects_mapping_fields_and_unrepresentable_reach_at_load() {
         Composition::parse(&gate)
             .unwrap_err()
             .contains("ratchet gate requires op = range")
+    );
+}
+
+#[test]
+fn follower_diagnostics_name_reach_promise_and_separate_non_finite_mapping() {
+    use phasecraft::music::shared::Follower;
+    let lanes = std::collections::BTreeMap::from([("weather".into(), lane("[0]"))]);
+    for (fields, default, gate, expected) in [
+        (
+            "op='direct'",
+            None,
+            false,
+            "direct takes the lane value unchanged",
+        ),
+        (
+            "op='range'\nlow=0\nhigh=8",
+            None,
+            true,
+            "a ratchet gate is a probability",
+        ),
+        (
+            "op='range'\nlow=0\nhigh=8\nunclipped=true",
+            None,
+            false,
+            "unclipped = true promises",
+        ),
+    ] {
+        let f: Follower = toml::from_str(&format!("follows='weather'\n{fields}")).unwrap();
+        let error = f.validate(&lanes, default, gate).unwrap_err();
+        assert!(
+            error.contains("lane \"weather\" (range 0..8) reaches 8 outside 0..1"),
+            "{error}"
+        );
+        assert!(error.contains(expected), "{error}");
+    }
+    let f: Follower =
+        toml::from_str("follows='weather'\nop='scale-default'\nlow=0\nhigh=1e308\nunclipped=true")
+            .unwrap();
+    let error = f.validate(&lanes, Some(2.0), false).unwrap_err();
+    assert!(
+        error.contains("lane \"weather\" (range 0..8) produces non-finite value"),
+        "{error}"
+    );
+    assert!(
+        !error.contains("promise") && !error.contains("outside 0..1"),
+        "{error}"
     );
 }

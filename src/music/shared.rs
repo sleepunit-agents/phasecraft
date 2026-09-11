@@ -207,13 +207,26 @@ impl Follower {
         }
         for edge in lane.range {
             let value = self.mapped(lane, edge, default.unwrap_or(1.0));
-            if !value.is_finite()
-                || ((gate || self.op == Operation::Direct || self.unclipped.unwrap_or(false))
-                    && !(0.0..=1.0).contains(&value))
+            if !value.is_finite() {
+                return Err(format!(
+                    "follower on lane {:?} (range {}..{}) produces non-finite value {value} at {edge}; check mapping span and output control default",
+                    self.follows, lane.range[0], lane.range[1],
+                ));
+            }
+            if (gate || self.op == Operation::Direct || self.unclipped.unwrap_or(false))
+                && !(0.0..=1.0).contains(&value)
             {
-                return Err(
-                    "follower reaches outside 0..1 (direct, gate or unclipped promise)".into(),
-                );
+                let promise = if self.op == Operation::Direct {
+                    "direct takes the lane value unchanged, so the lane's own range must fit 0..1; use op = range to map it"
+                } else if gate {
+                    "a ratchet gate is a probability and must fit 0..1"
+                } else {
+                    "unclipped = true promises the mapped control fits 0..1"
+                };
+                return Err(format!(
+                    "follower on lane {:?} (range {}..{}) reaches {value} outside 0..1: {promise}",
+                    self.follows, lane.range[0], lane.range[1],
+                ));
             }
         }
         Ok(())
@@ -322,7 +335,9 @@ pub fn report(c: &Composition) -> Vec<String> {
                     f.follows,
                     lo.clamp(0.0, 1.0),
                     hi.clamp(0.0, 1.0),
-                    if lo < 0.0 || hi > 1.0 {
+                    if f.op == Operation::Direct {
+                        "direct"
+                    } else if lo < 0.0 || hi > 1.0 {
                         "saturates"
                     } else {
                         "unclipped"
