@@ -13,11 +13,87 @@ pub struct TargetLane {
     pub target: Target,
 }
 /// The two wire shapes are disjoint; each refuses unknown or mixed fields.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+/// Deserialize is hand-written rather than `untagged` so a misspelled or missing
+/// field still names itself: serde reports only "data did not match any variant"
+/// once an untagged enum has tried and rejected every arm.
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Lane {
     Target(TargetLane),
     Walk(WalkLane),
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LaneWire {
+    start: f64,
+    carry: Carry,
+    range: Option<[f64; 2]>,
+    target: Option<Target>,
+    bounds: Option<[f64; 2]>,
+    every: Option<Slots>,
+    step: Option<Vec<f64>>,
+}
+impl<'de> Deserialize<'de> for Lane {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = LaneWire::deserialize(deserializer)?;
+        let names = |present: &[(&str, bool)]| {
+            present
+                .iter()
+                .filter(|(_, is)| *is)
+                .map(|(name, _)| format!("`{name}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let target_side = names(&[
+            ("range", wire.range.is_some()),
+            ("target", wire.target.is_some()),
+        ]);
+        let walk_side = names(&[
+            ("bounds", wire.bounds.is_some()),
+            ("every", wire.every.is_some()),
+            ("step", wire.step.is_some()),
+        ]);
+        let target_missing = names(&[
+            ("range", wire.range.is_none()),
+            ("target", wire.target.is_none()),
+        ]);
+        let walk_missing = names(&[
+            ("bounds", wire.bounds.is_none()),
+            ("every", wire.every.is_none()),
+            ("step", wire.step.is_none()),
+        ]);
+        match (target_side.is_empty(), walk_side.is_empty()) {
+            (false, false) => Err(serde::de::Error::custom(format!(
+                "lane mixes the two source shapes: target fields {target_side} cannot appear beside walk fields {walk_side}"
+            ))),
+            (true, true) => Err(serde::de::Error::custom(
+                "lane needs either `range` and `target`, or `bounds`, `every` and `step`",
+            )),
+            (false, true) => match (wire.range, wire.target) {
+                (Some(range), Some(target)) => Ok(Self::Target(TargetLane {
+                    start: wire.start,
+                    range,
+                    carry: wire.carry,
+                    target,
+                })),
+                _ => Err(serde::de::Error::custom(format!(
+                    "target lane has {target_side} but is missing {target_missing}"
+                ))),
+            },
+            (true, false) => match (wire.bounds, wire.every, wire.step) {
+                (Some(bounds), Some(every), Some(step)) => Ok(Self::Walk(WalkLane {
+                    start: wire.start,
+                    bounds,
+                    carry: wire.carry,
+                    every,
+                    step,
+                })),
+                _ => Err(serde::de::Error::custom(format!(
+                    "walk lane has {walk_side} but is missing {walk_missing}"
+                ))),
+            },
+        }
+    }
 }
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
