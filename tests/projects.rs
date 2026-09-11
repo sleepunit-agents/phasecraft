@@ -314,6 +314,14 @@ fn missed_grid_positions(stderr: &str) -> u64 {
 
 /// A watched edit is picked up at the first reload boundary after it is
 /// written; reloads happen only at `step % 16 == 0`.
+///
+/// What the assertions keyed to this can and cannot prove: they establish
+/// that the probability in force AGREES with this boundary on every row the
+/// trace observed. They do not establish that the reload applied at exactly
+/// this step. If the transport abandoned the rows immediately around it,
+/// agreement over the rows that survive is still satisfied by an application
+/// anywhere inside the unobserved gap. Compatibility with the boundary is not
+/// proof of the boundary — don't read it as one. (Mark, reviewing t-527.)
 fn next_boundary(step: u64) -> u64 {
     step / 16 * 16 + 16
 }
