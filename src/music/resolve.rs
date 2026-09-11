@@ -60,22 +60,27 @@ pub struct Dice<'a> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Draw {
     pub u: f64,
-    pub pinned: bool,
+    /// The index into the composition's `[[pins]]` list that forced this draw,
+    /// or `None` when the roll was hashed normally. Carrying the index rather than
+    /// a bare bool lets consumers join back to the authored pin without re-resolving
+    /// the address from first principles — see t-514.
+    pub pinned: Option<usize>,
 }
 impl Dice<'_> {
     pub fn roll(&self, part: &str, lane: &str, event: u64, decision: &str) -> Draw {
-        let pinned = self.pins.iter().find(|pin| {
+        let pinned = self.pins.iter().enumerate().find_map(|(i, pin)| {
             let a = &pin.address;
-            a.event == event && a.part == part && a.lane == lane && a.decision == decision
+            (a.event == event && a.part == part && a.lane == lane && a.decision == decision)
+                .then_some(i)
         });
         match pinned {
-            Some(pin) => Draw {
-                u: pin.u,
-                pinned: true,
+            Some(index) => Draw {
+                u: self.pins[index].u,
+                pinned: Some(index),
             },
             None => Draw {
                 u: decision_roll(self.seed, part, lane, event, decision),
-                pinned: false,
+                pinned: None,
             },
         }
     }
@@ -331,6 +336,28 @@ pub struct MusicalEvent {
     pub controls: Vec<super::accent::ResolvedControl>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub groove: Option<super::groove::GrooveTrace>,
+    /// The `humanize_timing` draw consumed for THIS event's onset offset was forced by a
+    /// `[[pins]]` entry. It lives on the event, not on `GrooveTrace.touch`, because
+    /// `compiled::offset` makes that draw for every admitted event of a non-default groove —
+    /// the touch closure is a separate consumer of the same die and need not run. A pin with
+    /// a neutral amount (no `groove.humanize`: zero jitter ticks, output unchanged) is still a
+    /// forced draw, and this is the only place it is visible. Written only when true.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub onset_timing_pinned: bool,
+    /// The `humanize_timing` draw at the next reserved onset was forced by a `[[pins]]` entry
+    /// when it was consulted to bound THIS event's gate length. Written only when true.
+    ///
+    /// A pin at address `e` is consulted by up to three sites: the touch closure at `e`, the
+    /// onset offset at `e`, and the gate-bounding computation at the event that reserves `e`.
+    /// This flag names the third so the pins report can attribute a shortened gate to the
+    /// authored pin rather than reporting it as an unexplained truncation — see t-517. It
+    /// lives on the event because the gate is bounded for every admitted event, including
+    /// under a default groove, where there is no `GrooveTrace` at all.
+    ///
+    /// The reserved address is the next *structural* onset, not universally `step + 1`: a
+    /// literal schedule reserves its next attack and steps over intervening rests.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub gate_timing_pinned: bool,
 }
 /// A realized window is generic; source cycles need not fit in the window.
 #[derive(Clone, Debug, Serialize)]
@@ -413,7 +440,7 @@ fn admission(
         event_identity,
         probability,
         roll: draw.u,
-        pinned: draw.pinned,
+        pinned: draw.pinned.is_some(),
         admitted,
     }
 }
@@ -479,7 +506,7 @@ fn resolve_part(
                     event_identity,
                     probability: lane.probability,
                     roll: draw.u,
-                    pinned: draw.pinned,
+                    pinned: draw.pinned.is_some(),
                     admitted,
                 },
             }
@@ -502,6 +529,8 @@ fn resolve_part(
         duration_ticks: part.output.gate_ticks,
         note: None,
         groove: None,
+        onset_timing_pinned: false,
+        gate_timing_pinned: false,
         controls: part
             .profile
             .controls

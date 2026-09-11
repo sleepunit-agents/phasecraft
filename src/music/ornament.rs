@@ -84,7 +84,7 @@ impl ExpansionTrace {
             admitted_count: if admitted { count } else { 0 },
             emitted_count: 0,
             suppression_reason: (!admitted).then_some(SuppressionReason::Probability),
-            pinned: draw.pinned,
+            pinned: draw.pinned.is_some(),
         }
     }
 }
