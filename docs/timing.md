@@ -72,6 +72,11 @@ never moves a hit earlier than its source onset. Swing acts on pairs of the
 Part's subdivisions; after-gap and run-contour lengths count local source positions.
 Offbeat emphasis and parameter automation remain tied to absolute musical time.
 
+The compiled resolver (`src/music/resolve/compiled.rs`, `offset`) composes the
+signed delay, subdivision-aware swing and timing jitter and applies the effective
+cell bound. `Groove` supplies the jitter draw; it has no separate onset-clamping
+helper.
+
 Bars are clean ownership boundaries. Main hits cannot anticipate into a preceding
 bar. Repeats and note-offs finish inside their owning bar. Thus a source edit or
 temporary performance change can take over on a bar without an old anticipated hit
