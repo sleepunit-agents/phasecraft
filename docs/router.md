@@ -106,10 +106,17 @@ that lane sum to one throughout its range. Different named lanes vary independen
 when their ranges match. The engine checks every combination of their endpoints and names
 the lane values where the sum fails. At most 16 followed weights are allowed in a row.
 
-That check is built and tested against stated ranges (`router::check_row` with `Range`).
-Shared transport sources now exist, but their ranges and sampled values are not yet wired
-into the router. A followed route therefore still fails to load with a named-lane error;
-this validation rule is a prerequisite for that wiring.
+The loader checks followed rows against the root composition's named shared-source ranges
+(walk `bounds` or target `range`). An unknown source is a load error. At each return, the
+router samples each distinct source used by the outgoing row at the absolute return tick,
+after any source update due at that tick. The row then reads those frozen values. A target
+ramp contributes its value at that instant, not its future target. Stays and scene changes
+do not restart a source; all doors use the root transport seed, like other shared readers.
+
+Compiled playback retains the move log and a bounded source cache. Cold routing queries
+replay from the start with the same source sampler, so inspection, scene lookup and playback
+agree. Replay work grows with elapsed returns and source decisions; no constant-time cold
+seek or realtime latency bound is claimed.
 
 ## The roll
 
@@ -211,7 +218,5 @@ scene's composition never carries `[returns]`; the groups are the piece's.
   `{ on = "enter" }` subscribe to `Move`; `to` filters on the promised destination.
 - **Pins** (M1.8, B25): `{ roll = "door", return = R }` forces `roll` at `moves/<R>`; the row
   is still read as intervals, which is why a pin is a number and not a scene.
-- **Lanes as Sources** (M1.4): `check_row` gets a real `Range` and `pick` a real value at the
-  roll; nothing in the row's reading changes.
 - **Patterns' and lanes' clocks as members** (M1.4, M1.5): two arms in `member_clock`, where
   the errors that name them are today.

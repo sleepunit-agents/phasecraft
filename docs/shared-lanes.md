@@ -154,7 +154,8 @@ Limits: at most 16 lanes total. Weather requires 1–64 finite delta choices, ev
 Checkpoints retain at most 4096 settled lane values per compiled snapshot. Missing history is replayed exactly; a distant
 cold seek costs linear work in elapsed decisions and has no constant-time deadline
 guarantee. New compiled snapshots reconstruct under the new score; no live retained
-state journal migrates across edits. Event-clocked shared sources and lane-following doors remain outside this slice.
+state journal migrates across edits. Event-clocked shared sources remain outside this slice. Lane-following router doors read
+these sources at absolute return ticks; see [router.md](router.md).
 
 The example-first contract is until-stop `WEATHER.md` and its default-checked
 `trace_weather.py`. That document uses the existing hypothetical TRACE delta deck;

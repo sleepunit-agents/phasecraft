@@ -120,7 +120,7 @@ pub fn spans(c: &Composition, part_id: &str, start: u64, end: u64) -> Vec<CycleS
         } else if let Some(r) = &c.router {
             // Every visit continues the transport's phase; the window closes at the next return.
             let period = r.period_ticks(c).expect("validated composition");
-            let visit = r.visit_at(c.seed, period, step * STEP_TICKS);
+            let visit = r.visit_at(c, period, step * STEP_TICKS);
             (
                 r.scene(&visit.scene)
                     .expect("validated router")

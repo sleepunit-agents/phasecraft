@@ -133,7 +133,7 @@ impl Composition {
     pub fn at_step(&self, step: u64) -> &Composition {
         if let Some(r) = &self.router {
             let period = r.period_ticks(self).expect("validated composition");
-            let visit = r.visit_at(self.seed, period, step * STEP_TICKS);
+            let visit = r.visit_at(self, period, step * STEP_TICKS);
             return r
                 .scene(&visit.scene)
                 .expect("validated router")

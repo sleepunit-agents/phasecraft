@@ -563,22 +563,51 @@ impl Router {
                     "router.routes has no row for scene {name:?}; a room with no row has no door, not even to itself"
                 )
             })?;
-            // No lane is a Source in this engine yet, so no followed row can be checked here.
-            check_row(name, row, &names, &|_| None)?;
+            check_row(name, row, &names, &|name| {
+                c.lanes.get(name).map(|lane| {
+                    let [low, high] = lane.range();
+                    Range { low, high }
+                })
+            })?;
         }
         Ok(())
     }
     /// Extend a move log through return `through`, rolling each return once in order.
-    pub fn extend_moves(&self, seed: u64, period: u64, log: &mut Vec<Move>, through: u64) {
+    pub fn extend_moves(
+        &self,
+        c: &Composition,
+        period: u64,
+        log: &mut Vec<Move>,
+        through: u64,
+        cache: &mut super::shared::Cache,
+    ) {
         let names = self.scene_names();
         while (log.len() as u64) < through {
             let index = log.len() as u64 + 1;
             let from = log.last().map_or(self.start.clone(), |m| m.to.clone());
-            let u = roll(seed, index);
-            let to = pick(&self.routes[&from], &names, u, &|_| None).expect("validated router row");
+            let tick = index.saturating_mul(period);
+            let row = &self.routes[&from];
+            // Freeze each distinct source once at this absolute return tick. `pick` may
+            // consult a follower more than once; all those reads see the same value.
+            let mut samples = BTreeMap::new();
+            for weight in row.values() {
+                if let Weight::Follows(f) = weight {
+                    samples.entry(f.follows.as_str()).or_insert_with(|| {
+                        let lane = &c.lanes[&f.follows];
+                        let [low, high] = lane.range();
+                        (
+                            lane.sample(&f.follows, c.seed, tick, cache).value,
+                            Range { low, high },
+                        )
+                    });
+                }
+            }
+            let u = roll(c.seed, index);
+            let to = pick(row, &names, u, &|name| samples.get(name).copied())
+                .expect("validated router row");
             log.push(Move {
                 index,
-                tick: index.saturating_mul(period),
+                tick,
                 moved: to != from,
                 from,
                 to,
@@ -607,9 +636,9 @@ impl Router {
         }
     }
     /// The pure form: walk the returns from the start. `Compiled` keeps the log instead.
-    pub fn visit_at(&self, seed: u64, period: u64, tick: u64) -> Visit {
+    pub fn visit_at(&self, c: &Composition, period: u64, tick: u64) -> Visit {
         let mut log = Vec::new();
-        self.extend_moves(seed, period, &mut log, tick / period);
+        self.extend_moves(c, period, &mut log, tick / period, &mut Default::default());
         self.locate(period, tick, &log)
     }
     /// Structural/routing edits need a restart; a scene's musical edits may reload.
@@ -960,7 +989,7 @@ mod tests {
         let period = r.period_ticks(&c).unwrap();
         assert_eq!(period, 16 * SLOT);
         let mut log = Vec::new();
-        r.extend_moves(c.seed, period, &mut log, 3);
+        r.extend_moves(&c, period, &mut log, 3, &mut Default::default());
         assert_eq!(
             log.iter().map(|m| (m.index, m.tick)).collect::<Vec<_>>(),
             vec![(1, period), (2, 2 * period), (3, 3 * period)]
@@ -988,11 +1017,11 @@ mod tests {
         );
         // The log is a pure function of the seed: extending it twice is extending it once.
         let mut again = Vec::new();
-        r.extend_moves(c.seed, period, &mut again, 2);
-        r.extend_moves(c.seed, period, &mut again, 3);
+        r.extend_moves(&c, period, &mut again, 2, &mut Default::default());
+        r.extend_moves(&c, period, &mut again, 3, &mut Default::default());
         assert_eq!(again, log);
         assert_eq!(
-            r.visit_at(c.seed, period, 3 * period + 5),
+            r.visit_at(&c, period, 3 * period + 5),
             r.locate(period, 3 * period + 5, &log)
         );
     }
@@ -1005,7 +1034,7 @@ mod tests {
         let r = c.router.as_ref().unwrap();
         let period = r.period_ticks(&c).unwrap();
         let mut log = Vec::new();
-        r.extend_moves(c.seed, period, &mut log, 40);
+        r.extend_moves(&c, period, &mut log, 40, &mut Default::default());
         assert!(log.iter().all(|m| !m.moved && m.to == "crowded"));
         let visit = r.locate(period, 40 * period, &log);
         assert_eq!((visit.index, visit.entered_tick, visit.from), (40, 0, None));
@@ -1013,7 +1042,7 @@ mod tests {
         let c = routed(PIECE_ROWS, 91827);
         let r = c.router.as_ref().unwrap();
         let mut log = Vec::new();
-        r.extend_moves(c.seed, period, &mut log, 200);
+        r.extend_moves(&c, period, &mut log, 200, &mut Default::default());
         assert!(log.iter().any(|m| m.moved) && log.iter().any(|m| !m.moved));
         let first = log.iter().find(|m| m.moved).unwrap();
         let visit = r.locate(period, first.tick + period / 2, &log);
@@ -1027,11 +1056,13 @@ mod tests {
         );
         let other = routed(PIECE_ROWS, 4471);
         let mut log2 = Vec::new();
-        other
-            .router
-            .as_ref()
-            .unwrap()
-            .extend_moves(other.seed, period, &mut log2, 200);
+        other.router.as_ref().unwrap().extend_moves(
+            &other,
+            period,
+            &mut log2,
+            200,
+            &mut Default::default(),
+        );
         assert_ne!(
             log.iter().map(|m| &m.to).collect::<Vec<_>>(),
             log2.iter().map(|m| &m.to).collect::<Vec<_>>()
