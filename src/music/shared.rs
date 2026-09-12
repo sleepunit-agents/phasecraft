@@ -1,4 +1,4 @@
-//! Transport-clocked bounded target lanes and explicit readers.
+//! Transport-clocked bounded target/walk lanes and explicit readers.
 use super::{Composition, PPQN, resolve::decision_roll};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -6,11 +6,108 @@ const BAR: u64 = 4 * PPQN;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Lane {
+pub struct TargetLane {
     pub start: f64,
     pub range: [f64; 2],
     pub carry: Carry,
     pub target: Target,
+}
+/// The two wire shapes are disjoint; each refuses unknown or mixed fields.
+/// Deserialize is hand-written rather than `untagged` so a misspelled or missing
+/// field still names itself: serde reports only "data did not match any variant"
+/// once an untagged enum has tried and rejected every arm.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Lane {
+    Target(TargetLane),
+    Walk(WalkLane),
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LaneWire {
+    start: f64,
+    carry: Carry,
+    range: Option<[f64; 2]>,
+    target: Option<Target>,
+    bounds: Option<[f64; 2]>,
+    every: Option<Slots>,
+    step: Option<Vec<f64>>,
+}
+impl<'de> Deserialize<'de> for Lane {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = LaneWire::deserialize(deserializer)?;
+        let names = |present: &[(&str, bool)]| {
+            present
+                .iter()
+                .filter(|(_, is)| *is)
+                .map(|(name, _)| format!("`{name}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let target_side = names(&[
+            ("range", wire.range.is_some()),
+            ("target", wire.target.is_some()),
+        ]);
+        let walk_side = names(&[
+            ("bounds", wire.bounds.is_some()),
+            ("every", wire.every.is_some()),
+            ("step", wire.step.is_some()),
+        ]);
+        let target_missing = names(&[
+            ("range", wire.range.is_none()),
+            ("target", wire.target.is_none()),
+        ]);
+        let walk_missing = names(&[
+            ("bounds", wire.bounds.is_none()),
+            ("every", wire.every.is_none()),
+            ("step", wire.step.is_none()),
+        ]);
+        match (target_side.is_empty(), walk_side.is_empty()) {
+            (false, false) => Err(serde::de::Error::custom(format!(
+                "lane mixes the two source shapes: target fields {target_side} cannot appear beside walk fields {walk_side}"
+            ))),
+            (true, true) => Err(serde::de::Error::custom(
+                "lane needs either `range` and `target`, or `bounds`, `every` and `step`",
+            )),
+            (false, true) => match (wire.range, wire.target) {
+                (Some(range), Some(target)) => Ok(Self::Target(TargetLane {
+                    start: wire.start,
+                    range,
+                    carry: wire.carry,
+                    target,
+                })),
+                _ => Err(serde::de::Error::custom(format!(
+                    "target lane has {target_side} but is missing {target_missing}"
+                ))),
+            },
+            (true, false) => match (wire.bounds, wire.every, wire.step) {
+                (Some(bounds), Some(every), Some(step)) => Ok(Self::Walk(WalkLane {
+                    start: wire.start,
+                    bounds,
+                    carry: wire.carry,
+                    every,
+                    step,
+                })),
+                _ => Err(serde::de::Error::custom(format!(
+                    "walk lane has {walk_side} but is missing {walk_missing}"
+                ))),
+            },
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct WalkLane {
+    pub start: f64,
+    pub bounds: [f64; 2],
+    pub carry: Carry,
+    pub every: Slots,
+    pub step: Vec<f64>,
+}
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Slots {
+    pub slots: u32,
 }
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -66,35 +163,63 @@ pub struct Cache {
     bindings: BTreeMap<String, (u64, Lane)>,
 }
 impl Lane {
+    pub fn range(&self) -> [f64; 2] {
+        match self {
+            Self::Target(lane) => lane.range,
+            Self::Walk(lane) => lane.bounds,
+        }
+    }
+    fn start(&self) -> f64 {
+        match self {
+            Self::Target(lane) => lane.start,
+            Self::Walk(lane) => lane.start,
+        }
+    }
+    pub(crate) fn every_ticks(&self) -> u64 {
+        match self {
+            Self::Target(lane) => u64::from(lane.target.every.bars) * BAR,
+            Self::Walk(lane) => u64::from(lane.every.slots) * super::STEP_TICKS,
+        }
+    }
     pub fn validate(&self) -> Result<(), String> {
-        let [lo, hi] = self.range;
+        let [lo, hi] = self.range();
         if !lo.is_finite()
             || !hi.is_finite()
             || lo >= hi
             || !(hi - lo).is_finite()
-            || !self.start.is_finite()
-            || !(lo..=hi).contains(&self.start)
+            || !self.start().is_finite()
+            || !(lo..=hi).contains(&self.start())
         {
-            return Err("lane requires finite increasing range and start within it".into());
+            return Err("lane requires finite increasing range/bounds and start within it".into());
         }
-        if !(1..=65536).contains(&self.target.every.bars)
-            || self.target.ramp.bars == 0
-            || self.target.ramp.bars >= self.target.every.bars
-        {
-            return Err(
-                "target.every.bars must be 2..65536 and ramp.bars must be positive and shorter"
-                    .into(),
-            );
-        }
-        if self.target.delta.is_empty()
-            || self.target.delta.len() > 64
-            || self
-                .target
-                .delta
+        let choices = match self {
+            Self::Target(lane) => {
+                let target = &lane.target;
+                if !(1..=65536).contains(&target.every.bars)
+                    || target.ramp.bars == 0
+                    || target.ramp.bars >= target.every.bars
+                {
+                    return Err(
+                        "target.every.bars must be 2..65536 and ramp.bars must be positive and shorter"
+                            .into(),
+                    );
+                }
+                &target.delta
+            }
+            Self::Walk(lane) => {
+                if !(1..=65536).contains(&lane.every.slots) {
+                    return Err("walk every.slots must be 1..65536".into());
+                }
+                &lane.step
+            }
+        };
+        if choices.is_empty()
+            || choices.len() > 64
+            || choices
                 .iter()
                 .any(|d| !d.is_finite() || !(lo + d).is_finite() || !(hi + d).is_finite())
         {
-            return Err("target.delta requires 1..64 finite, non-overflowing choices".into());
+            return Err("lane delta/step requires 1..64 finite, non-overflowing choices".into());
         }
         Ok(())
     }
@@ -110,16 +235,15 @@ impl Lane {
             }
             cache.bindings.insert(name.to_owned(), (seed, self.clone()));
         }
-        let bar = tick / BAR;
-        let every = u64::from(self.target.every.bars);
-        let occurrence = bar / every;
+        let every = self.every_ticks();
+        let occurrence = tick / every;
         let key = name.to_owned();
         let (mut k, mut origin) = cache
             .entries
             .range((key.clone(), 0)..=(key.clone(), occurrence.saturating_sub(1)))
             .next_back()
             .map(|((_, k), v)| (*k, *v))
-            .unwrap_or((0, self.start));
+            .unwrap_or((0, self.start()));
         while k < occurrence.saturating_sub(1) {
             k += 1;
             origin = self.next(name, seed, k, origin).0;
@@ -129,14 +253,20 @@ impl Lane {
             cache.entries.insert((key.clone(), k), origin);
         }
         let (target, roll, progress) = if occurrence == 0 {
-            (self.start, None, 0.0)
+            (self.start(), None, 0.0)
         } else {
             let (target, roll) = self.next(name, seed, occurrence, origin);
             (
                 target,
                 Some(roll),
-                (bar % every).min(u64::from(self.target.ramp.bars)) as f64
-                    / f64::from(self.target.ramp.bars),
+                match self {
+                    Self::Target(lane) => {
+                        let bars = (tick % every) / BAR;
+                        bars.min(u64::from(lane.target.ramp.bars)) as f64
+                            / f64::from(lane.target.ramp.bars)
+                    }
+                    Self::Walk(_) => 1.0,
+                },
             )
         };
         Sample {
@@ -145,7 +275,7 @@ impl Lane {
             // A convex sum preserves a clamped small target beside a very large
             // origin; origin + (target-origin) can cancel the target at progress=1.
             value: (origin * (1.0 - progress) + target * progress)
-                .clamp(self.range[0], self.range[1]),
+                .clamp(self.range()[0], self.range()[1]),
             occurrence,
             origin,
             target,
@@ -154,9 +284,19 @@ impl Lane {
         }
     }
     fn next(&self, name: &str, seed: u64, k: u64, from: f64) -> (f64, f64) {
-        let roll = decision_roll(seed, name, "target", k, "delta");
-        let delta = self.target.delta[(roll * self.target.delta.len() as f64) as usize];
-        ((from + delta).clamp(self.range[0], self.range[1]), roll)
+        let (roll, choices) = match self {
+            Self::Target(lane) => (
+                decision_roll(seed, name, "target", k, "delta"),
+                &lane.target.delta,
+            ),
+            // The walk address names the absolute transport tick of the step.
+            Self::Walk(lane) => (
+                decision_roll(seed, name, "step", k * self.every_ticks(), "delta"),
+                &lane.step,
+            ),
+        };
+        let delta = choices[(roll * choices.len() as f64) as usize];
+        ((from + delta).clamp(self.range()[0], self.range()[1]), roll)
     }
 }
 impl Follower {
@@ -166,7 +306,7 @@ impl Follower {
             Operation::Range | Operation::ScaleDefault => {
                 let low = self.low.expect("validated mapping span");
                 let high = self.high.expect("validated mapping span");
-                let fraction = (value - lane.range[0]) / (lane.range[1] - lane.range[0]);
+                let fraction = (value - lane.range()[0]) / (lane.range()[1] - lane.range()[0]);
                 let mapped = low + (high - low) * fraction;
                 if self.op == Operation::ScaleDefault {
                     mapped * default
@@ -205,12 +345,14 @@ impl Follower {
         if self.op == Operation::ScaleDefault && default.is_none() {
             return Err("scale-default requires an explicit output control default".into());
         }
-        for edge in lane.range {
+        for edge in lane.range() {
             let value = self.mapped(lane, edge, default.unwrap_or(1.0));
             if !value.is_finite() {
                 return Err(format!(
                     "follower on lane {:?} (range {}..{}) produces non-finite value {value} at {edge}; check mapping span and output control default",
-                    self.follows, lane.range[0], lane.range[1],
+                    self.follows,
+                    lane.range()[0],
+                    lane.range()[1],
                 ));
             }
             if (gate || self.op == Operation::Direct || self.unclipped.unwrap_or(false))
@@ -225,7 +367,9 @@ impl Follower {
                 };
                 return Err(format!(
                     "follower on lane {:?} (range {}..{}) reaches {value} outside 0..1: {promise}",
-                    self.follows, lane.range[0], lane.range[1],
+                    self.follows,
+                    lane.range()[0],
+                    lane.range()[1],
                 ));
             }
         }
@@ -234,7 +378,7 @@ impl Follower {
 }
 pub fn validate(c: &Composition) -> Result<(), String> {
     if c.lanes.len() > 16 {
-        return Err("at most 16 shared target lanes".into());
+        return Err("at most 16 shared lanes".into());
     }
     for (name, lane) in &c.lanes {
         if name.trim().is_empty() {
@@ -326,8 +470,8 @@ pub fn report(c: &Composition) -> Vec<String> {
                 count += 1;
                 let lane = &c.lanes[&f.follows];
                 let default = p.output.controls[name].default.unwrap_or(1.0);
-                let a = f.mapped(lane, lane.range[0], default);
-                let b = f.mapped(lane, lane.range[1], default);
+                let a = f.mapped(lane, lane.range()[0], default);
+                let b = f.mapped(lane, lane.range()[1], default);
                 let (lo, hi) = (a.min(b), a.max(b));
                 rows.push(format!(
                     "{label} {}.{name} follows {}: raw {lo:.6}..{hi:.6}, control {:.6}..{:.6}, {}",

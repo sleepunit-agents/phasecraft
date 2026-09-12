@@ -1,0 +1,27 @@
+# A seven-slot walk shared by a decay control and a burst gate.
+# This demonstrates source/follower behavior, not drift's future timing-offset consumer.
+tempo = 126
+seed = 91827
+[lanes.drift]
+every = { slots = 7 }
+start = 0
+step = [-10, 0, 10]
+bounds = [-30, 30]
+carry = "always"
+
+[parts.hat]
+trigger.rhythm = { steps = 16, pulses = 6 }
+accent.rhythm = { steps = 16, pulses = 0 }
+profile.base = 100
+output.note = 42
+output.channel = 10
+output.controls.decay = { cc = 76, channel = 15, default = 0.7007874015748031 }
+parameters.decay = { follows = "drift", op = "range", low = 0.2, high = 0.8 }
+
+[parts.snare]
+trigger.pattern = "x*2 x*2 x*2 x*2 x*2 x*2 x*2 x*2 x*2 x*2 x*2 x*2 x*2 x*2 x*2 x*2"
+accent.rhythm = { steps = 16, pulses = 0 }
+profile.base = 100
+output.note = 38
+output.channel = 10
+ornaments.gate = { follows = "drift", op = "range", low = 0.0, high = 1.0 }
