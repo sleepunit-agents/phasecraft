@@ -314,16 +314,23 @@ pub fn check_row(
     }
     if follows.len() > 16 {
         return Err(format!(
-            "router.routes.{name}: at most 16 followed lanes in one row"
+            "router.routes.{name}: at most 16 followed weights in one row"
         ));
     }
+    // One axis per named source: two readers cannot see opposite ends of the
+    // same lane at the same roll. Different sources remain independent axes.
+    let mut lanes = BTreeMap::new();
+    for (f, range) in &follows {
+        let index = lanes.len();
+        lanes.entry(f.follows.as_str()).or_insert((index, *range));
+    }
     // Every follower is linear in its lane, so a sum over the range is extremal at the corners.
-    for corner in 0u32..(1 << follows.len()) {
+    for corner in 0u32..(1 << lanes.len()) {
         let sum = fixed
             + follows
                 .iter()
-                .enumerate()
-                .map(|(i, (f, range))| {
+                .map(|(f, range)| {
+                    let i = lanes[f.follows.as_str()].0;
                     f.at(
                         if corner & (1 << i) == 0 {
                             range.low
@@ -335,13 +342,12 @@ pub fn check_row(
                 })
                 .sum::<f64>();
         let at = || {
-            follows
+            lanes
                 .iter()
-                .enumerate()
-                .map(|(i, (f, range))| {
+                .map(|(name, (i, range))| {
                     format!(
                         " at {} = {}",
-                        f.follows,
+                        name,
                         if corner & (1 << i) == 0 {
                             range.low
                         } else {
@@ -825,7 +831,7 @@ mod tests {
             e.contains("sum to 1.05 at pressure = 1, leaving nothing"),
             "{e}"
         );
-        // Flat at both ends is the one shape that sums to 1 without a remainder.
+        // A single follower alongside fixed weights must be flat without a remainder.
         check_row(
             "firefight",
             &row("pursuit=0.5\ngetaway={follows='pressure',low=0.5,high=0.5}"),
@@ -834,6 +840,64 @@ mod tests {
         )
         .unwrap();
     }
+    #[test]
+    fn complementary_weights_share_one_lane_value() {
+        let rooms = vec!["a".into(), "b".into(), "c".into()];
+        let range = Range {
+            low: -30.0,
+            high: 30.0,
+        };
+        let ranges = |name: &str| (name == "drift").then_some(range);
+        let complementary =
+            row("a={follows='drift',low=0.0,high=1.0}\nb={follows='drift',low=1.0,high=0.0}");
+        check_row("a", &complementary, &rooms, &ranges).unwrap();
+        // The accepted row and the runtime reader agree at both edges and inside.
+        for (value, expected) in [(-30.0, "b"), (0.0, "a"), (30.0, "a")] {
+            assert_eq!(
+                pick(&complementary, &rooms, 0.25, &|name| {
+                    ranges(name).map(|span| (value, span))
+                })
+                .unwrap(),
+                expected
+            );
+        }
+        let remainder = row(
+            "a={follows='drift',low=0.0,high=0.75}\nb={follows='drift',low=0.75,high=0.0}\nc='rest'",
+        );
+        check_row("a", &remainder, &rooms, &ranges).unwrap();
+        for value in [-30.0, 0.0, 30.0] {
+            assert_eq!(
+                pick(&remainder, &rooms, 0.9, &|name| {
+                    ranges(name).map(|span| (value, span))
+                })
+                .unwrap(),
+                "c"
+            );
+        }
+    }
+
+    #[test]
+    fn independent_lanes_still_check_mixed_corners() {
+        let rooms = vec!["a".into(), "b".into(), "c".into()];
+        let ranges = |_: &str| {
+            Some(Range {
+                low: 0.0,
+                high: 1.0,
+            })
+        };
+        // Both all-low and all-high sum to one. A mixed corner exceeds one.
+        let independent =
+            row("a={follows='p',low=0.0,high=1.0}\nb={follows='q',low=1.0,high=0.0}\nc='rest'");
+        let e = check_row("a", &independent, &rooms, &ranges).unwrap_err();
+        assert!(e.contains("sum to 2"), "{e}");
+        assert!(e.contains("at p = 1") && e.contains("at q = 0"), "{e}");
+        // Sharing a source must not excuse a genuinely overweight endpoint.
+        let invalid =
+            row("a={follows='p',low=0.0,high=0.8}\nb={follows='p',low=0.5,high=0.3}\nc='rest'");
+        let e = check_row("a", &invalid, &rooms, &ranges).unwrap_err();
+        assert!(e.contains("sum to 1.1 at p = 1"), "{e}");
+    }
+
     #[test]
     fn the_same_draw_means_different_rooms_from_different_rows() {
         // seeds.toml's own example: pin u = 0.50 and the room depends on where the piece got to.
