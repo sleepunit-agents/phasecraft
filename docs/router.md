@@ -100,11 +100,16 @@ is a load error. A stay is a route to yourself.
 **Rows sum to 1.** A row of numbers must sum to 1 (to 1e-9; the error names the row and the
 sum). A row with `"rest"` must have its named entries sum to at most 1. A row that follows a
 lane must satisfy that **at every value of the lane's range**: every follower is linear in its
-lane, so the sum over the range is extremal at the corners, and the engine checks each corner
-and names the lane value where the sum fails. That check is built and tested against a stated
-range (`router::check_row` with a `Range`); it is not built against a Source, because no lane
-is a Source in this engine yet (M1.4). Until one is, a row that follows a lane is a load error
-naming the lane — the row cannot be checked, so it does not load.
+lane, so the sum over the range is extremal at the corners. Readers of the **same named lane**
+share one value at each corner: weights `low = 0, high = 1` and `low = 1, high = 0` following
+that lane sum to one throughout its range. Different named lanes vary independently, even
+when their ranges match. The engine checks every combination of their endpoints and names
+the lane values where the sum fails. At most 16 followed weights are allowed in a row.
+
+That check is built and tested against stated ranges (`router::check_row` with `Range`).
+Shared transport sources now exist, but their ranges and sampled values are not yet wired
+into the router. A followed route therefore still fails to load with a named-lane error;
+this validation rule is a prerequisite for that wiring.
 
 ## The roll
 
