@@ -90,12 +90,16 @@ fn audition_dispatch_and_stop_leave_kit_controls_untouched() {
 fn audition_composition_contains_exactly_the_voiced_parts() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/run-the-line-driving-drums");
     let loaded = project::load(&root).unwrap();
-    let ids: Vec<&str> = loaded
+    let mut ids: Vec<&str> = loaded
         .composition
         .parts
         .iter()
         .map(|p| p.id.as_str())
         .collect();
+    // Membership is the claim, not ordering: the source file is free to list the Parts in
+    // any order, and an order-sensitive compare would fail with the always-layer message
+    // above naming a cause that is not the one that fired.
+    ids.sort_unstable();
     assert_eq!(
         ids,
         &["kick", "snare"],
