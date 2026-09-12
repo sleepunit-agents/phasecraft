@@ -90,6 +90,7 @@ fn audition_dispatch_and_stop_leave_kit_controls_untouched() {
 fn audition_composition_contains_exactly_the_voiced_parts() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/run-the-line-driving-drums");
     let loaded = project::load(&root).unwrap();
+    const VOICED: [&str; 2] = ["kick", "snare"];
     let mut ids: Vec<&str> = loaded
         .composition
         .parts
@@ -98,13 +99,41 @@ fn audition_composition_contains_exactly_the_voiced_parts() {
         .collect();
     // Membership is the claim, not ordering: the source file is free to list the Parts in
     // any order, and an order-sensitive compare would fail with the always-layer message
-    // above naming a cause that is not the one that fired.
+    // below naming a cause that is not the one that fired. Sorted only so the diagnostics
+    // print deterministically.
     ids.sort_unstable();
+    // Exact membership can fail in either direction, and the always-layer diagnosis follows
+    // from only one of them. Each predicate carries the message it can actually support; the
+    // exact compare at the end claims no cause at all, and is the honest residue.
+    let extra: Vec<&str> = ids
+        .iter()
+        .copied()
+        .filter(|id| !VOICED.contains(id))
+        .collect();
+    assert!(
+        extra.is_empty(),
+        "t-583: unexpected Parts {extra:?} in this composition. If one is an always layer \
+         (pad/drone/foley) that is the addition this test exists to catch: phasecraft would \
+         emit it, isolation is a source contract, not a runtime guarantee. If one is a \
+         deliberately voiced Part, the audition's voiced set here needs to grow with it. The \
+         predicate cannot tell those apart — it reports the name, not the cause"
+    );
+    let missing: Vec<&str> = VOICED
+        .iter()
+        .copied()
+        .filter(|id| !ids.contains(id))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "t-583: voiced Parts {missing:?} are absent from this composition — the event-level \
+         audition assertions below are written against them. This is a missing Part, not an \
+         always-layer intrusion"
+    );
     assert_eq!(
-        ids,
-        &["kick", "snare"],
-        "t-583: always-layer Parts (pad/drone/foley) must not appear here — \
-         phasecraft would emit them; isolation is a source contract, not a runtime guarantee"
+        ids, VOICED,
+        "t-583: composition Part membership differs from the audition's voiced set in a way \
+         neither the intrusion nor the absence check named (a repeated id, for instance). \
+         Expected/actual above; no cause is claimed"
     );
 }
 
