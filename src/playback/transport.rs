@@ -193,10 +193,10 @@ pub fn run_with_controls<S: MidiOutput + 'static>(
             }
             if let (Some(r), Some((previous_step, previous))) = (&c.router, &last_scheduled) {
                 let period = r.period_ticks(&c).expect("validated composition");
-                let current = r.visit_at(c.seed, period, step * STEP_TICKS);
+                let current = r.visit_at(&c, period, step * STEP_TICKS);
                 let old = previous.router.as_ref().map(|r| {
                     let period = r.period_ticks(previous).expect("validated composition");
-                    r.visit_at(previous.seed, period, *previous_step * STEP_TICKS)
+                    r.visit_at(previous, period, *previous_step * STEP_TICKS)
                 });
                 if old.as_ref().is_some_and(|old| old.scene != current.scene) {
                     events.retain(|e| !e.boundary_reset);

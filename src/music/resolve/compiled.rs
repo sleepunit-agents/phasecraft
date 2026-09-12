@@ -98,10 +98,11 @@ impl Compiled {
     pub fn moves_through(&mut self, tick: u64) -> &[crate::music::router::Move] {
         if let Some(r) = &self.composition.router {
             r.extend_moves(
-                self.composition.seed,
+                &self.composition,
                 self.period,
                 &mut self.moves,
                 tick / self.period,
+                &mut self.shared_cache,
             );
         }
         &self.moves
@@ -137,10 +138,11 @@ impl Compiled {
                 cursor = end;
             } else if let Some(r) = &self.composition.router {
                 r.extend_moves(
-                    self.composition.seed,
+                    &self.composition,
                     self.period,
                     &mut self.moves,
                     cursor / self.period,
+                    &mut self.shared_cache,
                 );
                 let visit = r.locate(self.period, cursor, &self.moves);
                 let index = r.scenes.iter().position(|s| s.name == visit.scene).unwrap();
@@ -210,10 +212,11 @@ impl Compiled {
             // opens where this run of the scene was entered and closes at the next return.
             let tick = step * STEP_TICKS;
             r.extend_moves(
-                self.composition.seed,
+                &self.composition,
                 self.period,
                 &mut self.moves,
                 tick / self.period,
+                &mut self.shared_cache,
             );
             let visit = r.locate(self.period, tick, &self.moves);
             let index = r
