@@ -78,6 +78,32 @@ fn audition_dispatch_and_stop_leave_kit_controls_untouched() {
     }
 }
 
+// t-583: phasecraft has no always-layer concept. Any Part in this composition is emitted;
+// none is suppressed by transport. The source boundary — "this audition runs under a
+// transport that does not start always layers" — is declared via transport = "isolated" in
+// until-stop/run-the-line/auditions/driving-drums.toml and verified against this native
+// transcription by tools/check_driving_drums_source.py. It is NOT a runtime invariant that
+// phasecraft enforces. This test pins the composition membership so that a mistaken addition
+// of an always-layer Part (pad, drone, foley/fx) would be caught by CI before it reaches
+// the event-level audition assertion below. See also t-586 for the automated boundary check.
+#[test]
+fn audition_composition_contains_exactly_the_voiced_parts() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/run-the-line-driving-drums");
+    let loaded = project::load(&root).unwrap();
+    let ids: Vec<&str> = loaded
+        .composition
+        .parts
+        .iter()
+        .map(|p| p.id.as_str())
+        .collect();
+    assert_eq!(
+        ids,
+        &["kick", "snare"],
+        "t-583: always-layer Parts (pad/drone/foley) must not appear here — \
+         phasecraft would emit them; isolation is a source contract, not a runtime guarantee"
+    );
+}
+
 // Exercises the real transport's setup, clock, dispatch and cleanup without a MIDI port.
 // Explicit opt-in: exact real-time counts can fail when a host stalls past the late limit.
 #[test]
