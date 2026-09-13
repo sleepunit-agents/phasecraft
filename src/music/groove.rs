@@ -1,5 +1,5 @@
 //! Deterministic event interpretation, after trigger/accent decisions and before MIDI.
-use super::{ProbabilityMode, STEP_TICKS};
+use super::ProbabilityMode;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -164,24 +164,6 @@ impl Groove {
             ((draw.u * 2.0 - 1.0) * h.timing_ticks as f64).round() as i64,
             draw.pinned.is_some(),
         )
-    }
-    pub fn onset_offset(
-        &self,
-        dice: super::resolve::Dice,
-        id: &str,
-        step: u64,
-        phrase_steps: u64,
-    ) -> u64 {
-        (self.offset(step) + self.timing_jitter(dice, id, step, phrase_steps).1)
-            .clamp(0, super::STEP_TICKS as i64 - 2) as u64
-    }
-    pub fn offset(&self, step: u64) -> i64 {
-        self.delay_ticks
-            + if step % 2 == 1 {
-                ((self.swing - 0.5) * 2.0 * STEP_TICKS as f64).round() as i64
-            } else {
-                0
-            }
     }
     pub fn contour(&self, before: usize, after: usize) -> f64 {
         if before + 1 + after < 3 {
