@@ -333,7 +333,8 @@ fn humanize_jitter_reaches_both_sides_of_a_straight_onset() {
             let trace = resolve_step(&c, step).0.remove(0);
             let event = trace.event.expect("every step triggers");
             let groove = event.groove.as_ref().unwrap();
-            let requested = groove.touch.as_ref().unwrap().requested_jitter_ticks + delay;
+            let touch = groove.touch.as_ref().unwrap();
+            let requested = touch.requested_jitter_ticks + delay;
             let emitted = groove.offset_ticks as i64 - groove.advance_ticks as i64;
             let expected = if step % 16 == 0 {
                 requested.max(0)
@@ -341,6 +342,7 @@ fn humanize_jitter_reaches_both_sides_of_a_straight_onset() {
                 requested
             };
             assert_eq!(emitted, expected, "step {step}: requested {requested}");
+            assert_eq!(touch.emitted_jitter_ticks, expected - delay);
             assert_eq!(event.tick as i64, (step * STEP_TICKS) as i64 + emitted);
             early += usize::from(emitted < 0);
             late += usize::from(emitted > 0);
@@ -348,6 +350,55 @@ fn humanize_jitter_reaches_both_sides_of_a_straight_onset() {
         assert!(
             early > 0 && late > 0,
             "delay {delay}: early {early}, late {late}"
+        );
+    }
+}
+
+#[test]
+fn emitted_jitter_measures_the_bounded_main_against_a_zero_draw() {
+    // Expected onsets are musical witnesses, independent of the offset implementation.
+    // The short grid exercises both the quarter-cell floor and the positive cell ceiling.
+    for (division, cell, step, delay, swing, amount, roll, requested, onset, neutral) in [
+        ("1/16", 240, 1, 10, 0.5, 20, 0.0, -20, 230, 250),
+        ("1/16", 240, 0, 0, 0.5, 20, 0.0, -20, 0, 0),
+        ("1/16", 240, 0, 10, 0.5, 20, 0.0, -20, 0, 10),
+        ("1/16", 240, 0, -10, 0.5, 20, 0.9999, 20, 10, 0),
+        ("1/16", 240, 1, -60, 0.5, 20, 0.0, -20, 180, 180),
+        ("1/16", 240, 1, -50, 0.5, 20, 0.0, -20, 180, 190),
+        ("1/64T", 40, 1, 0, 0.5, 30, 0.0, -30, 30, 40),
+        ("1/64T", 40, 1, 0, 0.75, 30, 0.9999, 30, 78, 60),
+        ("1/64T", 40, 1, 60, 0.5, 30, 0.0, -30, 70, 78),
+        ("1/16", 240, 1, 10, 0.6, 20, 0.5, 0, 298, 298),
+    ] {
+        let read = |u| {
+            let c = Composition::parse(&format!(
+                "tempo=132\nseed=123\n[parts.hat]\nuse='techno.closed_hat'\n\
+                 subdivision='{division}'\ntrigger.rhythm={{steps=1,pulses=1}}\n\
+                 groove.delay_ticks={delay}\ngroove.swing={swing}\n\
+                 groove.humanize={{timing_ticks={amount}}}\n\
+                 [[pins]]\nat={{roll='timing',voice='hat',bar=1,slot={}}}\nu={u}",
+                step + 1
+            ))
+            .unwrap();
+            resolve_step(&c, step * cell / STEP_TICKS)
+                .0
+                .into_iter()
+                .find(|t| t.tick == step * cell)
+                .unwrap()
+                .event
+                .unwrap()
+        };
+        let actual = read(roll);
+        let zero_draw = read(0.5);
+        assert_eq!(actual.tick, onset, "{division}, delay {delay}, step {step}");
+        assert_eq!(zero_draw.tick, neutral);
+        let touch = actual.groove.as_ref().unwrap().touch.as_ref().unwrap();
+        assert_eq!(touch.requested_jitter_ticks, requested);
+        assert_eq!(touch.emitted_jitter_ticks, onset as i64 - neutral as i64);
+        assert!(touch.timing_pinned);
+        assert_eq!(
+            serde_json::to_value(&actual).unwrap()["groove"]["touch"]["emitted_jitter_ticks"],
+            onset as i64 - neutral as i64
         );
     }
 }
