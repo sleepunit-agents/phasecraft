@@ -1,5 +1,5 @@
 use phasecraft::{
-    music::Composition,
+    music::{Composition, STEP_TICKS},
     music::{
         resolve::resolve_step,
         rhythm::{BooleanOp, Expression, ReferenceMode},
@@ -336,8 +336,10 @@ fn all_packaged_examples_have_ordered_complete_midi_pairs() {
             continue;
         }
         let c = Composition::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        // Pairs are complete across the run, not per window: an anticipated hit (negative
-        // delay, or humanize jitter) opens in one sixteenth and closes in the next.
+        // Pairs may cross planning windows: an anticipated hit (negative delay or
+        // humanize jitter) opens in one sixteenth and closes in the next. They
+        // must still close before each bar ends, including any flam grace from
+        // the next bar: the grace releases before that bar's main hit.
         let mut active = std::collections::HashMap::new();
         let mut controls = std::collections::HashMap::new();
         for step in 0..64 {
@@ -379,18 +381,21 @@ fn all_packaged_examples_have_ordered_complete_midi_pairs() {
                     );
                 }
             }
+            if (step + 1) % 16 == 0 {
+                assert!(
+                    active.is_empty(),
+                    "{}: notes still open at bar end tick {}: {active:?}",
+                    path.display(),
+                    (step + 1) * STEP_TICKS
+                );
+                assert!(
+                    controls.is_empty(),
+                    "{}: controls still open at bar end tick {}: {controls:?}",
+                    path.display(),
+                    (step + 1) * STEP_TICKS
+                );
+            }
         }
-        // Only hits anticipated from the first unrendered step may still be open.
-        assert!(
-            active.values().all(|&(on, _)| on >= 63 * 240),
-            "{}",
-            path.display()
-        );
-        assert!(
-            controls.values().all(|&(on, _)| on >= 63 * 240),
-            "{}",
-            path.display()
-        );
     }
 }
 #[test]
