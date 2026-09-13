@@ -53,6 +53,9 @@ pub struct TouchTrace {
     pub timing_roll: f64,
     pub velocity_roll: f64,
     pub requested_jitter_ticks: i64,
+    /// Main onset with this jitter minus its onset with jitter zero, under the same
+    /// groove configuration and cell/bar/entry bounds. Ornaments inherit this value.
+    pub emitted_jitter_ticks: i64,
     pub velocity_jitter_factor: f64,
     /// The timing draw read by the touch closure — the one behind `timing_roll` and
     /// `requested_jitter_ticks` — was forced by a `[[pins]]` entry. Written only when true;
