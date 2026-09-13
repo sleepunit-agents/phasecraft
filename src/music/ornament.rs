@@ -63,6 +63,9 @@ pub struct ExpansionTrace {
     pub admitted_count: u8,
     pub emitted_count: u8,
     pub suppression_reason: Option<SuppressionReason>,
+    /// Set by the compiled caller when an upper bound suppresses this expansion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upper_bound_source: Option<UpperBoundSource>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub pinned: bool,
 }
@@ -76,6 +79,14 @@ pub enum SuppressionReason {
     LowerBound,
     UpperBound,
 }
+/// Which input supplied the exclusive upper bound; ties retain both sources.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpperBoundSource {
+    OwnershipBoundary,
+    NextSource,
+    Both,
+}
 impl ExpansionTrace {
     fn new(probability: f64, draw: Draw, count: u8) -> Self {
         let admitted = draw.u < probability;
@@ -84,6 +95,7 @@ impl ExpansionTrace {
             admitted_count: if admitted { count } else { 0 },
             emitted_count: 0,
             suppression_reason: (!admitted).then_some(SuppressionReason::Probability),
+            upper_bound_source: None,
             pinned: draw.pinned.is_some(),
         }
     }
