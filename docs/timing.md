@@ -74,7 +74,7 @@ Offbeat emphasis and parameter automation remain tied to absolute musical time.
 
 The compiled resolver (`src/music/resolve/compiled.rs`, `offset`) composes the
 signed delay, subdivision-aware swing and timing jitter and applies the effective
-cell bound. `Groove` supplies the jitter draw; it has no separate onset-clamping
+cell bound. `Groove` supplies the jitter draw; it has no separate onset-offset
 helper.
 
 Bars are clean ownership boundaries. Main hits cannot anticipate into a preceding
