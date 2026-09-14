@@ -16,7 +16,8 @@ carry = "always"
 notation parser checks its syntax and input bounds; this consumer refuses nested notation,
 rests, names, chords, ratchets, and draws. This is the numeric velocity slice of M1.3.
 Event-indexed pitch, nudge (M1.10), shared lanes (M1.4), and retained trigger mutation
-(M1.5) remain separate work.
+(M1.5) remain separate work. The [retained rhythm evaluator](retained-patterns.md)
+is a tested M1.5 prerequisite; authored pattern playback is still unwired.
 
 Each value multiplies the existing semantic velocity, including accent and groove, before
 MIDI's existing round-and-clamp to 1..127. Zero is a minimum-velocity note, not a rest.
