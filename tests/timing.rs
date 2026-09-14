@@ -437,6 +437,7 @@ fn ornament_trace_separates_gate_refusal_from_boundary_suppression() {
         (1.0, 3, 2)
     );
     assert_eq!(r.suppression_reason, Some(UpperBound));
+    assert!(r.upper_bound_source.is_none()); // raw expand has no bound provenance
     assert_eq!(
         (f.probability, f.admitted_count, f.emitted_count),
         (1.0, 1, 0)
@@ -579,6 +580,7 @@ fn ornament_trace_samples_match_rolls_and_expansion_output() {
 #[test]
 fn ornament_trace_exposes_compiled_bar_and_next_onset_bounds() {
     use phasecraft::music::ornament::SuppressionReason::UpperBound;
+    use phasecraft::music::ornament::UpperBoundSource::{Both, NextSource, OwnershipBoundary};
     let late = song("groove.swing=0.75\ngroove.delay_ticks=60\nornaments.ratchet={count=3}");
     let (traces, midi) = resolve_step(&late, 15);
     let trace = &traces[0];
@@ -586,6 +588,11 @@ fn ornament_trace_exposes_compiled_bar_and_next_onset_bounds() {
     assert_eq!(trace.event.as_ref().unwrap().tick, 3780);
     assert_eq!((ratchet.admitted_count, ratchet.emitted_count), (3, 1));
     assert_eq!(ratchet.suppression_reason, Some(UpperBound));
+    assert_eq!(ratchet.upper_bound_source, Some(OwnershipBoundary));
+    assert_eq!(
+        serde_json::to_value(ratchet).unwrap()["upper_bound_source"],
+        "ownership_boundary"
+    );
     assert_eq!(onsets(&midi), [3780]);
 
     // The next source reserves its grace at 200, cutting the tail at 210 even
@@ -601,5 +608,48 @@ fn ornament_trace_exposes_compiled_bar_and_next_onset_bounds() {
         .unwrap();
     assert_eq!((ratchet.admitted_count, ratchet.emitted_count), (8, 7));
     assert_eq!(ratchet.suppression_reason, Some(UpperBound));
+    assert_eq!(ratchet.upper_bound_source, Some(NextSource));
+    assert_eq!(
+        serde_json::to_value(ratchet).unwrap()["upper_bound_source"],
+        "next_source"
+    );
     assert_eq!(onsets(&midi), [0, 30, 60, 90, 120, 150, 180, 200]);
+
+    // The following straight downbeat and the bar end both reserve tick 3840.
+    let tied = song("groove.swing=0.75\nornaments.ratchet={count=3}");
+    let (traces, midi) = resolve_step(&tied, 15);
+    let ratchet = traces[0]
+        .ornaments
+        .as_ref()
+        .unwrap()
+        .ratchet
+        .as_ref()
+        .unwrap();
+    assert_eq!((ratchet.admitted_count, ratchet.emitted_count), (3, 2));
+    assert_eq!(ratchet.suppression_reason, Some(UpperBound));
+    assert_eq!(ratchet.upper_bound_source, Some(Both));
+    assert_eq!(
+        serde_json::to_value(ratchet).unwrap()["upper_bound_source"],
+        "both"
+    );
+    assert_eq!(onsets(&midi), [3720, 3800]);
+
+    // An available bound is not itself suppression; refused gates and flams
+    // must not inherit the caller's ratchet-bound provenance either.
+    for fields in [
+        "ornaments.ratchet={count=3}\nornaments.flam={spacing='1/64T'}",
+        "ornaments.ratchet={count=3,probability=0}\nornaments.flam={spacing='1/64T'}",
+    ] {
+        let trace = resolve_step(&song(fields), 0).0.remove(0);
+        let ornaments = trace.ornaments.unwrap();
+        for expansion in [ornaments.ratchet.unwrap(), ornaments.flam.unwrap()] {
+            assert!(expansion.upper_bound_source.is_none());
+            assert!(
+                serde_json::to_value(expansion)
+                    .unwrap()
+                    .get("upper_bound_source")
+                    .is_none()
+            );
+        }
+    }
 }

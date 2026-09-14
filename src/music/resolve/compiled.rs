@@ -765,7 +765,7 @@ impl Compiled {
                 } else {
                     lower
                 };
-                let (mut hits, ornaments) = expansion.expand(
+                let (mut hits, mut ornaments) = expansion.expand(
                     c.dice(),
                     &part.id,
                     |lane, mode| {
@@ -780,6 +780,18 @@ impl Compiled {
                     span,
                     flam_lower..end,
                 );
+                // expand sees only the intersected range; retain its provenance here,
+                // where both the ownership boundary and source reservation are known.
+                use crate::music::ornament::{SuppressionReason, UpperBoundSource};
+                if let Some(ratchet) = &mut ornaments.ratchet
+                    && ratchet.suppression_reason == Some(SuppressionReason::UpperBound)
+                {
+                    ratchet.upper_bound_source = Some(match upper.cmp(&next_first) {
+                        std::cmp::Ordering::Less => UpperBoundSource::OwnershipBoundary,
+                        std::cmp::Ordering::Greater => UpperBoundSource::NextSource,
+                        std::cmp::Ordering::Equal => UpperBoundSource::Both,
+                    });
+                }
                 // Store the main hit separately for existing consumers; extras are audible events too.
                 if let Some(main) = hits.iter().position(|h| h.tick == event.tick) {
                     *event = hits.remove(main);

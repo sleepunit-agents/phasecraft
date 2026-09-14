@@ -169,7 +169,15 @@ an implementation of that clock.
 coincident attacks merge and before MIDI is divided into scheduling windows. It
 is not a final MIDI note count. `"upper_bound"` means ratchet attacks lacked room
 for their release before the exclusive expansion bound; this bound may be the
-bar/section end or the next source's reserved earliest onset. `"lower_bound"`
+bar/section end or the next source's reserved earliest onset. For a suppressed
+ratchet, compiled traces also carry `upper_bound_source`: `"ownership_boundary"`
+when the bar/section end is earlier, `"next_source"` when the reserved onset is
+earlier, or `"both"` when they coincide. This names the input supplying the minimum
+bound, not every bound that could independently remove a later tail. A reservation
+need not become an audible hit. The field is omitted for intact expansions,
+probability refusals and flams; direct `Ornaments::expand` calls cannot supply it
+because they receive only the intersected range. The existing `"upper_bound"`
+reason and all counts remain unchanged. `"lower_bound"`
 means an admitted flam's grace preceded the allowed start. That start is the bar
 floor, relaxed by one `flam.spacing` when the attack sits exactly on it, and never
 below the section/scene entry or tick zero. So a probability-1 downbeat flam
