@@ -45,6 +45,9 @@ fn gain() -> f64 {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct OrnamentTrace {
+    /// Whether expansion emitted the ordinary source hit, before grace insertion
+    /// and downstream coincidence merging or MIDI windowing.
+    pub main_emitted: bool,
     pub ratchet_roll: Option<f64>,
     pub flam_roll: Option<f64>,
     pub ratchet_count: u8,
@@ -176,6 +179,7 @@ impl Ornaments {
                 r.suppression_reason = Some(SuppressionReason::UpperBound);
             }
         }
+        let main_emitted = !hits.is_empty();
         let mut flam_active = false;
         if let Some(f) = self.flam.as_ref()
             && flam.as_ref().is_some_and(|f| f.admitted_count > 0)
@@ -200,6 +204,7 @@ impl Ornaments {
         (
             hits,
             OrnamentTrace {
+                main_emitted,
                 ratchet_roll,
                 flam_roll,
                 ratchet_count: count,
