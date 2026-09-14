@@ -498,6 +498,101 @@ fn ornament_trace_separates_gate_refusal_from_boundary_suppression() {
 }
 
 #[test]
+fn ornament_trace_reports_main_suppression_independently_of_graces_and_gates() {
+    use phasecraft::music::ornament::SuppressionReason::{Probability, UpperBound};
+    let mut event = resolve_step(&song(""), 0).0.remove(0).event.unwrap();
+    event.tick = 120;
+    for probability in [0, 1] {
+        let c = song(&format!(
+            "ornaments.ratchet={{count=3,probability={probability}}}\nornaments.flam={{spacing='1/64T'}}"
+        ));
+        for (upper, main_emitted, expected) in [
+            (120, false, vec![80]),
+            (121, false, vec![80]),
+            (122, true, vec![80, 120]),
+        ] {
+            let (hits, trace) = c.parts[0].ornaments.expand(
+                Dice {
+                    seed: 123,
+                    pins: &[],
+                },
+                "hat",
+                |_, _| 0,
+                &event,
+                240,
+                0..upper,
+            );
+            assert_eq!(hits.iter().map(|e| e.tick).collect::<Vec<_>>(), expected);
+            assert_eq!(trace.main_emitted, main_emitted);
+            assert_eq!(
+                serde_json::to_value(&trace).unwrap()["main_emitted"],
+                main_emitted
+            );
+            assert!(trace.flam_active); // a surviving grace is not the main
+            let ratchet = trace.ratchet.unwrap();
+            assert_eq!(ratchet.admitted_count, if probability == 0 { 0 } else { 3 });
+            assert_eq!(
+                ratchet.emitted_count,
+                if probability == 0 {
+                    0
+                } else {
+                    u8::from(main_emitted)
+                }
+            );
+            assert_eq!(
+                ratchet.suppression_reason,
+                Some(if probability == 0 {
+                    Probability
+                } else {
+                    UpperBound
+                })
+            );
+        }
+    }
+    // No ratchet record: the same main diagnostic still applies to flam-only expansion.
+    let c = song("ornaments.flam={spacing='1/64T',probability=0}");
+    let (hits, trace) = c.parts[0].ornaments.expand(
+        Dice {
+            seed: 123,
+            pins: &[],
+        },
+        "hat",
+        |_, _| 0,
+        &event,
+        240,
+        0..121,
+    );
+    assert!(hits.is_empty());
+    assert!(!trace.main_emitted);
+    assert!(trace.ratchet.is_none());
+}
+
+#[test]
+fn compiled_ornament_trace_exposes_cut_main_after_gate_refusal() {
+    let c = song(
+        "subdivision='1/8.'\ngroove.swing=0.75\ngroove.delay_ticks=60\nornaments.ratchet={count=3,probability=0}",
+    );
+    // Source 3600 is swung to 4020, beyond its owning bar's end at 3840.
+    let (traces, _) = resolve_step(&c, 15);
+    let trace = &traces[0];
+    let ornaments = trace.ornaments.as_ref().unwrap();
+    assert!(!ornaments.main_emitted);
+    assert_eq!(
+        serde_json::to_value(trace).unwrap()["ornaments"]["main_emitted"],
+        false
+    );
+    let ratchet = ornaments.ratchet.as_ref().unwrap();
+    assert_eq!(ratchet.admitted_count, 0);
+    assert_eq!(ratchet.emitted_count, 0);
+    assert_eq!(
+        ratchet.suppression_reason,
+        Some(phasecraft::music::ornament::SuppressionReason::Probability)
+    );
+    // The flag describes expansion, not removal of the caller's source record.
+    assert_eq!(trace.event.as_ref().unwrap().tick, 4020);
+}
+
+#[test]
 fn downbeat_flam_trace_records_spent_attack_every_bar() {
     use phasecraft::music::ornament::SuppressionReason::LowerBound;
     let c = song("ornaments.flam={spacing='1/64T'}");

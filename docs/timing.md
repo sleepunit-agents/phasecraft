@@ -158,7 +158,14 @@ entry the record also carries `pinned = true` (omitted when false), so a reason 
 `"probability"` beside an authored roll is not mistaken for chance.
 
 A refused ornament has both counts zero and reason `"probability"`; its ordinary
-source hit still exists. An admitted ratchet counts its main hit and tails (2–8),
+source hit is still admitted, but can itself be suppressed by the expansion
+upper bound. `ornaments.main_emitted` reports whether expansion emitted that
+ordinary hit, independently of either ornament gate. It is false when the main
+cannot release before the exclusive upper bound, even if an earlier flam grace
+survives. It is measured before grace insertion, coincidence merging and MIDI
+windowing, and is not a final MIDI presence flag. The compiled caller retains its
+source-event record even when expansion emits no main; this diagnostic does not
+change that existing behavior. An admitted ratchet counts its main hit and tails (2–8),
 while an admitted flam counts only its one grace hit. Thus structural attacks for
 one admitted source are `max(1, ratchet.admitted_count) + flam.admitted_count`, with
 an absent decision contributing zero. Boundary suppression does not reduce these
