@@ -62,6 +62,21 @@ triggers), `ghost` without a groove — is an
 error, as is a pin on a Part or lane that does not exist. A composition carries at most
 256 pins.
 
+For a literal trigger, a `fire` pin can change admission only on a question-mark
+hit (`x?`). Plain `x` and the main hit of `x*n?` have admission probability 1.0:
+their trace still records the pinned draw, but every allowed `u` admits the hit.
+For example, with `trigger.probability = 0.5` and a `fire` pin at bar 1, slot 1
+returning `u = 0.99`:
+
+| `trigger.pattern` | First hit |
+| --- | --- |
+| `"x ~"` | Admitted; trace has `pinned: true`, `roll: 0.99`, `probability: 1.0` |
+| `"x? ~"` | Refused; trace has `pinned: true`, `roll: 0.99`, `probability: 0.5` |
+| `"x*3? ~"` | Main hit admitted; the separate `burst` draw decides the tails |
+
+Use a `burst` pin to force the ratchet decision. A `fire` pin does not create an
+attack on a written rest.
+
 **The slot is counted inside the bar it names, not by multiplying a per-bar count.** The
 grid is continuous — step *n* is at tick *n·cell* — and a dotted cell does not divide the
 3840-tick bar, so bars hold different numbers of onsets and only the first starts on a bar
