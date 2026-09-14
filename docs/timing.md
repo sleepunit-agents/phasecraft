@@ -83,13 +83,16 @@ at a bar start emits -10 ticks of jitter, while the same draw over zero delay
 emits 0. Ornament hits inherit their source main's value; it is not a separate
 ornament displacement or a count of final MIDI attacks.
 
-Bars are clean ownership boundaries. Main hits cannot anticipate into a preceding
-bar. Repeats and note-offs finish inside their owning bar. Thus a source edit or
-temporary performance change can take over on a bar without an old anticipated hit
-or gate leaking into it. Automation continues independently across these bar
-boundaries.
+Bars are intended as clean ownership boundaries. Main hits cannot anticipate into a preceding
+bar. Repeats and note-offs are intended to finish inside their owning bar.
+Known exception, **t-697 (Art's taskstore)**: a swung dotted-eighth source can
+land beyond its owning bar and the compiled caller still dispatches it as a
+one-tick note in the next bar. Bar-boundary takeover is therefore not guaranteed
+for that case. See the expansion diagnostic below and
+[the reproducing review](https://github.com/sleepunit-agents/phasecraft/pull/34#pullrequestreview-5194202275).
+Automation continues independently across these bar boundaries.
 
-A flam grace is the one exception, and only in the case the bar floor itself
+A flam grace is the permitted anticipation exception, and only in the case the bar floor itself
 creates. When an attack is clamped to the bar start — its onset is exactly the bar
 tick — the main hit has no room to pull its grace back inside the bar, so the grace
 is admitted one `flam.spacing` into the preceding bar and dispatched from the
@@ -164,8 +167,12 @@ ordinary hit, independently of either ornament gate. It is false when the main
 cannot release before the exclusive upper bound, even if an earlier flam grace
 survives. It is measured before grace insertion, coincidence merging and MIDI
 windowing, and is not a final MIDI presence flag. The compiled caller retains its
-source-event record even when expansion emits no main; this diagnostic does not
-change that existing behavior. An admitted ratchet counts its main hit and tails (2–8),
+source-event record even when expansion emits no main, and can still dispatch it
+after its owning bar while `main_emitted` is false (t-697, Art's taskstore).
+For example, with `subdivision = "1/8."`, swing 0.75 and delay 60, the source at
+3600 moves to 4020 beyond bar end 3840: step 15 traces `main_emitted = false`,
+but step 16 dispatches note-on 4020 and note-off 4021. This diagnostic does not
+change that existing playback behavior. An admitted ratchet counts its main hit and tails (2–8),
 while an admitted flam counts only its one grace hit. Thus structural attacks for
 one admitted source are `max(1, ratchet.admitted_count) + flam.admitted_count`, with
 an absent decision contributing zero. Boundary suppression does not reduce these

@@ -568,12 +568,17 @@ fn ornament_trace_reports_main_suppression_independently_of_graces_and_gates() {
 }
 
 #[test]
-fn compiled_ornament_trace_exposes_cut_main_after_gate_refusal() {
+fn compiled_ornament_trace_can_omit_main_while_caller_dispatches_retained_source() {
     let c = song(
         "subdivision='1/8.'\ngroove.swing=0.75\ngroove.delay_ticks=60\nornaments.ratchet={count=3,probability=0}",
     );
     // Source 3600 is swung to 4020, beyond its owning bar's end at 3840.
-    let (traces, _) = resolve_step(&c, 15);
+    let mut compiled = Compiled::new(&c);
+    for step in 12..15 {
+        compiled.resolve_step(step);
+    }
+    let (traces, midi) = compiled.resolve_step(15);
+    assert!(midi.is_empty());
     let trace = &traces[0];
     let ornaments = trace.ornaments.as_ref().unwrap();
     assert!(!ornaments.main_emitted);
@@ -589,7 +594,28 @@ fn compiled_ornament_trace_exposes_cut_main_after_gate_refusal() {
         Some(phasecraft::music::ornament::SuppressionReason::Probability)
     );
     // The flag describes expansion, not removal of the caller's source record.
-    assert_eq!(trace.event.as_ref().unwrap().tick, 4020);
+    let event = trace.event.as_ref().unwrap();
+    assert_eq!((event.tick, event.duration_ticks), (4020, 1));
+
+    // Known t-697 (Art taskstore): the caller still dispatches the retained
+    // source in the next bar, despite main_emitted=false from expansion.
+    let (traces, midi) = compiled.resolve_step(16);
+    assert!(traces[0].event.is_none());
+    assert_eq!(
+        midi.iter()
+            .map(|m| (m.tick, m.bytes[0], m.bytes[1]))
+            .collect::<Vec<_>>(),
+        [(4020, 0x99, 42), (4021, 0x89, 42)]
+    );
+    balanced(&midi);
+
+    // This playback behavior is independent of the refused ornament.
+    let plain = song("subdivision='1/8.'\ngroove.swing=0.75\ngroove.delay_ticks=60");
+    let mut plain = Compiled::new(&plain);
+    for step in 12..16 {
+        plain.resolve_step(step);
+    }
+    assert_eq!(plain.resolve_step(16).1, midi);
 }
 
 #[test]
