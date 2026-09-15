@@ -1,4 +1,4 @@
-# Retained rhythm evaluator (M1.5 prerequisite)
+# Retained rhythm sources (M1.5 prerequisite)
 
 The companion's `until-stop/patterns/hat-memory.toml` starts with six hits
 in sixteen slots. Every five sixteenth-note slots, its current scene can admit
@@ -6,9 +6,11 @@ one swap of a rest with a hit. Several edits accumulate in a pending copy; the
 pattern being heard changes only when that copy commits at a cycle boundary.
 The Rust `music::process::RetainedSwap` evaluator implements that state transition.
 
-This prerequisite exposes a Rust API only. Composition loading, pattern references,
-scene probability lookup, mutation hashing and pins, return-group clocks, inspect
-output, and playback integration remain to be wired. `phasecraft` cannot yet play
+This prerequisite exposes Rust APIs only. `process::retained::RetainedPattern` now
+prepares the source file, validates its scene probabilities and drives addressed
+draws through the existing resolved `Dice` interface. Composition loading, pattern
+references, authored mutation pins, return-group clocks, CLI inspect output, and
+playback integration remain to be wired. `phasecraft` cannot yet play
 an authored `hat-memory` pattern. Existing examples retain their static stand-ins.
 
 ## Clock and boundary contract
@@ -81,3 +83,62 @@ commit-before-mutation, bar versus cycle application, suspension versus zero
 probability, ascending selections, rollback on invalid input, and hit conservation
 through 10,000 slots with scene changes. These are evaluator results, without MIDI,
 hardware, or listening evidence.
+
+## Prepared source and addressed draws
+
+`music::process::retained::RetainedPattern` deserializes the companion's closed
+hat-memory shape directly:
+
+```toml
+initial = "x ~ x ~ ~ x ~ x ~ ~ x ~ x ~ ~ ~"
+elsewhere = "hold"
+carry = "always"
+[change]
+every = { slots = 5 }
+chance = { crowded = 0.23, exposed = 0.05 }
+moves = ["swap"]
+apply = { on = "cycle" }
+```
+
+This is a source-file API, **not a Composition table or a playable project**.
+Initial material accepts only whitespace-separated `x`/`~` sixteenth slots with
+both a hit and a rest; nested notation, probabilities, repetitions and ornaments
+are refused. All fields above are required, all unknown fields are errors, and the
+only policies are `hold`, `always`, exactly one `swap`, and bar/cycle application.
+The evaluator bounds above apply. `chance` may be empty and has at most 64 named
+scenes with finite probabilities in 0..1.
+
+After deserialization, `pattern.bind("hat-memory", &["crowded", "hollow", "exposed"])`
+validates the complete scene vocabulary (1–64 unique, nonempty names) and returns
+an independent `RetainedSource` starting at transport slot zero. A chance entry
+naming an undeclared scene is an error. Call `source.advance(scene, dice)` exactly
+once per transport sixteenth, including silent scenes; readers use
+`source.state().material()` after that advance. Multiple readers must share that
+one advance. A misspelled runtime scene is an error, while a declared scene absent
+from `chance` is suspended. Binding anew starts anew; cloning a source preserves
+its exact checkpoint. The source never resets itself on a scene change.
+
+The native versioned hash receives the tuple
+`(seed, pattern name, "mutate", transport opportunity, decision)`, where decision
+is `admit`, `rest_index` or `hit_index`. Scene names and file paths are not random
+addresses. The pattern name and seed/pins must be preserved during replay.
+`RetainedSample` records the name, scene, effective optional probability, mutation
+step, and only the draws actually requested in admission/rest/hit order. Each draw
+retains its `Dice` pin-list index. The sample holds at most three draws; the source
+stores no sample history. Invalid scenes/draws leave state and pending commits
+unchanged.
+
+The existing `Dice` API can supply **manually resolved** mutation addresses to this
+source. Numeric admission pins still use `u < chance`: even pinned `u = 0` cannot
+admit at chance zero. Selection pins use `mutation_index_roll` with the conserved
+rest/hit counts. **The native authored `[[pins]]` resolver does not accept mutation
+addresses yet.** The companion's `admit = true` spelling needs an explicit mapping
+to the native numeric-draw doctrine before it can be enabled; this API does not
+interpret that boolean or claim to load the companion's mixed `seeds.toml` file.
+
+`tests/retained_source.rs` uses a verbatim hat-memory fixture from until-stop
+`0a72b1480e6a244078bf162e93e9778e0a0c64f2`. It covers source round trips, a replayed
+scene journey, preserved addresses across absence versus zero probability, manually
+resolved pin 52 under different seeds, pin provenance, boundary rollback and closed
+shape/scene validation. This is native hash/evaluator evidence, not agreement with
+the companion's historical `TRACE.md` or MIDI/listening evidence.

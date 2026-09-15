@@ -1,0 +1,70 @@
+# hat-memory — the spine of the piece.
+#
+# Six hat hits keep moving around sixteen slots; hollow preserves their last positions.
+#
+# This is a PATTERN, not a lane. A lane resolves to a number and things follow it; this
+# resolves to written material and nothing can follow it. `follows = "hat-memory"` is a load
+# error, not a coerced zero. (A pattern may export a named count — the number of occupied
+# slots, say — and something could follow that. Nothing here does; the count is invariant.)
+#
+# `change.chance` is per-scene rather than one flat rate; the argument is FAULT-LINES #3.
+
+initial = "x ~ x ~ ~ x ~ x ~ ~ x ~ x ~ ~ ~"   # sixteen slots, six hits, at 1 3 6 8 11 13
+
+# In any room `chance` does not name, the pattern is HELD — not erased, and no draw is spent —
+# and it carries through every scene change. Both are ROOT keys: written below [change] they
+# would silently become change.elsewhere and change.carry, and they did, for two commits.
+elsewhere = "hold"
+carry     = "always"
+
+# One tick, exactly:
+#   draw admit ~ U(0,1) < chance for the current scene. If not admitted, nothing happens
+#   and no other value is drawn.
+#   If admitted: pick one slot uniformly from the CURRENT rests (always ten of them) and one
+#   uniformly from the CURRENT hits (always six), and swap them. Hit count is invariant, by
+#   construction — that is what makes a pin legal under any history (see seeds.toml).
+#   `rest_index` and `hit_index` enumerate those slots in ASCENDING SLOT ORDER, zero-based,
+#   over the pending pattern (or the committed one if there is no pending copy). Spelled out
+#   in seeds.toml, where the pin doctrine that depends on it lives.
+[change]
+every  = { slots = 5 }                        # a slot is a sixteenth. Transport-phased: the
+                                              # clock counts from the start of the piece, not
+                                              # from whenever a scene began.
+# A tick that lands ON a bar line belongs to the bar it opens, not the one it closes: the
+# boundary commits first and the tick runs after, so its edit goes into the pending copy for
+# the NEXT commit. That is why bars carry 4, 3, 3, 3, 3 ticks in a five-bar cycle rather than
+# some other split, and every run-length figure below depends on it. It follows from the
+# boundary order in ../ENGINES.md rather than being a rule of its own, but it was unstated and
+# a reader cannot check the arithmetic without it.
+chance = { crowded = 0.23, exposed = 0.05 }   # hollow is absent: suspended, not zero
+# WHAT THOSE TWO NUMBERS BUY, in the only terms that matter — how long a pattern SURVIVES,
+# not how often it changes.
+#   THE OBSERVABLE: the set of six occupied slots, sampled at a bar line.
+#   THE INTERVAL: consecutive bar lines, so "one bar unchanged" means no swap committed
+#   between them. `apply = { on = "cycle" }` puts no mutation inside a bar, so the pattern at
+#   bar entry and the pattern heard across the bar are the same object.
+# A bar carries the same pattern as the bar before it 43.8% of the time in crowded and 84.9%
+# in exposed; four bars running, 8.3% and 61.2%. Crowded repeats constantly and sustains
+# nothing; exposed sustains.
+# The exact walk is in ../TRACE.md. If you compute it as (1 - chance)^ticks you will get 43.6%
+# and 8.4% and conclude these are wrong — that method misses the swaps that undo each other,
+# which is worth a quarter of a point. Named here, beside the numbers, because a figure whose
+# derivation lives in another file is indistinguishable from a mistake.
+moves  = ["swap"]                             # one rest with one hit
+
+# Fast mutation, without rewriting a cycle already being heard:
+#   operate on the PENDING pattern, or on the committed one if no pending exists;
+#   several mutations before a cycle boundary accumulate into that same pending pattern;
+#   at the boundary it commits once.
+apply = { on = "cycle" }     # the pattern's own sixteen slots. Says when THIS pattern's edits
+                             # become audible, and nothing else.
+                             # It is not the engine's boundary order — that is ../ENGINES.md.
+
+# In hollow the clock keeps its transport phase and attempts nothing. Occurrence numbers are
+# the transport tick index — NOT the count of successful mutations — so an address stays
+# stable when the history around it changes.
+# `elsewhere = "hold"` (root, above): held, not erased, and no draw is spent. Absent from `chance`
+# is not zero: zero would mean "drew, and lost", which spends a draw and would make every address
+# downstream depend on how long the room stayed empty.
+
+# Pin: `at = { roll = "mutate", pattern = "hat-memory", tick = T }`, decisions `admit`, `rest_index`, `hit_index`.
