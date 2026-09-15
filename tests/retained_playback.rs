@@ -214,9 +214,11 @@ fn standalone_default_scene_and_probability_zero_keep_structural_material() {
     let c = Composition::parse(&text).unwrap();
     let mut source = c.patterns["memory"].bind("memory", &["default"]).unwrap();
     let mut compiled = Compiled::new(&c);
+    let mut expected = Vec::new();
     for slot in 0..130 {
         source.advance("default", c.dice()).unwrap();
         let active = source.state().material()[slot as usize % 16];
+        expected.push(active);
         assert_slot(&mut compiled, &c, slot, active);
     }
     let mut muted = c.clone();
@@ -224,10 +226,40 @@ fn standalone_default_scene_and_probability_zero_keep_structural_material() {
         p.trigger.probability = 0.0;
     }
     let mut compiled = Compiled::new(&muted);
-    for slot in 0..130 {
-        let (t, m) = compiled.resolve_step(slot);
-        assert!(m.is_empty());
-        assert!(t.iter().all(|t| !t.trigger.admitted));
+    assert!(expected.iter().any(|active| *active));
+    assert!(expected.iter().any(|active| !*active));
+    for (slot, &active) in expected.iter().enumerate() {
+        let (traces, midi) = compiled.resolve_step(slot as u64);
+        assert!(midi.is_empty());
+        assert_eq!(traces.len(), 2);
+        for trace in traces {
+            assert_eq!(trace.trigger.rhythm.active(), active, "slot {slot}");
+            assert!(!trace.trigger.admitted);
+        }
+    }
+
+    // A separate voice can sound the muted reader's structural hits.
+    let follower = muted.parts.iter_mut().find(|p| p.id == "other").unwrap();
+    follower.trigger.probability = 1.0;
+    follower.trigger.rhythm = phasecraft::music::rhythm::Expression::Part {
+        id: "hat".into(),
+        mode: phasecraft::music::rhythm::ReferenceMode::Structural,
+    };
+    muted.validate().unwrap();
+    let mut compiled = Compiled::new(&muted);
+    for (slot, &active) in expected.iter().enumerate() {
+        let (traces, midi) = compiled.resolve_step(slot as u64);
+        assert_eq!(traces.len(), 2);
+        for trace in traces {
+            assert_eq!(trace.trigger.rhythm.active(), active, "slot {slot}");
+            assert_eq!(trace.trigger.admitted, active && trace.part == "other");
+        }
+        let notes: Vec<_> = midi
+            .iter()
+            .filter(|e| e.bytes[0] & 0xf0 == 0x90 && e.bytes[2] > 0)
+            .collect();
+        assert_eq!(notes.len(), usize::from(active), "slot {slot}");
+        assert!(notes.iter().all(|e| e.bytes[1] == 44));
     }
 }
 
