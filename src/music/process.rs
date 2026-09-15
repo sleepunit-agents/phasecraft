@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub mod retained;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Per {
@@ -156,7 +158,8 @@ pub fn validate_carry(c: &super::Composition) -> Result<(), String> {
 }
 
 /// Application boundaries for retained rhythm edits, measured from transport slot zero.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Apply {
     Bar,
     Cycle,
