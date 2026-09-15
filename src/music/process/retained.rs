@@ -1,5 +1,6 @@
-//! Prepared hat-memory source. Composition references and authored mutation pins
-//! are not yet supported; callers own scene traversal and resolved dice.
+//! Prepared hat-memory source. Callers own scene traversal; Composition references
+//! and playback integration are not yet supported.
+pub mod pins;
 use super::{Apply, Carry, MutationDecision, MutationStep, RetainedSwap};
 use crate::music::resolve::{Dice, Draw};
 use serde::{Deserialize, Serialize};
@@ -153,6 +154,16 @@ impl RetainedSource {
     /// with the existing versioned decision hash. Seed/pins must be stable across replay.
     /// Invalid scenes or draws leave the state unchanged, including boundary commits.
     pub fn advance(&mut self, scene: &str, dice: Dice<'_>) -> Result<RetainedSample, String> {
+        self.advance_draws(scene, |name, occurrence, decision| {
+            dice.roll(name, "mutate", occurrence, decision.key())
+        })
+    }
+
+    fn advance_draws(
+        &mut self,
+        scene: &str,
+        mut draw: impl FnMut(&str, u64, MutationDecision) -> Draw,
+    ) -> Result<RetainedSample, String> {
         if !self.scenes.contains(scene) {
             return Err(format!(
                 "retained pattern {:?}: unknown scene {scene:?}",
@@ -162,12 +173,7 @@ impl RetainedSource {
         let chance = self.chance.get(scene).copied();
         let mut draws = Vec::new();
         let step = self.state.advance(chance, |occurrence, decision| {
-            let key = match decision {
-                MutationDecision::Admit => "admit",
-                MutationDecision::RestIndex => "rest_index",
-                MutationDecision::HitIndex => "hit_index",
-            };
-            let draw = dice.roll(&self.name, "mutate", occurrence, key);
+            let draw = draw(&self.name, occurrence, decision);
             draws.push(RetainedDraw { decision, draw });
             draw.u
         })?;
@@ -178,5 +184,15 @@ impl RetainedSource {
             step,
             draws,
         })
+    }
+}
+
+impl MutationDecision {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Admit => "admit",
+            Self::RestIndex => "rest_index",
+            Self::HitIndex => "hit_index",
+        }
     }
 }
