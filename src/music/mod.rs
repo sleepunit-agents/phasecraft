@@ -24,6 +24,8 @@ pub const STEP_TICKS: u64 = PPQN / 4;
 #[serde(try_from = "CompositionFile")]
 pub struct Composition {
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub patterns: std::collections::BTreeMap<String, process::retained::RetainedPattern>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub lanes: std::collections::BTreeMap<String, shared::Lane>,
     pub tempo: f64,
     pub seed: u64,
@@ -46,6 +48,8 @@ pub struct Composition {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CompositionFile {
+    #[serde(default)]
+    patterns: std::collections::BTreeMap<String, process::retained::RetainedPattern>,
     #[serde(default)]
     lanes: std::collections::BTreeMap<String, shared::Lane>,
     tempo: f64,
@@ -79,6 +83,7 @@ impl TryFrom<CompositionFile> for Composition {
             }
         };
         let mut c = Self {
+            patterns: file.patterns,
             lanes: file.lanes,
             tempo: file.tempo,
             seed: file.seed,
@@ -380,6 +385,7 @@ impl Composition {
         self.evaluation_order()?;
         process::validate_carry(self)?;
         shared::validate(self)?;
+        process::retained::playback::validate(self)?;
         if let Some(arrangement) = &self.arrangement {
             arrangement.validate(self.tempo)?;
         }

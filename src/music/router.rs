@@ -71,6 +71,14 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
                 return Ok(Clock::Absent);
             };
             let period = if *stream == "trigger" {
+                if matches!(
+                    part.trigger.rhythm,
+                    super::rhythm::Expression::Retained { .. }
+                ) {
+                    return Err(format!(
+                        "{key}: retained material has no fixed repeating trigger period; pattern member clocks are not yet supported"
+                    ));
+                }
                 super::cycle::trigger_period_ticks(c, part)?
             } else {
                 super::cycle::accent_period_ticks(c, part)?
@@ -83,7 +91,7 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
             "{key}: a voice's clocks are trigger.cycle, accent.cycle and velocity.cycle; velocity per=event has no fixed transport period"
         )),
         ["patterns", ..] => Err(format!(
-            "{key}: patterns are not in this engine yet (M1.5), so the key cannot be resolved; it is not guessed"
+            "{key}: retained pattern member clocks are not supported yet (M1.5), so the key cannot be resolved; it is not guessed"
         )),
         ["lanes", name, "every"] => {
             let lane = c

@@ -32,6 +32,9 @@ pub enum ReferenceMode {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Expression {
+    Retained {
+        pattern: String,
+    },
     Literal {
         pattern: String,
         #[serde(default = "literal_cycle")]
@@ -65,6 +68,11 @@ fn literal_cycle() -> u32 {
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RhythmTrace {
+    Retained {
+        pattern: String,
+        slot: u64,
+        active: bool,
+    },
     Literal {
         pattern: String,
         cycle_bars: u32,
@@ -94,7 +102,8 @@ pub enum RhythmTrace {
 impl RhythmTrace {
     pub fn active(&self) -> bool {
         match self {
-            Self::Literal { active, .. }
+            Self::Retained { active, .. }
+            | Self::Literal { active, .. }
             | Self::Euclidean { active, .. }
             | Self::Binary { active, .. }
             | Self::Part { active, .. } => *active,
@@ -144,6 +153,11 @@ impl Expression {
             return Err("rhythm expression nesting exceeds 32".into());
         }
         match self {
+            Self::Retained { pattern } => {
+                if depth != 0 || pattern.trim().is_empty() {
+                    return Err("retained material requires a named trigger root".into());
+                }
+            }
             Self::Literal {
                 pattern,
                 cycle_bars,
@@ -183,7 +197,7 @@ impl Expression {
                 refs.extend(b.references());
                 refs
             }
-            Self::Euclidean { .. } | Self::Literal { .. } => vec![],
+            Self::Euclidean { .. } | Self::Literal { .. } | Self::Retained { .. } => vec![],
         }
     }
     pub fn evaluate(
@@ -201,6 +215,7 @@ impl Expression {
         reference: &dyn Fn(&str, ReferenceMode) -> bool,
     ) -> RhythmTrace {
         match self {
+            Self::Retained { .. } => panic!("retained material requires the compiled transport"),
             Self::Literal {
                 pattern,
                 cycle_bars,

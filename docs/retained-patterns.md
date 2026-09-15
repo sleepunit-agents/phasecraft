@@ -1,4 +1,4 @@
-# Retained rhythm sources (M1.5 prerequisite)
+# Retained rhythm sources (M1.5)
 
 The companion's `until-stop/patterns/hat-memory.toml` starts with six hits
 in sixteen slots. Every five sixteenth-note slots, its current scene can admit
@@ -6,12 +6,13 @@ one swap of a rest with a hit. Several edits accumulate in a pending copy; the
 pattern being heard changes only when that copy commits at a cycle boundary.
 The Rust `music::process::RetainedSwap` evaluator implements that state transition.
 
-This prerequisite exposes Rust APIs only. `process::retained::RetainedPattern` now
-prepares the source file, validates its scene probabilities and drives addressed
-draws through the existing resolved `Dice` interface. Composition loading, pattern
-references, return-group clocks, CLI inspect output, and
-playback integration remain to be wired. `phasecraft` cannot yet play
-an authored `hat-memory` pattern. Existing examples retain their static stand-ins.
+Composition now accepts named `[patterns.NAME]` sources and
+`trigger.pattern = { pattern = "NAME" }` readers. The compiled transport plays
+committed material through the normal admission, ornament, velocity and MIDI path.
+See [the playable example](../examples/studies/retained-memory.toml) and the
+Composition section below. External pattern-file loading, mixed seeds loading,
+authored mutation pins in Composition, pattern return clocks and the t-508 CLI
+pin-window summary remain unwired. This does not yet load the companion project.
 
 ## Clock and boundary contract
 
@@ -59,7 +60,7 @@ All valid index/count pairs through 4096 are checked for exact recovery by the
 evaluator's floor-of-roll-times-count selection. A 44-slot regression also checks
 the reported indices and actual pending slots across accumulating edits and a
 cycle commit. `RetainedPattern::bind_pinned` below resolves authored mutation pins for the source
-API. Composition and inspect integration remain later work.
+API. Composition playback is described below; mutation-pin inspection integration remains later work.
 
 ## Bounds and integration obligations
 
@@ -100,7 +101,8 @@ moves = ["swap"]
 apply = { on = "cycle" }
 ```
 
-This is a source-file API, **not a Composition table or a playable project**.
+The same closed shape can be deserialized as a source file or placed under a
+Composition `[patterns.NAME]` table.
 Initial material accepts only whitespace-separated `x`/`~` sixteenth slots with
 both a hit and a rest; nested notation, probabilities, repetitions and ornaments
 are refused. All fields above are required, all unknown fields are errors, and the
@@ -228,5 +230,51 @@ caller owns scene lookup and its side effects; those callbacks cannot be rolled
 back. Tests compare cold and checkpoint inspection against direct source landings,
 check prefix/upper-bound exclusion, suspension versus refusal, split-entry lints,
 empty/over-budget windows and error rollback across a pending commit. This is the
-t-508 aggregation seam: **CLI inspect, mixed seeds loading and Composition/playback
-integration remain unwired**, and t-508 still needs a read of real CLI output.
+t-508 aggregation seam: **the CLI mutation-pin summary and mixed seeds loading remain unwired**, and t-508 still needs a read of real CLI output.
+
+
+## Composition and playback
+
+Declare up to sixteen sources at the transport root. Their shape is the source
+shape above, with `[patterns.NAME.change]` in place of `[change]`. A Part reads
+one with `trigger.pattern = { pattern = "NAME" }`; its expanded rhythm is
+`{ type = "retained", pattern = "NAME" }`. Readers require `subdivision = "1/16"`
+and read the material at the **absolute transport slot modulo material length**.
+The retained expression is currently a trigger root, not an accent or boolean
+operand. Ordinary Part references can read its structural or admitted hits.
+Trigger probability still gates committed hits; it does not gate mutation.
+
+Router scenes and arrangement phrases supply the source's chance key. The enclosing
+transport rejects unknown chance keys. All expanded children must preserve the
+root's patterns; phrase inheritance does this automatically. A standalone snapshot
+uses the key `default`; other scene keys are inert until the snapshot belongs to
+a journey. This permits leaf snapshots to deserialize before their enclosing
+scene vocabulary exists. To mutate a standalone pattern, write `chance = { default = ... }`.
+
+Sources advance at every transport sixteenth, including scenes with no retained
+reader. All Parts and scene snapshots share the same source state. The root seed
+owns mutation addresses, even when a phrase overrides its own seed. Scene changes,
+phrase restarts and repeated arrangements do not reset the material or its phase.
+Commits happen before that slot's mutation and before readers take committed material.
+A suspended incoming scene still publishes previously pending edits at a boundary.
+
+The transport retains at most 4096 slot samples (one active bit per named source,
+plus map keys), alongside each source's initial/current/pending material. Neighbor
+lookups use those samples; a backward miss resets source state and replays from
+zero. Random seeks therefore preserve history without retaining all patterns, but
+replay cost grows with transport position. The retained transport also keeps its own router move log for replay, using the
+existing router evaluator; this slice does not bound those logs or establish realtime seek
+latency. A newly compiled score after reload replays the new score from zero;
+there is no retained-state migration across edits.
+
+`inspect` emits `trigger.rhythm.type = "retained"`, the pattern name, absolute
+slot and structural active bit. It uses the same compiled path as MIDI playback.
+This is **not** the t-508 mutation-pin landing report. The material is evolving,
+so cycle metadata does not claim a repeating structural period. Pattern clocks
+such as `patterns.NAME.change.every` are not yet accepted in return groups.
+
+`tests/retained_playback.rs` compares MIDI and structural decisions against the
+chronological source across two readers, a 17-slot pattern, reader-free mutation,
+scene suspension, root versus scene seeds, phrase restarts, 5000-slot cache eviction,
+backward/random seeks and TOML round trips. These are engine results, not hardware
+or listening evidence.
