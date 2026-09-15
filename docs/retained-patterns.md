@@ -9,7 +9,7 @@ The Rust `music::process::RetainedSwap` evaluator implements that state transiti
 This prerequisite exposes Rust APIs only. `process::retained::RetainedPattern` now
 prepares the source file, validates its scene probabilities and drives addressed
 draws through the existing resolved `Dice` interface. Composition loading, pattern
-references, authored mutation pins, return-group clocks, CLI inspect output, and
+references, return-group clocks, CLI inspect output, and
 playback integration remain to be wired. `phasecraft` cannot yet play
 an authored `hat-memory` pattern. Existing examples retain their static stand-ins.
 
@@ -58,8 +58,8 @@ can round below the intended bucket (for example index 15 of 22 selects 14).
 All valid index/count pairs through 4096 are checked for exact recovery by the
 evaluator's floor-of-roll-times-count selection. A 44-slot regression also checks
 the reported indices and actual pending slots across accumulating edits and a
-cycle commit. This API does not resolve authored pins or add pin provenance to
-inspect; that remains part of the authoring/playback integration.
+cycle commit. `RetainedPattern::bind_pinned` below resolves authored mutation pins for the source
+API. Composition and inspect integration remain later work.
 
 ## Bounds and integration obligations
 
@@ -131,10 +131,8 @@ unchanged.
 The existing `Dice` API can supply **manually resolved** mutation addresses to this
 source. Numeric admission pins still use `u < chance`: even pinned `u = 0` cannot
 admit at chance zero. Selection pins use `mutation_index_roll` with the conserved
-rest/hit counts. **The native authored `[[pins]]` resolver does not accept mutation
-addresses yet.** The companion's `admit = true` spelling needs an explicit mapping
-to the native numeric-draw doctrine before it can be enabled; this API does not
-interpret that boolean or claim to load the companion's mixed `seeds.toml` file.
+rest/hit counts. The Composition `[[pins]]` resolver still does not accept mutation
+addresses; the mutation-only source API below prepares them separately.
 
 `tests/retained_source.rs` uses a verbatim hat-memory fixture from until-stop
 `0a72b1480e6a244078bf162e93e9778e0a0c64f2`. It covers source round trips, a replayed
@@ -142,3 +140,49 @@ scene journey, preserved addresses across absence versus zero probability, manua
 resolved pin 52 under different seeds, pin provenance, boundary rollback and closed
 shape/scene validation. This is native hash/evaluator evidence, not agreement with
 the companion's historical `TRACE.md` or MIDI/listening evidence.
+
+
+## Authored mutation pins (source API)
+
+Deserialize `process::retained::pins::MutationPin` from the companion shape:
+
+```toml
+at = { roll = "mutate", pattern = "hat-memory", tick = 52 }
+admit = true
+rest_index = 2
+hit_index = 0
+```
+
+`pattern.bind_pinned("hat-memory", scenes, &pins)` prepares a `PinnedSource`.
+It accepts a mutation-only slice of at most 256 entries for this one pattern;
+loading the companion's mixed `seeds.toml` or Composition pins remains later work.
+The address and at least one draw field are required. Unknown fields, another
+pattern, an index outside the conserved rest/hit counts, an unreachable transport
+slot and duplicate draw addresses are errors. Distinct fields at one tick may be
+split across entries. A tick is a zero-based transport opportunity, not a slot or
+count of successful mutations. Source shape and pins are bound together at load.
+
+Boolean admission is numeric sugar: `true` resolves to `u = 0.0`, `false` to the
+largest representable `f64` below one. The scene still decides `u < chance`.
+Thus true refuses at chance zero, false admits at chance one, and suspension
+consults neither. Selection indices resolve to the checked bucket midpoints above.
+A false admission together with selection fields produces a `SelectionUnderFalse`
+lint, including when fields are split across entries; it remains legal because
+those selections can land at chance one. Selection-only pins are legal too.
+
+Call `source.advance(scene, seed)` on every transport sixteenth with a stable seed.
+Its `PinnedSample.sample` contains the normal scene, chance, mutation and draws.
+Here `Draw.pinned` indexes the **authored mutation slice**, so three fields in one
+entry all carry the same index. `landings` lists each pinned field at this
+opportunity with `drawn = false` when suspension or admission refusal skips it.
+A consulted boolean whose spelling disagrees with the result sets
+`endpoint_mismatch`; the enclosing sample names the actual scene and chance.
+Not-due steps have no landings. No pin history is stored: consumers must aggregate
+landings across their inspection window, including untouched future/past pins.
+This is the data seam for t-508; CLI zero-landings reporting is not wired here.
+Cloning preserves a replay checkpoint. Unknown scenes leave it unchanged.
+
+`tests/retained_pins.rs` covers pin 52 through multiple histories, exact selection
+and authored provenance, all six admission endpoint/interior cases, skipped
+fields, split-entry lints/duplicates, scene rollback, replay and load validation.
+These are source API results, not MIDI or listening evidence.
