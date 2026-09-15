@@ -1,4 +1,5 @@
-//! Numeric velocity sequences. Structural admission owns the event clock; rendering does not.
+//! Numeric velocity sequences and chronological retained rhythm mutation.
+//! Structural admission owns the event clock; rendering does not.
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -152,4 +153,186 @@ pub fn validate_carry(c: &super::Composition) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Application boundaries for retained rhythm edits, measured from transport slot zero.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Apply {
+    Bar,
+    Cycle,
+}
+
+/// The caller supplies draws by (transport occurrence, decision), independently of history.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MutationDecision {
+    Admit,
+    RestIndex,
+    HitIndex,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MutationOutcome {
+    NotDue,
+    Suspended,
+    Refused {
+        admit: f64,
+    },
+    Swapped {
+        admit: f64,
+        rest_roll: f64,
+        hit_roll: f64,
+        /// Zero-based material slots, selected in ascending order over pending material.
+        rest_slot: usize,
+        hit_slot: usize,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MutationStep {
+    pub slot: u64,
+    /// Zero-based transport opportunity, including suspended and refused opportunities.
+    pub occurrence: Option<u64>,
+    /// A pending copy was published before this slot's mutation opportunity.
+    pub committed: bool,
+    pub outcome: MutationOutcome,
+}
+
+/// M1.5's bounded swap evaluator. One call advances exactly one sixteenth-note slot.
+/// This is not yet wired to Composition authoring, the resolver, or MIDI playback.
+#[derive(Clone, Debug)]
+pub struct RetainedSwap {
+    material: Vec<bool>,
+    pending: Option<Vec<bool>>,
+    every: u32,
+    apply_slots: u32,
+    next_slot: u64,
+}
+
+impl RetainedSwap {
+    pub fn new(initial: &[bool], every: u32, apply: Apply) -> Result<Self, String> {
+        if initial.is_empty() || initial.len() > 4096 {
+            return Err("retained swap requires 1..4096 initial slots".into());
+        }
+        if !initial.contains(&true) || !initial.contains(&false) {
+            return Err("retained swap requires at least one hit and one rest".into());
+        }
+        if !(1..=65536).contains(&every) {
+            return Err("retained swap every must be 1..65536 slots".into());
+        }
+        Ok(Self {
+            material: initial.to_vec(),
+            pending: None,
+            every,
+            apply_slots: match apply {
+                Apply::Bar => 16,
+                Apply::Cycle => initial.len() as u32,
+            },
+            next_slot: 0,
+        })
+    }
+
+    /// The pattern currently audible, never the uncommitted edits.
+    pub fn material(&self) -> &[bool] {
+        &self.material
+    }
+
+    /// Pending material is exposed for diagnostics; callers cannot mutate it.
+    pub fn pending(&self) -> Option<&[bool]> {
+        self.pending.as_deref()
+    }
+
+    pub fn next_slot(&self) -> u64 {
+        self.next_slot
+    }
+
+    /// Supply the incoming scene's probability at every slot. None suspends without
+    /// drawing; Some(0) still draws and refuses. Commits happen even in a suspended
+    /// scene. At coincident boundaries the commit precedes the mutation, so that edit
+    /// waits for the following boundary. Occurrence zero is at transport slot zero.
+    ///
+    /// Draws must be finite in [0, 1). Invalid inputs leave this evaluator unchanged;
+    /// side effects in the caller's draw function cannot be rolled back. Playback
+    /// integration must supply addressable draws, not a sequential random generator.
+    pub fn advance(
+        &mut self,
+        chance: Option<f64>,
+        mut draw: impl FnMut(u64, MutationDecision) -> f64,
+    ) -> Result<MutationStep, String> {
+        if chance.is_some_and(|p| !p.is_finite() || !(0.0..=1.0).contains(&p)) {
+            return Err("retained swap chance must be finite and within 0..1".into());
+        }
+        let slot = self.next_slot;
+        let next_slot = slot
+            .checked_add(1)
+            .ok_or("retained swap transport exhausted")?;
+        let boundary = slot.is_multiple_of(u64::from(self.apply_slots));
+        let committed = boundary && self.pending.is_some();
+        let occurrence = slot
+            .is_multiple_of(u64::from(self.every))
+            .then_some(slot / u64::from(self.every));
+        // Both a boundary commit and an accumulating edit read the latest pending
+        // copy. Delay all state changes until every required draw has been checked.
+        let current = self.pending.as_deref().unwrap_or(&self.material);
+        let mut checked_draw = |occurrence, decision| {
+            let value = draw(occurrence, decision);
+            if !value.is_finite() || !(0.0..1.0).contains(&value) {
+                Err(format!(
+                    "retained swap {decision:?} draw must be finite and within [0, 1)"
+                ))
+            } else {
+                Ok(value)
+            }
+        };
+        let outcome = match (occurrence, chance) {
+            (None, _) => MutationOutcome::NotDue,
+            (Some(_), None) => MutationOutcome::Suspended,
+            (Some(occurrence), Some(chance)) => {
+                let admit = checked_draw(occurrence, MutationDecision::Admit)?;
+                if admit >= chance {
+                    MutationOutcome::Refused { admit }
+                } else {
+                    let rest_roll = checked_draw(occurrence, MutationDecision::RestIndex)?;
+                    let hit_roll = checked_draw(occurrence, MutationDecision::HitIndex)?;
+                    let hits = current.iter().filter(|&&hit| hit).count();
+                    let rests = current.len() - hits;
+                    let select = |hit, index| {
+                        current
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, value)| **value == hit)
+                            .nth(index)
+                            .unwrap()
+                            .0
+                    };
+                    MutationOutcome::Swapped {
+                        admit,
+                        rest_roll,
+                        hit_roll,
+                        rest_slot: select(false, (rest_roll * rests as f64) as usize),
+                        hit_slot: select(true, (hit_roll * hits as f64) as usize),
+                    }
+                }
+            }
+        };
+        if committed {
+            self.material = self.pending.take().unwrap();
+        }
+        if let MutationOutcome::Swapped {
+            rest_slot,
+            hit_slot,
+            ..
+        } = outcome
+        {
+            let pending = self.pending.get_or_insert_with(|| self.material.clone());
+            pending[rest_slot] = true;
+            pending[hit_slot] = false;
+        }
+        self.next_slot = next_slot;
+        Ok(MutationStep {
+            slot,
+            occurrence,
+            committed,
+            outcome,
+        })
+    }
 }
