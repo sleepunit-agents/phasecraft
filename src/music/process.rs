@@ -170,6 +170,16 @@ pub enum MutationDecision {
     HitIndex,
 }
 
+/// Convert a forced zero-based selection index to a roll for `RetainedSwap::advance`.
+/// `count` is the number of eligible rests or hits, not the material length.
+/// The midpoint avoids rounding below the index's lower bucket boundary.
+pub fn mutation_index_roll(index: usize, count: usize) -> Result<f64, String> {
+    if !(1..=4096).contains(&count) || index >= count {
+        return Err("retained swap index requires count 1..4096 and index < count".into());
+    }
+    Ok((index as f64 + 0.5) / count as f64)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum MutationOutcome {
     NotDue,
@@ -181,6 +191,9 @@ pub enum MutationOutcome {
         admit: f64,
         rest_roll: f64,
         hit_roll: f64,
+        /// Zero-based indices in the ascending rest/hit lists before this swap.
+        rest_index: usize,
+        hit_index: usize,
         /// Zero-based material slots, selected in ascending order over pending material.
         rest_slot: usize,
         hit_slot: usize,
@@ -295,6 +308,8 @@ impl RetainedSwap {
                     let hit_roll = checked_draw(occurrence, MutationDecision::HitIndex)?;
                     let hits = current.iter().filter(|&&hit| hit).count();
                     let rests = current.len() - hits;
+                    let rest_index = (rest_roll * rests as f64) as usize;
+                    let hit_index = (hit_roll * hits as f64) as usize;
                     let select = |hit, index| {
                         current
                             .iter()
@@ -308,8 +323,10 @@ impl RetainedSwap {
                         admit,
                         rest_roll,
                         hit_roll,
-                        rest_slot: select(false, (rest_roll * rests as f64) as usize),
-                        hit_slot: select(true, (hit_roll * hits as f64) as usize),
+                        rest_index,
+                        hit_index,
+                        rest_slot: select(false, rest_index),
+                        hit_slot: select(true, hit_index),
                     }
                 }
             }
