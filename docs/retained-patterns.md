@@ -186,3 +186,47 @@ Cloning preserves a replay checkpoint. Unknown scenes leave it unchanged.
 and authored provenance, all six admission endpoint/interior cases, skipped
 fields, split-entry lints/duplicates, scene rollback, replay and load validation.
 These are source API results, not MIDI or listening evidence.
+
+## Inspection windows (source API)
+
+`PinnedSource::inspect_window(window, seed, max_replay_slots, scene_at)` reports
+all authored mutation fields over a half-open range of **absolute sixteenth
+slots**. For example, `260..261` includes mutation opportunity 52 when `every`
+is five slots. The scene callback returns the declared scene at each absolute
+slot. It must include silent scenes and supply the same scene history and seed
+used to build any checkpoint.
+
+Inspection clones the source at its current `next_slot()`, replays through the
+window's end, and discards the clone. Replay before the window builds the actual
+pending material but contributes no landings to the report. Neither successful
+inspection nor a scene error changes the original checkpoint. A window starting
+before that checkpoint is refused; use an initial source or an earlier checkpoint
+for a backward seek. Replay is explicitly budgeted: `max_replay_slots` includes
+both the prefix and the window, checked before calling `scene_at`. Empty windows
+perform no replay. There is no default unbounded seek or diagnostic history.
+
+The `PinInspection` names the source, window and actual replay count. Its `fields`
+contains one record for every resolved authored field, including pins before or
+after the window. Each record preserves authored `pin`, opportunity `tick`, and
+`decision`, and distinguishes:
+
+- `OutsideWindow`: the opportunity was not in this inspection window;
+- `Suspended`: the opportunity occurred in a scene absent from `chance`;
+- `AdmissionRefused`: this selection draw was skipped after admission refused;
+- `Landed`: this field supplied its draw, even if that admission draw refused.
+
+`zero_landings()` selects the first three cases. These are field-level results:
+an entry's admission can land while its two selection fields do not. In-window
+records carry the actual scene and optional probability; `None` for suspension
+is distinct from `Some(0.0)`. A landed boolean also carries `endpoint_mismatch`
+when the probability endpoint overruled its spelling. The report includes the
+source's `SelectionUnderFalse` lints, joined by `(tick, admission_pin)` and
+`(tick, selection_pin)` to these fields, including split authored entries.
+
+Storage grows with source material and authored fields, not replay length. The
+caller owns scene lookup and its side effects; those callbacks cannot be rolled
+back. Tests compare cold and checkpoint inspection against direct source landings,
+check prefix/upper-bound exclusion, suspension versus refusal, split-entry lints,
+empty/over-budget windows and error rollback across a pending commit. This is the
+t-508 aggregation seam: **CLI inspect, mixed seeds loading and Composition/playback
+integration remain unwired**, and t-508 still needs a read of real CLI output.

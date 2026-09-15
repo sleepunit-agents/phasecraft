@@ -270,3 +270,203 @@ fn empty_pin_slice_matches_existing_source_across_commits_and_scene_changes() {
         assert_eq!(pinned.source().state().pending(), plain.state().pending());
     }
 }
+
+#[test]
+fn inspection_distinguishes_window_suspension_refusal_and_landing() {
+    use phasecraft::music::process::retained::pins::WindowOutcome as W;
+    let pins = [
+        pin(0, "admit = true"),
+        pin(1, "admit = true\nrest_index = 2\nhit_index = 0"),
+        pin(2, "admit = true\nrest_index = 2\nhit_index = 0"),
+        pin(3, "admit = false"),
+        pin(3, "rest_index = 2\nhit_index = 0"),
+        pin(4, "admit = true"),
+    ];
+    let p: RetainedPattern = toml::from_str(
+        &HAT.replace("crowded = 0.23", "crowded = 0.0")
+            .replace("exposed = 0.05", "exposed = 1.0"),
+    )
+    .unwrap();
+    let source = p.bind_pinned("hat-memory", SCENES, &pins).unwrap();
+    let mut visited = Vec::new();
+    let report = source
+        .inspect_window(5..20, 91827, 20, |slot| {
+            visited.push(slot);
+            Ok(match slot {
+                5..10 => "hollow",
+                10..15 => "crowded",
+                _ => "exposed",
+            }
+            .into())
+        })
+        .unwrap();
+    assert_eq!(visited, (0..20).collect::<Vec<_>>());
+    assert_eq!(report.replayed_slots, 20);
+    assert_eq!(report.pattern, "hat-memory");
+    assert_eq!(report.window, 5..20);
+    assert_eq!(report.fields.len(), 11);
+    assert_eq!(report.fields[0].outcome, W::OutsideWindow);
+    assert_eq!(report.fields[10].outcome, W::OutsideWindow);
+    for field in &report.fields[1..4] {
+        assert_eq!(field.outcome, W::Suspended);
+        assert_eq!(field.scene.as_deref(), Some("hollow"));
+        assert_eq!(field.chance, None);
+        assert!(!field.endpoint_mismatch);
+    }
+    assert_eq!(report.fields[4].outcome, W::Landed);
+    assert!(report.fields[4].endpoint_mismatch);
+    for field in &report.fields[5..7] {
+        assert_eq!(field.outcome, W::AdmissionRefused);
+        assert_eq!(field.chance, Some(0.0));
+        assert!(!field.endpoint_mismatch);
+    }
+    for field in &report.fields[7..10] {
+        assert_eq!(field.outcome, W::Landed);
+        assert_eq!(field.chance, Some(1.0));
+        assert_eq!(field.scene.as_deref(), Some("exposed"));
+    }
+    assert!(report.fields[7].endpoint_mismatch);
+    assert_eq!(report.zero_landings().count(), 7);
+    let lint = &report.lints[0];
+    assert_eq!(
+        (lint.tick, lint.admission_pin, lint.selection_pin),
+        (3, 3, 4)
+    );
+    assert_eq!(source.source().state().next_slot(), 0);
+    assert_eq!(source.source().state().pending(), None);
+}
+
+#[test]
+fn inspection_checkpoint_and_cold_replay_agree_with_direct_landings() {
+    use phasecraft::music::process::retained::pins::WindowOutcome as W;
+    let pins = [
+        pin(0, "admit = true"),
+        pin(52, "admit = true\nrest_index = 2\nhit_index = 0"),
+        pin(55, "admit = false\nhit_index = 1"),
+        pin(100, "rest_index = 4"),
+    ];
+    let scene = |slot: u64| match slot % 47 {
+        0..16 => "hollow",
+        16..32 => "crowded",
+        _ => "exposed",
+    };
+    for seed in [91827, 4471, 0, u64::MAX] {
+        let cold = pattern(0.23)
+            .bind_pinned("hat-memory", SCENES, &pins)
+            .unwrap();
+        let mut warm = cold.clone();
+        for slot in 0..253 {
+            warm.advance(scene(slot), seed).unwrap();
+        }
+        let checkpoint_material = warm.source().state().material().to_vec();
+        let checkpoint_pending = warm.source().state().pending().map(<[bool]>::to_vec);
+        let expected = cold
+            .inspect_window(259..281, seed, 281, |s| Ok(scene(s).into()))
+            .unwrap();
+        let actual = warm
+            .inspect_window(259..281, seed, 28, |s| Ok(scene(s).into()))
+            .unwrap();
+        assert_eq!(actual.fields, expected.fields);
+        assert_eq!(actual.lints, expected.lints);
+        assert_eq!(actual.replayed_slots, 28);
+        assert_eq!(warm.source().state().next_slot(), 253);
+        assert_eq!(warm.source().state().material(), checkpoint_material);
+        assert_eq!(
+            warm.source().state().pending(),
+            checkpoint_pending.as_deref()
+        );
+        let mut direct = warm.clone();
+        let mut landed = Vec::new();
+        for slot in 253..281 {
+            let sample = direct.advance(scene(slot), seed).unwrap();
+            if slot >= 259 {
+                landed.extend(sample.landings.into_iter().filter(|l| l.drawn));
+            }
+        }
+        let reported: Vec<_> = actual
+            .fields
+            .iter()
+            .filter(|f| f.outcome == W::Landed)
+            .map(|f| (f.pin, f.decision, f.endpoint_mismatch))
+            .collect();
+        assert_eq!(
+            reported,
+            landed
+                .iter()
+                .map(|l| (l.pin, l.decision, l.endpoint_mismatch))
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn inspection_rejects_unbounded_or_backward_work_before_scene_callbacks() {
+    let pins = [pin(0, "admit = true")];
+    let mut source = pattern(0.23)
+        .bind_pinned("hat-memory", SCENES, &pins)
+        .unwrap();
+    source.advance("crowded", 91827).unwrap();
+    for (window, budget) in [
+        (0..2, 2),
+        (std::ops::Range { start: 3, end: 2 }, 2),
+        (100..101, 99),
+        (1..u64::MAX, 100),
+    ] {
+        assert!(
+            source
+                .inspect_window(window, 91827, budget, |_| panic!(
+                    "invalid request must not traverse"
+                ))
+                .is_err()
+        );
+    }
+    let empty = source
+        .inspect_window(u64::MAX..u64::MAX, 91827, 0, |_| {
+            panic!("empty window needs no replay")
+        })
+        .unwrap();
+    assert_eq!(empty.replayed_slots, 0);
+    assert_eq!(empty.zero_landings().count(), 1);
+    assert_eq!(empty.fields[0].scene, None);
+    let exact = source
+        .inspect_window(3..4, 91827, 3, |_| Ok("crowded".into()))
+        .unwrap();
+    assert_eq!(exact.replayed_slots, 3);
+}
+
+#[test]
+fn inspection_scene_errors_preserve_checkpoint_and_name_absolute_slot() {
+    let pins = [pin(0, "admit = true")];
+    let mut source = pattern(0.23)
+        .bind_pinned("hat-memory", SCENES, &pins)
+        .unwrap();
+    source.advance("crowded", 91827).unwrap();
+    let before = source.source().state().pending().unwrap().to_vec();
+    // Both failures happen in the replay prefix, before the requested window.
+    for missing in [false, true] {
+        let error = source
+            .inspect_window(20..21, 91827, 20, |slot| {
+                if slot == 16 {
+                    if missing {
+                        Err("no scene at transport".into())
+                    } else {
+                        Ok("typo".into())
+                    }
+                } else {
+                    Ok("crowded".into())
+                }
+            })
+            .unwrap_err();
+        assert!(error.contains("slot 16"), "{error}");
+        assert!(
+            error.contains(if missing {
+                "no scene at transport"
+            } else {
+                "unknown scene"
+            }),
+            "{error}"
+        );
+        assert_eq!(source.source().state().next_slot(), 1);
+        assert_eq!(source.source().state().pending().unwrap(), before);
+    }
+}
