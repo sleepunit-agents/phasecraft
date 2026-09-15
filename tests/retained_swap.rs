@@ -1,11 +1,72 @@
 use phasecraft::music::process::{
-    Apply, MutationDecision as D, MutationOutcome as O, RetainedSwap,
+    Apply, MutationDecision as D, MutationOutcome as O, RetainedSwap, mutation_index_roll,
 };
 
 const HAT: [bool; 16] = [
     true, false, true, false, false, true, false, true, false, false, true, false, true, false,
     false, false,
 ];
+
+#[test]
+fn forced_indices_round_trip_for_every_bounded_bucket() {
+    // Includes the first lower-edge rounding failure: index 15 at count 22.
+    for count in 1..=4096 {
+        for index in 0..count {
+            let roll = mutation_index_roll(index, count).unwrap();
+            assert!((0.0..1.0).contains(&roll));
+            assert_eq!((roll * count as f64) as usize, index);
+        }
+    }
+    for (index, count) in [(0, 0), (1, 1), (4096, 4096), (0, 4097), (usize::MAX, 2)] {
+        assert!(mutation_index_roll(index, count).is_err());
+    }
+}
+
+#[test]
+fn forced_indices_report_the_pending_lists_before_each_swap() {
+    let mut initial = vec![false; 44];
+    for slot in (0..44).step_by(2) {
+        initial[slot] = true;
+    }
+    let mut state = RetainedSwap::new(&initial, 1, Apply::Cycle).unwrap();
+    let mut expected = initial;
+    // Multiple accumulating edits and a coincident cycle commit. The same forced
+    // index selects different slots as the pending material changes.
+    for slot in 0..=44 {
+        let rest_index = if slot % 2 == 0 { 15 } else { 21 };
+        let hit_index = if slot % 2 == 0 { 0 } else { 15 };
+        let rest_slot = (0..44).filter(|&i| !expected[i]).nth(rest_index).unwrap();
+        let hit_slot = (0..44).filter(|&i| expected[i]).nth(hit_index).unwrap();
+        let rest_roll = mutation_index_roll(rest_index, 22).unwrap();
+        let hit_roll = mutation_index_roll(hit_index, 22).unwrap();
+        let step = state
+            .advance(Some(1.0), |_, decision| match decision {
+                D::Admit => 0.0,
+                D::RestIndex => rest_roll,
+                D::HitIndex => hit_roll,
+            })
+            .unwrap();
+        assert_eq!(step.committed, slot == 44);
+        if step.committed {
+            assert_eq!(state.material(), expected);
+        }
+        assert_eq!(
+            step.outcome,
+            O::Swapped {
+                admit: 0.0,
+                rest_roll,
+                hit_roll,
+                rest_index,
+                hit_index,
+                rest_slot,
+                hit_slot,
+            }
+        );
+        expected[rest_slot] = true;
+        expected[hit_slot] = false;
+        assert_eq!(state.pending().unwrap(), expected);
+    }
+}
 
 #[test]
 fn hat_accumulates_ascending_swaps_without_rewriting_the_audible_cycle() {

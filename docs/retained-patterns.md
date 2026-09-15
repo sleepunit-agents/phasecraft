@@ -39,7 +39,25 @@ set of sounding slots.
 `material()` returns only the committed slots. `pending()` exposes the pending copy
 for diagnostics. `MutationStep` reports the transport slot, optional occurrence,
 commit flag, outcome, and the actual selected material slots and rolls on a swap.
+The swap's `rest_index` and `hit_index` are zero-based positions in the ascending
+lists **before** that edit, distinct from `rest_slot` and `hit_slot` in the material.
 An absent pending copy differs from a pending copy equal to the audible pattern.
+
+## Forced selection indices
+
+The companion's mutation pins name list indices, while `advance` accepts rolls.
+The Rust helper `mutation_index_roll(index, count)` bridges those representations:
+pass the eligible rest count for `RestIndex`, or hit count for `HitIndex`. For
+hat-memory these counts stay ten and six because swaps conserve the hit count.
+The helper accepts counts 1–4096 and indices below the count; invalid inputs return
+an error. It chooses `(index + 0.5) / count`, the bucket midpoint. Using `index / count`
+can round below the intended bucket (for example index 15 of 22 selects 14).
+
+All valid index/count pairs through 4096 are checked for exact recovery by the
+evaluator's floor-of-roll-times-count selection. A 44-slot regression also checks
+the reported indices and actual pending slots across accumulating edits and a
+cycle commit. This API does not resolve authored pins or add pin provenance to
+inspect; that remains part of the authoring/playback integration.
 
 ## Bounds and integration obligations
 
