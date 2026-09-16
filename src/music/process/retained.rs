@@ -92,6 +92,16 @@ impl From<RetainedPattern> for File {
     }
 }
 impl RetainedPattern {
+    /// Fixed transport phase of the reader, not a repetition of the evolving hits.
+    pub fn cycle_ticks(&self) -> u64 {
+        self.initial.material().len() as u64 * crate::music::STEP_TICKS
+    }
+
+    /// Fixed opportunity clock; suspended scenes and refused draws do not stop it.
+    pub fn every_ticks(&self) -> u64 {
+        u64::from(self.file.change.every.slots) * crate::music::STEP_TICKS
+    }
+
     /// Bind the stable source name and the complete scene vocabulary once, at load.
     /// An absent chance entry suspends a declared scene; an unknown scene is an error.
     pub fn bind(&self, name: &str, scenes: &[&str]) -> Result<RetainedSource, String> {

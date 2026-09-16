@@ -42,7 +42,8 @@ pub enum Clock {
 /// `voices.<id>.velocity.cycle` (`parts.` is the same word). Velocity per=event
 /// is an event clock even when it has a periodic reset; per=step has a transport period.
 /// `lanes.<name>.every` names a walk's step clock, not a repetition of its values.
-/// `patterns.*` (M1.5) remains an error that names the key. Nothing is stubbed.
+/// `patterns.<name>.change.every` names the fixed mutation opportunity clock.
+/// A retained reader's trigger.cycle names its material-length phase, not repeated hits.
 pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
     let segments: Vec<&str> = key.split('.').collect();
     match segments.as_slice() {
@@ -71,13 +72,12 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
                 return Ok(Clock::Absent);
             };
             let period = if *stream == "trigger" {
-                if matches!(
-                    part.trigger.rhythm,
-                    super::rhythm::Expression::Retained { .. }
-                ) {
-                    return Err(format!(
-                        "{key}: retained material has no fixed repeating trigger period; pattern member clocks are not yet supported"
-                    ));
+                if let super::rhythm::Expression::Retained { pattern } = &part.trigger.rhythm {
+                    let source = c
+                        .patterns
+                        .get(pattern)
+                        .ok_or_else(|| format!("{key}: unknown retained pattern {pattern:?}"))?;
+                    return Ok(Clock::Fixed(source.cycle_ticks()));
                 }
                 super::cycle::trigger_period_ticks(c, part)?
             } else {
@@ -90,8 +90,13 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
         ["voices" | "parts", ..] => Err(format!(
             "{key}: a voice's clocks are trigger.cycle, accent.cycle and velocity.cycle; velocity per=event has no fixed transport period"
         )),
+        ["patterns", name, "change", "every"] => c
+            .patterns
+            .get(*name)
+            .map(|pattern| Clock::Fixed(pattern.every_ticks()))
+            .ok_or_else(|| format!("{key}: unknown retained pattern {name:?}")),
         ["patterns", ..] => Err(format!(
-            "{key}: retained pattern member clocks are not supported yet (M1.5), so the key cannot be resolved; it is not guessed"
+            "{key}: not a pattern member clock; use patterns.<name>.change.every"
         )),
         ["lanes", name, "every"] => {
             let lane = c
@@ -750,7 +755,10 @@ mod tests {
             Ok(Clock::Absent)
         );
         for (key, says) in [
-            ("patterns.hat-memory.change.every", "M1.5"),
+            (
+                "patterns.hat-memory.change.every",
+                "unknown retained pattern",
+            ),
             ("lanes.drift.every", "unknown shared lane"),
             ("voices.hat.velocity", "velocity.cycle"),
             ("weather", "not a clock"),
