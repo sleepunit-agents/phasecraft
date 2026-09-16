@@ -24,7 +24,7 @@ phrase-locked decision in the piece, so the router's cadence must not touch it.
 
 ```toml
 [returns.hat_system]
-align = ["voices.hat.trigger.cycle", "voices.memory.trigger.cycle", "voices.drift.trigger.cycle"]
+align = ["voices.hat.trigger.cycle", "patterns.hat-memory.change.every", "lanes.drift.every"]
 ```
 
 A return group names *what has to line up*, never a number of bars. Each key names a fixed
@@ -38,9 +38,9 @@ What a key resolves to today:
 
 | key | resolves to |
 |---|---|
-| `voices.<id>.trigger.cycle` (`parts.` is the same word) | the structural period of that voice's trigger rhythm, in ticks: steps × the voice's subdivision, through Boolean and Part-reference expressions |
+| `voices.<id>.trigger.cycle` (`parts.` is the same word) | the structural period of that voice's trigger rhythm, in ticks: steps × the voice's subdivision, through Boolean and Part-reference expressions; a direct retained reader instead exposes its fixed material-length reading phase, without promising repeated hits |
 | `voices.<id>.accent.cycle` | the same for its own accent stream |
-| `patterns.<name>.change.every` | **not yet** — M1.5 playback exists, but pattern member clocks remain unwired. Load error naming the key; nothing is guessed |
+| `patterns.<name>.change.every` | the retained source's fixed mutation opportunity interval (`change.every.slots` × 240 ticks), even while suspended or refusing mutations; unknown patterns are errors |
 | `lanes.<name>.every` | a shared walk's fixed step interval (`every.slots` × 240 ticks); its values need not repeat. Unknown lanes and target lanes without this top-level clock are refused |
 | anything else | load error naming the key and the shapes above |
 
@@ -195,7 +195,7 @@ and `start` inside `[router]`:
 
 ```toml
 [returns.hat_system]
-align = ["voices.hat.trigger.cycle", "voices.memory.trigger.cycle", "voices.drift.trigger.cycle"]
+align = ["voices.hat.trigger.cycle", "patterns.hat-memory.change.every", "lanes.drift.every"]
 
 [router]
 start = "crowded"

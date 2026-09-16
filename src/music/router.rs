@@ -42,7 +42,8 @@ pub enum Clock {
 /// `voices.<id>.velocity.cycle` (`parts.` is the same word). Velocity per=event
 /// is an event clock even when it has a periodic reset; per=step has a transport period.
 /// `lanes.<name>.every` names a walk's step clock, not a repetition of its values.
-/// `patterns.*` (M1.5) remains an error that names the key. Nothing is stubbed.
+/// `patterns.<name>.change.every` names the fixed mutation opportunity clock.
+/// A retained reader's trigger.cycle names its material-length phase, not repeated hits.
 pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
     let segments: Vec<&str> = key.split('.').collect();
     match segments.as_slice() {
@@ -71,27 +72,33 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
                 return Ok(Clock::Absent);
             };
             let period = if *stream == "trigger" {
-                if matches!(
-                    part.trigger.rhythm,
-                    super::rhythm::Expression::Retained { .. }
-                ) {
-                    return Err(format!(
-                        "{key}: retained material has no fixed repeating trigger period; pattern member clocks are not yet supported"
-                    ));
+                if let super::rhythm::Expression::Retained { pattern } = &part.trigger.rhythm {
+                    let source = retained_pattern(c, key, pattern)?;
+                    return Ok(Clock::Fixed(source.cycle_ticks()));
                 }
-                super::cycle::trigger_period_ticks(c, part)?
+                super::cycle::trigger_period(c, part)?
             } else {
-                super::cycle::accent_period_ticks(c, part)?
+                super::cycle::accent_period(c, part)?
             };
             period
                 .map(Clock::Fixed)
-                .ok_or_else(|| format!("{key}: the {stream} period does not fit in u64 ticks"))
+                .map_err(|cause| match cause {
+                    super::cycle::PeriodError::Retained => format!(
+                        "{key}: the {stream} has no fixed structural repetition period because it depends on evolving retained material"
+                    ),
+                    super::cycle::PeriodError::Overflow => format!(
+                        "{key}: the {stream} period does not fit in u64 ticks"
+                    ),
+                })
         }
         ["voices" | "parts", ..] => Err(format!(
             "{key}: a voice's clocks are trigger.cycle, accent.cycle and velocity.cycle; velocity per=event has no fixed transport period"
         )),
+        ["patterns", name, "change", "every"] => {
+            Ok(Clock::Fixed(retained_pattern(c, key, name)?.every_ticks()))
+        }
         ["patterns", ..] => Err(format!(
-            "{key}: retained pattern member clocks are not supported yet (M1.5), so the key cannot be resolved; it is not guessed"
+            "{key}: not a pattern member clock; use patterns.<name>.change.every"
         )),
         ["lanes", name, "every"] => {
             let lane = c
@@ -112,6 +119,15 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
             "{key}: not a clock this engine can name; a member is voices.<id>.trigger.cycle, voices.<id>.accent.cycle, patterns.<name>.change.every or lanes.<name>.every"
         )),
     }
+}
+fn retained_pattern<'a>(
+    c: &'a Composition,
+    key: &str,
+    name: &str,
+) -> Result<&'a super::process::retained::RetainedPattern, String> {
+    c.patterns
+        .get(name)
+        .ok_or_else(|| format!("{key}: unknown retained pattern {name:?}"))
 }
 fn gcd(mut a: u64, mut b: u64) -> u64 {
     while b != 0 {
@@ -750,7 +766,10 @@ mod tests {
             Ok(Clock::Absent)
         );
         for (key, says) in [
-            ("patterns.hat-memory.change.every", "M1.5"),
+            (
+                "patterns.hat-memory.change.every",
+                "unknown retained pattern",
+            ),
             ("lanes.drift.every", "unknown shared lane"),
             ("voices.hat.velocity", "velocity.cycle"),
             ("weather", "not a clock"),

@@ -11,7 +11,7 @@ Composition now accepts named `[patterns.NAME]` sources and
 committed material through the normal admission, ornament, velocity and MIDI path.
 See [the playable example](../examples/studies/retained-memory.toml) and the
 Composition section below. External pattern-file loading, mixed seeds loading,
-authored mutation pins in Composition, pattern return clocks and the t-508 CLI
+authored mutation pins in Composition and the t-508 CLI
 pin-window summary remain unwired. This does not yet load the companion project.
 
 ## Clock and boundary contract
@@ -276,8 +276,31 @@ there is no retained-state migration across edits.
 `inspect` emits `trigger.rhythm.type = "retained"`, the pattern name, absolute
 slot and structural active bit. It uses the same compiled path as MIDI playback.
 This is **not** the t-508 mutation-pin landing report. The material is evolving,
-so cycle metadata does not claim a repeating structural period. Pattern clocks
-such as `patterns.NAME.change.every` are not yet accepted in return groups.
+so cycle metadata does not claim a repeating structural period.
+
+Return groups distinguish that evolving material from its fixed transport clocks:
+`patterns.NAME.change.every` is the mutation opportunity interval, including
+suspended and refused opportunities. `voices.ID.trigger.cycle` (also `parts.ID`)
+for a retained reader is the source's material length in sixteenth slots. Both
+start at transport zero. The latter is a reading phase, not a promise that hits
+repeat. Part references to retained readers still have no structural repetition
+period, including through boolean expressions; only the direct retained reader
+exposes this return-group clock. Return-member errors distinguish this absent
+structural period from a fixed period that overflows the tick grid. Swap conserves
+slot count, so the initial material length stays valid throughout playback.
+Future companion loading must check an authored voice `cycle` against this derived
+length, rather than trust or silently replace the written value.
+
+`examples/studies/retained-returns.toml` joins the real 16-slot reader, 5-slot
+mutation clock and 7-slot drift clock: the checked LCM is 560 slots (35 bars).
+The router lands before mutation at a return, so entering hollow suspends that
+same opportunity; leaving hollow resumes it under the incoming scene. Previously
+pending edits still commit first. Scenes may omit a reader but cannot change a
+member's period. Source definitions remain root-owned across every scene.
+`tests/retained_clocks.rs` checks these boundaries against the chronological source,
+MIDI, backward seeks and round trips, and keeps the structural-cycle diagnostic
+unset. This native example does not yet load the companion's external files or
+consume drift as a timing offset.
 
 `tests/retained_playback.rs` compares MIDI and structural decisions against the
 chronological source across two readers, a 17-slot pattern, reader-free mutation,

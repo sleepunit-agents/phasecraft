@@ -1,0 +1,44 @@
+# Retained material, mutation opportunities and drift align every 35 bars.
+# Native subset of until-stop: drift supplies a clock; timing consumption is still future work.
+tempo = 126
+seed = 91827
+phrase_bars = 1
+
+[patterns.hat-memory]
+initial = "x ~ x ~ ~ x ~ x ~ ~ x ~ x ~ ~ ~"
+elsewhere = "hold"
+carry = "always"
+[patterns.hat-memory.change]
+every = { slots = 5 }
+chance = { crowded = 0.23, exposed = 0.05 }
+moves = ["swap"]
+apply = { on = "cycle" }
+
+[parts.hat]
+use = "techno.closed_hat"
+trigger.pattern = { pattern = "hat-memory" }
+trigger.probability = 1.0
+accent.probability = 0.0
+
+[lanes.drift]
+every = { slots = 7 }
+start = 0
+step = [-10, 0, 10]
+bounds = [-30, 30]
+carry = "always"
+
+[scenes.crowded]
+[scenes.exposed]
+[scenes.hollow]
+parts.hat.trigger.probability = 0.0
+
+[returns.hat_system]
+align = ["voices.hat.trigger.cycle", "patterns.hat-memory.change.every", "lanes.drift.every"]
+
+[router]
+start = "crowded"
+every = { returns = "hat_system" }
+[router.routes]
+crowded = { crowded = 0.70, exposed = 0.25, hollow = 0.05 }
+exposed = { crowded = 0.30, exposed = 0.55, hollow = 0.15 }
+hollow = { crowded = 0.30, exposed = 0.45, hollow = 0.25 }

@@ -10,47 +10,63 @@ pub struct CycleSpan {
     pub phase_origin_tick: u64,
     pub phrase_steps: u64,
     /// Common structural phase alignment, not a promise of identical realized events.
-    /// None means the common multiple exceeds u64 (or a future source has no known cycle).
+    /// None means the common multiple exceeds u64 or a source has no fixed structural cycle.
     pub phase_alignment_steps: Option<u64>,
     pub phase_alignment_ticks: Option<u64>,
 }
-fn lcm(a: Option<u64>, b: Option<u64>) -> Option<u64> {
+/// Why a structural period cannot supply a fixed transport clock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PeriodError {
+    Retained,
+    Overflow,
+}
+type Period = Result<u64, PeriodError>;
+fn lcm(a: Period, b: Period) -> Period {
+    // Evolving material has no period regardless of the other operand's size.
+    if a == Err(PeriodError::Retained) || b == Err(PeriodError::Retained) {
+        return Err(PeriodError::Retained);
+    }
     let (a, b) = (a?, b?);
     let (mut x, mut y) = (a, b);
     while y != 0 {
         (x, y) = (y, x % y);
     }
-    (a / x).checked_mul(b)
+    (a / x).checked_mul(b).ok_or(PeriodError::Overflow)
 }
 fn expression(
     e: &Expression,
     phrase: u64,
     cell: u64,
-    references: &BTreeMap<&str, Option<u64>>,
-) -> Option<u64> {
+    references: &BTreeMap<&str, Period>,
+) -> Period {
     match e {
-        Expression::Retained { .. } => None,
-        Expression::Literal { .. } => e.literal_schedule().map(|p| p.schedule().period_ticks()),
+        Expression::Retained { .. } => Err(PeriodError::Retained),
+        Expression::Literal { .. } => e
+            .literal_schedule()
+            .map(|p| p.schedule().period_ticks())
+            .ok_or(PeriodError::Overflow),
         Expression::Euclidean {
             steps,
             reset_on_phrase,
             ..
         } => {
             if *reset_on_phrase {
-                lcm(Some(phrase), Some(cell))
+                lcm(Ok(phrase), Ok(cell))
             } else {
-                u64::from(*steps).checked_mul(cell)
+                u64::from(*steps)
+                    .checked_mul(cell)
+                    .ok_or(PeriodError::Overflow)
             }
         }
         Expression::Binary { a, b, .. } => lcm(
             expression(a, phrase, cell, references),
             expression(b, phrase, cell, references),
         ),
-        Expression::Part { id, .. } => lcm(references[id.as_str()], Some(cell)),
+        Expression::Part { id, .. } => lcm(references[id.as_str()], Ok(cell)),
     }
 }
 /// Every Part's trigger period in ticks, in evaluation order so references resolve first.
-fn trigger_periods(c: &Composition) -> Result<BTreeMap<&str, Option<u64>>, String> {
+fn trigger_periods(c: &Composition) -> Result<BTreeMap<&str, Period>, String> {
     let mut refs = BTreeMap::new();
     for part in c.evaluation_order()? {
         let cycle = expression(
@@ -63,12 +79,18 @@ fn trigger_periods(c: &Composition) -> Result<BTreeMap<&str, Option<u64>>, Strin
     }
     Ok(refs)
 }
-/// The structural period of one Part's trigger stream in ticks; None past u64.
+/// The structural trigger period; None for evolving material or u64 overflow.
 pub fn trigger_period_ticks(c: &Composition, p: &Part) -> Result<Option<u64>, String> {
+    Ok(trigger_period(c, p)?.ok())
+}
+pub(crate) fn trigger_period(c: &Composition, p: &Part) -> Result<Period, String> {
     Ok(trigger_periods(c)?[p.id.as_str()])
 }
-/// The structural period of one Part's own accent stream in ticks; None past u64.
+/// The structural accent period; None for evolving material or u64 overflow.
 pub fn accent_period_ticks(c: &Composition, p: &Part) -> Result<Option<u64>, String> {
+    Ok(accent_period(c, p)?.ok())
+}
+pub(crate) fn accent_period(c: &Composition, p: &Part) -> Result<Period, String> {
     Ok(expression(
         &p.accent.rhythm,
         c.phrase_steps() * STEP_TICKS,
@@ -100,12 +122,12 @@ fn alignment(c: &Composition, p: &Part) -> Option<u64> {
     }
     if let Some(value) = &p.velocity {
         cycle = if value.per() == super::process::Per::Step {
-            lcm(cycle, Some(value.cycle_ticks()))
+            lcm(cycle, Ok(value.cycle_ticks()))
         } else {
-            None
+            return None;
         };
     }
-    cycle
+    cycle.ok()
 }
 pub fn spans(c: &Composition, part_id: &str, start: u64, end: u64) -> Vec<CycleSpan> {
     let mut result = vec![];

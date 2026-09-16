@@ -196,15 +196,6 @@ fn load_rejects_invalid_readers_vocabulary_and_child_sources() {
         let e = Composition::parse(&text).unwrap_err();
         assert!(e.contains(needle), "{e}");
     }
-    let error = Composition::parse(&format!(
-        "{}\n[returns.retained]\nalign=['voices.hat.trigger.cycle']",
-        base()
-    ))
-    .unwrap_err();
-    assert!(
-        error.contains("no fixed repeating trigger period"),
-        "{error}"
-    );
     let mut c = arranged();
     c.arrangement.as_mut().unwrap().sections[0]
         .composition
