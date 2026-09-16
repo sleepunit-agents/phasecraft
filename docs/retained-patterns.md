@@ -246,10 +246,15 @@ Trigger probability still gates committed hits; it does not gate mutation.
 
 Router scenes and arrangement phrases supply the source's chance key. The enclosing
 transport rejects unknown chance keys. All expanded children must preserve the
-root's patterns; phrase inheritance does this automatically. A standalone snapshot
-uses the key `default`; other scene keys are inert until the snapshot belongs to
-a journey. This permits leaf snapshots to deserialize before their enclosing
-scene vocabulary exists. To mutate a standalone pattern, write `chance = { default = ... }`.
+root's patterns; phrase inheritance does this automatically. A standalone root
+uses only the key `default`; other chance keys are load errors, including scene
+names intended for a future journey. To mutate a standalone pattern, write
+`chance = { default = ... }`; an empty chance table suspends it.
+`Composition::parse`, `Composition::read` (including project loads), and explicit
+`Composition::validate` check the complete root vocabulary. Raw serde conversion
+is an intermediate snapshot operation: leaf snapshots deserialize before their
+enclosing scene vocabulary exists. Call `validate` before using a raw standalone
+conversion as a transport root.
 
 Sources advance at every transport sixteenth, including scenes with no retained
 reader. All Parts and scene snapshots share the same source state. The root seed
@@ -264,7 +269,8 @@ lookups use those samples; a backward miss resets source state and replays from
 zero. Random seeks therefore preserve history without retaining all patterns, but
 replay cost grows with transport position. The retained transport also keeps its own router move log for replay, using the
 existing router evaluator; this slice does not bound those logs or establish realtime seek
-latency. A newly compiled score after reload replays the new score from zero;
+latency. Its scene-location logic mirrors the router and compiled arrangement paths;
+changes to visit semantics must update both so audible scenes and mutation clocks agree. A newly compiled score after reload replays the new score from zero;
 there is no retained-state migration across edits.
 
 `inspect` emits `trigger.rhythm.type = "retained"`, the pattern name, absolute

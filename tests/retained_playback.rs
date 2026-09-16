@@ -143,6 +143,12 @@ exposed={{crowded=0.5,exposed=0.5}}
         base()
     ))
     .unwrap();
+    c.validate().unwrap();
+    let c = Composition::parse(&toml::to_string(&c).unwrap()).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("routed.toml");
+    std::fs::write(&path, toml::to_string(&c).unwrap()).unwrap();
+    let c = Composition::read(&path).unwrap();
     let expected = expected(&c, 350);
     let mut compiled = Compiled::new(&c);
     for slot in 0..350 {
@@ -210,7 +216,7 @@ fn load_rejects_invalid_readers_vocabulary_and_child_sources() {
 fn standalone_default_scene_and_probability_zero_keep_structural_material() {
     let text = base()
         .replace("crowded = 0.23", "default = 1.0")
-        .replace("exposed = 0.05", "");
+        .replace(", exposed = 0.05", "");
     let c = Composition::parse(&text).unwrap();
     let mut source = c.patterns["memory"].bind("memory", &["default"]).unwrap();
     let mut compiled = Compiled::new(&c);
@@ -267,7 +273,7 @@ fn standalone_default_scene_and_probability_zero_keep_structural_material() {
 fn neighbor_groove_and_part_references_preserve_random_lookup_results() {
     let text = base()
         .replace("crowded = 0.23", "default = 0.75")
-        .replace("exposed = 0.05", "");
+        .replace(", exposed = 0.05", "");
     let mut c = Composition::parse(&text).unwrap();
     c.parts[0].groove.run = phasecraft::music::groove::RunContour::RampUp;
     c.parts[1].trigger.rhythm = phasecraft::music::rhythm::Expression::Part {
@@ -296,4 +302,48 @@ fn neighbor_groove_and_part_references_preserve_random_lookup_results() {
             .unwrap()
             .is_none()
     );
+}
+
+#[test]
+fn standalone_chance_vocabulary_is_checked_at_root_load_boundaries() {
+    let valid = base()
+        .replace("crowded = 0.23", "default = 0.23")
+        .replace(", exposed = 0.05", "");
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("piece.toml");
+    for key in ["crowdd", "crowded"] {
+        let invalid = valid.replace("default =", &format!("{key} ="));
+        let error = Composition::parse(&invalid).unwrap_err();
+        assert!(
+            error.contains(&format!("unknown chance scene \"{key}\"")),
+            "{error}"
+        );
+        std::fs::write(&path, &invalid).unwrap();
+        let error = Composition::read(&path).unwrap_err();
+        assert!(
+            error.contains(&format!("unknown chance scene \"{key}\"")),
+            "{error}"
+        );
+        assert!(error.contains("piece.toml"), "{error}");
+    }
+    // Raw serde is also used for intermediate scene snapshots. Explicit root
+    // validation must reject the same typo after that intermediate conversion.
+    let c = Composition::parse(&valid).unwrap();
+    let serialized = toml::to_string(&c).unwrap();
+    let invalid: Composition =
+        toml::from_str(&serialized.replace("default =", "crowdd =")).unwrap();
+    assert!(
+        invalid
+            .validate()
+            .unwrap_err()
+            .contains("unknown chance scene")
+    );
+    assert!(Composition::parse(&serialized.replace("default =", "crowdd =")).is_err());
+    for text in [valid.clone(), valid.replace("default = 0.23", "")] {
+        let c = Composition::parse(&text).unwrap();
+        c.validate().unwrap();
+        std::fs::write(&path, &text).unwrap();
+        Composition::read(&path).unwrap();
+        Composition::parse(&toml::to_string(&c).unwrap()).unwrap();
+    }
 }

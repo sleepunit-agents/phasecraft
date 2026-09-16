@@ -28,12 +28,8 @@ pub(crate) fn validate(c: &Composition) -> Result<(), String> {
     {
         return Err("retained material is currently a trigger source".into());
     }
-    let names = scene_names(c);
     if c.router.is_some() || c.arrangement.is_some() {
-        let names: Vec<_> = names.iter().map(String::as_str).collect();
-        for (name, pattern) in &c.patterns {
-            pattern.bind(name, &names)?;
-        }
+        validate_root(c)?;
     }
     for child in c
         .arrangement
@@ -65,19 +61,21 @@ pub(crate) fn validate(c: &Composition) -> Result<(), String> {
     }
     Ok(())
 }
+pub(crate) fn validate_root(c: &Composition) -> Result<(), String> {
+    let names = scene_names(c);
+    let names: Vec<_> = names.iter().map(String::as_str).collect();
+    for (name, pattern) in &c.patterns {
+        pattern.bind(name, &names)?;
+    }
+    Ok(())
+}
 fn scene_names(c: &Composition) -> BTreeSet<String> {
     if let Some(r) = &c.router {
         r.scenes.iter().map(|s| s.name.clone()).collect()
     } else if let Some(a) = &c.arrangement {
         a.sections.iter().map(|s| s.phrase.clone()).collect()
     } else {
-        // Leaf snapshots also deserialize before their enclosing router. Their chance
-        // vocabulary is checked by the enclosing transport, not this temporary leaf.
-        c.patterns
-            .values()
-            .flat_map(|p| p.file.change.chance.keys().cloned())
-            .chain(std::iter::once("default".into()))
-            .collect()
+        BTreeSet::from(["default".into()])
     }
 }
 
@@ -94,18 +92,14 @@ pub(crate) struct Transport {
 impl Transport {
     pub(crate) fn new(c: &Composition) -> Self {
         let names = scene_names(c);
+        let names: Vec<_> = names.iter().map(String::as_str).collect();
         let initial: BTreeMap<_, _> = c
             .patterns
             .iter()
             .map(|(name, p)| {
                 (
                     name.clone(),
-                    RetainedSource {
-                        name: name.clone(),
-                        scenes: names.clone(),
-                        chance: p.file.change.chance.clone(),
-                        state: p.initial.clone(),
-                    },
+                    p.bind(name, &names).expect("validated retained vocabulary"),
                 )
             })
             .collect();

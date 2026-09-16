@@ -537,7 +537,7 @@ impl Router {
                     scene.name
                 ));
             }
-            s.validate()
+            s.validate_snapshot()
                 .map_err(|e| format!("scene {:?}: {e}", scene.name))?;
             for ((key, root), (_, here)) in base.iter().zip(group.resolve(s, group_name)?) {
                 match (root, here) {
