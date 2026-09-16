@@ -410,21 +410,23 @@ fn admission(
     part_id: &str,
     step: u64,
     name: &str,
-    lane: (&Expression, f64, ProbabilityMode),
+    lane: (&Expression, f64, ProbabilityMode, Option<RhythmTrace>),
     reference: &dyn Fn(&str, ReferenceMode) -> bool,
 ) -> DecisionTrace {
-    let (expression, probability, mode) = lane;
+    let (expression, probability, mode, retained) = lane;
     let event_identity = match mode {
         ProbabilityMode::PhraseLocked => {
             decision_identity(c, cell, step, ProbabilityMode::PhraseLocked)
         }
         ProbabilityMode::Continuous => step,
     };
-    let rhythm = expression.evaluate_position(
-        step,
-        (step * cell % (c.phrase_steps() * STEP_TICKS)) / cell,
-        reference,
-    );
+    let rhythm = retained.unwrap_or_else(|| {
+        expression.evaluate_position(
+            step,
+            (step * cell % (c.phrase_steps() * STEP_TICKS)) / cell,
+            reference,
+        )
+    });
     // The literal marker gates a main hit only for `x?`. Plain hits and the main
     // hit of `x*n?` are structural; the latter's one draw belongs to tail expansion.
     let probability = match &rhythm {
@@ -449,6 +451,7 @@ fn resolve_part(
     part: &Part,
     step: u64,
     reference: &dyn Fn(&str, ReferenceMode) -> bool,
+    retained: Option<RhythmTrace>,
 ) -> StepTrace {
     let trigger = admission(
         c,
@@ -460,6 +463,7 @@ fn resolve_part(
             &part.trigger.rhythm,
             part.trigger.probability,
             part.trigger.probability_mode,
+            retained,
         ),
         reference,
     );
@@ -473,6 +477,7 @@ fn resolve_part(
             &part.accent.rhythm,
             part.accent.probability,
             part.accent.probability_mode,
+            None,
         ),
         reference,
     );

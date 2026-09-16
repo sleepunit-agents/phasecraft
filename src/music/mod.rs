@@ -21,8 +21,11 @@ pub const PPQN: u64 = 960;
 pub const STEP_TICKS: u64 = PPQN / 4;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+// Raw serde conversion validates snapshots; use parse/read or validate() for a root.
 #[serde(try_from = "CompositionFile")]
 pub struct Composition {
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub patterns: std::collections::BTreeMap<String, process::retained::RetainedPattern>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub lanes: std::collections::BTreeMap<String, shared::Lane>,
     pub tempo: f64,
@@ -46,6 +49,8 @@ pub struct Composition {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CompositionFile {
+    #[serde(default)]
+    patterns: std::collections::BTreeMap<String, process::retained::RetainedPattern>,
     #[serde(default)]
     lanes: std::collections::BTreeMap<String, shared::Lane>,
     tempo: f64,
@@ -79,6 +84,7 @@ impl TryFrom<CompositionFile> for Composition {
             }
         };
         let mut c = Self {
+            patterns: file.patterns,
             lanes: file.lanes,
             tempo: file.tempo,
             seed: file.seed,
@@ -91,7 +97,7 @@ impl TryFrom<CompositionFile> for Composition {
             pins: Vec::new(),
         };
         c.prepare_patterns()?;
-        c.validate()?;
+        c.validate_snapshot()?;
         // Pins resolve against validated Parts; the address a draw hashes is fixed here, once.
         c.pins = resolve::resolve_pins(&c, &file.pins)?;
         Ok(c)
@@ -240,9 +246,11 @@ impl Composition {
         Ok(())
     }
     pub fn parse(text: &str) -> Result<Self, String> {
-        crate::authoring::library::expand(text, None)?
+        let composition: Self = crate::authoring::library::expand(text, None)?
             .try_into()
-            .map_err(|e: toml::de::Error| e.to_string())
+            .map_err(|e: toml::de::Error| e.to_string())?;
+        composition.validate()?;
+        Ok(composition)
     }
     pub fn read(path: &std::path::Path) -> Result<Self, String> {
         crate::authoring::project::load(path).map(|loaded| loaded.composition)
@@ -303,7 +311,13 @@ impl Composition {
         }
         Ok(result)
     }
+    /// Validate a complete transport, including its retained chance vocabulary.
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_snapshot()?;
+        process::retained::playback::validate_root(self)
+    }
+    // Deserialization also visits children before their enclosing scene vocabulary exists.
+    pub(crate) fn validate_snapshot(&self) -> Result<(), String> {
         if !self.tempo.is_finite() || !(20.0..=400.0).contains(&self.tempo) {
             return Err("tempo must be finite and within 20..400 BPM".into());
         }
@@ -380,6 +394,7 @@ impl Composition {
         self.evaluation_order()?;
         process::validate_carry(self)?;
         shared::validate(self)?;
+        process::retained::playback::validate(self)?;
         if let Some(arrangement) = &self.arrangement {
             arrangement.validate(self.tempo)?;
         }

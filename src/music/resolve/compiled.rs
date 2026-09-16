@@ -2,6 +2,9 @@ use super::*;
 
 /// Compiled dependency order and bounded raw-decision cache, owned by one immutable snapshot.
 pub struct Compiled {
+    retained: Option<
+        std::sync::Arc<std::sync::Mutex<crate::music::process::retained::playback::Transport>>,
+    >,
     shared_seed: u64,
     shared_cache: crate::music::shared::Cache,
     transport_shift: u64,
@@ -21,9 +24,20 @@ pub struct Compiled {
 }
 impl Compiled {
     pub fn new(c: &Composition) -> Self {
-        Self::with_shared_seed(c, c.seed)
+        let retained = (!c.patterns.is_empty()).then(|| {
+            std::sync::Arc::new(std::sync::Mutex::new(
+                crate::music::process::retained::playback::Transport::new(c),
+            ))
+        });
+        Self::with_shared_seed(c, c.seed, retained)
     }
-    fn with_shared_seed(c: &Composition, shared_seed: u64) -> Self {
+    fn with_shared_seed(
+        c: &Composition,
+        shared_seed: u64,
+        retained: Option<
+            std::sync::Arc<std::sync::Mutex<crate::music::process::retained::playback::Transport>>,
+        >,
+    ) -> Self {
         let indices: std::collections::BTreeMap<_, _> = c
             .parts
             .iter()
@@ -42,7 +56,7 @@ impl Compiled {
             .map(|a| {
                 a.sections
                     .iter()
-                    .map(|s| Self::with_shared_seed(&s.composition, shared_seed))
+                    .map(|s| Self::with_shared_seed(&s.composition, shared_seed, retained.clone()))
                     .collect()
             })
             .unwrap_or_default();
@@ -52,7 +66,7 @@ impl Compiled {
             .map(|r| {
                 r.scenes
                     .iter()
-                    .map(|s| Self::with_shared_seed(&s.composition, shared_seed))
+                    .map(|s| Self::with_shared_seed(&s.composition, shared_seed, retained.clone()))
                     .collect()
             })
             .unwrap_or_default();
@@ -61,6 +75,7 @@ impl Compiled {
             .as_ref()
             .map_or(0, |r| r.period_ticks(c).expect("validated composition"));
         Self {
+            retained,
             shared_seed,
             shared_cache: Default::default(),
             transport_shift: 0,
@@ -82,6 +97,7 @@ impl Compiled {
     fn set_transport_shift(&mut self, shift: u64) {
         if self.transport_shift != shift {
             self.transport_shift = shift;
+            self.raw.clear();
             self.cells.clear();
             self.cell_keys.clear();
             self.value_prefix.clear();
@@ -182,6 +198,8 @@ impl Compiled {
         if let Some(traces) = self.raw.get(&tick) {
             return traces.clone();
         }
+        let slot = (tick + self.transport_shift) / STEP_TICKS;
+        let material = self.retained.as_ref().map(|r| r.lock().unwrap().at(slot));
         let c = &self.composition;
         let mut resolved = vec![None; c.parts.len()];
         for &index in &self.order {
@@ -195,7 +213,22 @@ impl Compiled {
                         ReferenceMode::Hits => target.trigger.admitted,
                     }
             };
-            resolved[index] = Some(resolve_part(c, part, tick / part.subdivision.0, &reference));
+            let retained = if let Expression::Retained { pattern } = &part.trigger.rhythm {
+                Some(RhythmTrace::Retained {
+                    pattern: pattern.clone(),
+                    slot,
+                    active: material.as_ref().expect("retained transport")[pattern],
+                })
+            } else {
+                None
+            };
+            resolved[index] = Some(resolve_part(
+                c,
+                part,
+                tick / part.subdivision.0,
+                &reference,
+                retained,
+            ));
         }
         let traces =
             std::sync::Arc::new(resolved.into_iter().map(Option::unwrap).collect::<Vec<_>>());

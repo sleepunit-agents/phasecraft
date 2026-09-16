@@ -61,7 +61,7 @@ impl Arrangement {
                 return Err("all arrangement phrases must use the same tempo".into());
             }
             s.composition
-                .validate()
+                .validate_snapshot()
                 .map_err(|e| format!("phrase {:?}: {e}", s.phrase))?;
         }
         if self.steps() > 65536 * 16 {
