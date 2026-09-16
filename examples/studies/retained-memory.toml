@@ -1,0 +1,34 @@
+# Six hits move within sixteen slots; hollow suspends mutation and has no reader.
+# This native example uses an ordered journey, not the companion's returns router.
+tempo = 126
+seed = 91827
+phrase_bars = 1
+
+[patterns.hat-memory]
+initial = "x ~ x ~ ~ x ~ x ~ ~ x ~ x ~ ~ ~"
+elsewhere = "hold"
+carry = "always"
+[patterns.hat-memory.change]
+every = { slots = 5 }
+chance = { crowded = 0.23, exposed = 0.05 }
+moves = ["swap"]
+apply = { on = "cycle" }
+
+[parts.hat]
+use = "techno.closed_hat"
+trigger.pattern = { pattern = "hat-memory" }
+trigger.probability = 1.0
+accent.probability = 0.0
+
+[phrases.crowded]
+[phrases.hollow]
+parts.hat.trigger.pattern = "~"
+[phrases.exposed]
+
+[arrangement]
+repeat = true
+sections = [
+  { phrase = "crowded", bars = 4 },
+  { phrase = "hollow", bars = 2 },
+  { phrase = "exposed", bars = 4 },
+]

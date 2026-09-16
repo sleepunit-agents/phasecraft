@@ -1,6 +1,7 @@
-//! Prepared hat-memory source. Callers own scene traversal; Composition references
-//! and playback integration are not yet supported.
+//! Prepared hat-memory source. The compiled transport supplies scene traversal
+//! for Composition readers; standalone callers may drive the source directly.
 pub mod pins;
+pub(crate) mod playback;
 use super::{Apply, Carry, MutationDecision, MutationStep, RetainedSwap};
 use crate::music::resolve::{Dice, Draw};
 use serde::{Deserialize, Serialize};

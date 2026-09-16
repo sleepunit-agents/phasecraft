@@ -214,7 +214,7 @@ pub struct MutationStep {
 }
 
 /// M1.5's bounded swap evaluator. One call advances exactly one sixteenth-note slot.
-/// This is not yet wired to Composition authoring, the resolver, or MIDI playback.
+/// Composition playback shares this state through the retained transport.
 #[derive(Clone, Debug)]
 pub struct RetainedSwap {
     material: Vec<bool>,

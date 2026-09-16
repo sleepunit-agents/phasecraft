@@ -29,6 +29,7 @@ fn expression(
     references: &BTreeMap<&str, Option<u64>>,
 ) -> Option<u64> {
     match e {
+        Expression::Retained { .. } => None,
         Expression::Literal { .. } => e.literal_schedule().map(|p| p.schedule().period_ticks()),
         Expression::Euclidean {
             steps,

@@ -136,10 +136,13 @@ pub fn load_draft(path: &Path) -> Result<Loaded, String> {
     let source = fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     let draft = super::library::expand_with_libraries(&source, file.parent(), &libraries)
         .map_err(|e| format!("{}: {e}", file.display()))?;
-    let composition = draft
+    let composition: Composition = draft
         .value
         .try_into()
         .map_err(|e: toml::de::Error| format!("{}: {e}", file.display()))?;
+    composition
+        .validate()
+        .map_err(|e| format!("{}: {e}", file.display()))?;
     Ok(Loaded {
         composition,
         midi,

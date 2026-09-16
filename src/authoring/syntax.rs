@@ -44,8 +44,16 @@ pub(super) fn behavior(fields: &mut Table) -> Result<(), String> {
             return Err("choose trigger.pattern or trigger.rhythm, not both".into());
         }
         let mut literal = Table::new();
-        literal.insert("type".into(), Value::String("literal".into()));
-        literal.insert("pattern".into(), pattern);
+        if let Value::Table(reference) = pattern {
+            if reference.len() != 1 || !reference.contains_key("pattern") {
+                return Err("retained trigger.pattern requires exactly { pattern = name }".into());
+            }
+            literal.insert("type".into(), Value::String("retained".into()));
+            literal.insert("pattern".into(), reference["pattern"].clone());
+        } else {
+            literal.insert("type".into(), Value::String("literal".into()));
+            literal.insert("pattern".into(), pattern);
+        }
         trigger.insert("rhythm".into(), Value::Table(literal));
     }
     if let Some(output) = fields.get_mut("output").and_then(Value::as_table_mut)
