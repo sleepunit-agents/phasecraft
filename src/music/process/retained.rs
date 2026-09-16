@@ -93,6 +93,7 @@ impl From<RetainedPattern> for File {
 }
 impl RetainedPattern {
     /// Fixed transport phase of the reader, not a repetition of the evolving hits.
+    /// Swap conserves slot count, so initial and current material have the same length.
     pub fn cycle_ticks(&self) -> u64 {
         self.initial.material().len() as u64 * crate::music::STEP_TICKS
     }

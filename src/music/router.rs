@@ -73,28 +73,30 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
             };
             let period = if *stream == "trigger" {
                 if let super::rhythm::Expression::Retained { pattern } = &part.trigger.rhythm {
-                    let source = c
-                        .patterns
-                        .get(pattern)
-                        .ok_or_else(|| format!("{key}: unknown retained pattern {pattern:?}"))?;
+                    let source = retained_pattern(c, key, pattern)?;
                     return Ok(Clock::Fixed(source.cycle_ticks()));
                 }
-                super::cycle::trigger_period_ticks(c, part)?
+                super::cycle::trigger_period(c, part)?
             } else {
-                super::cycle::accent_period_ticks(c, part)?
+                super::cycle::accent_period(c, part)?
             };
             period
                 .map(Clock::Fixed)
-                .ok_or_else(|| format!("{key}: the {stream} period does not fit in u64 ticks"))
+                .map_err(|cause| match cause {
+                    super::cycle::PeriodError::Retained => format!(
+                        "{key}: the {stream} has no fixed structural repetition period because it depends on evolving retained material"
+                    ),
+                    super::cycle::PeriodError::Overflow => format!(
+                        "{key}: the {stream} period does not fit in u64 ticks"
+                    ),
+                })
         }
         ["voices" | "parts", ..] => Err(format!(
             "{key}: a voice's clocks are trigger.cycle, accent.cycle and velocity.cycle; velocity per=event has no fixed transport period"
         )),
-        ["patterns", name, "change", "every"] => c
-            .patterns
-            .get(*name)
-            .map(|pattern| Clock::Fixed(pattern.every_ticks()))
-            .ok_or_else(|| format!("{key}: unknown retained pattern {name:?}")),
+        ["patterns", name, "change", "every"] => {
+            Ok(Clock::Fixed(retained_pattern(c, key, name)?.every_ticks()))
+        }
         ["patterns", ..] => Err(format!(
             "{key}: not a pattern member clock; use patterns.<name>.change.every"
         )),
@@ -117,6 +119,15 @@ pub fn member_clock(c: &Composition, key: &str) -> Result<Clock, String> {
             "{key}: not a clock this engine can name; a member is voices.<id>.trigger.cycle, voices.<id>.accent.cycle, patterns.<name>.change.every or lanes.<name>.every"
         )),
     }
+}
+fn retained_pattern<'a>(
+    c: &'a Composition,
+    key: &str,
+    name: &str,
+) -> Result<&'a super::process::retained::RetainedPattern, String> {
+    c.patterns
+        .get(name)
+        .ok_or_else(|| format!("{key}: unknown retained pattern {name:?}"))
 }
 fn gcd(mut a: u64, mut b: u64) -> u64 {
     while b != 0 {

@@ -195,7 +195,7 @@ and `start` inside `[router]`:
 
 ```toml
 [returns.hat_system]
-align = ["voices.hat.trigger.cycle", "voices.memory.trigger.cycle", "voices.drift.trigger.cycle"]
+align = ["voices.hat.trigger.cycle", "patterns.hat-memory.change.every", "lanes.drift.every"]
 
 [router]
 start = "crowded"

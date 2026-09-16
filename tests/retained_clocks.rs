@@ -82,7 +82,16 @@ fn simultaneous_return_commit_and_opportunity_use_the_incoming_room() {
     for slot in 0..1700 {
         let scene = ["crowded", "hollow", "exposed"][(slot / 560 % 3) as usize];
         let sample = source.advance(scene, c.dice()).unwrap();
+        assert_eq!(
+            source.state().material().len(),
+            16,
+            "swap conserves slot count"
+        );
         if slot == 560 {
+            assert!(
+                sample.step.committed,
+                "the prior pending edit was published"
+            );
             assert!(
                 sample.draws.is_empty(),
                 "entering hollow suspends the simultaneous opportunity"
@@ -160,4 +169,68 @@ fn clocks_derive_from_material_and_cadence_and_scene_period_changes_reject() {
         c.router.as_ref().unwrap().period_ticks(&c).unwrap(),
         560 * STEP_TICKS
     );
+}
+
+#[test]
+fn retained_followers_refuse_return_clocks_with_the_absent_period_cause() {
+    for rhythm in [
+        "{ part = 'hat', mode = 'hits' }",
+        "{ part = 'hat', mode = 'structural' }",
+        "{ op = 'or', a = { part = 'hat', mode = 'hits' }, b = { steps = 3, pulses = 1 } }",
+        "{ op = 'and', a = { steps = 3, pulses = 1 }, b = { part = 'hat', mode = 'structural' } }",
+    ] {
+        for stream in ["trigger", "accent"] {
+            let text = format!(
+                "{PIECE}\n[parts.ref]\nuse = 'techno.closed_hat'\noutput.note = 44\n{stream}.rhythm = {rhythm}\n"
+            );
+            // A follower is supported when it is not asked to supply a return clock.
+            let c = Composition::parse(&text).unwrap();
+            let follower = c.parts.iter().find(|p| p.id == "ref").unwrap();
+            let period = if stream == "trigger" {
+                cycle::trigger_period_ticks(&c, follower)
+            } else {
+                cycle::accent_period_ticks(&c, follower)
+            };
+            assert_eq!(period.unwrap(), None);
+            let key = format!("voices.ref.{stream}.cycle");
+            let error = member_clock(&c, &key).unwrap_err();
+            assert!(
+                error.contains(&key)
+                    && error.contains("no fixed structural repetition period")
+                    && error.contains("retained material")
+                    && !error.contains("u64"),
+                "{error}"
+            );
+            let error =
+                Composition::parse(&text.replace("voices.hat.trigger.cycle", &key)).unwrap_err();
+            assert!(
+                error.contains("returns.hat_system")
+                    && error.contains(&key)
+                    && error.contains("no fixed structural repetition period"),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn oversized_fixed_followers_keep_the_overflow_cause() {
+    let mut rhythm = "{ steps = 65521, pulses = 1 }".to_string();
+    for steps in [65519, 65497, 65479, 65449] {
+        rhythm = format!("{{ op = 'or', a = {rhythm}, b = {{ steps = {steps}, pulses = 1 }} }}");
+    }
+    let text = format!(
+        "tempo = 126\nseed = 1\n[parts.large]\nuse = 'techno.closed_hat'\ntrigger.rhythm = {rhythm}\n[parts.ref]\nuse = 'techno.closed_hat'\noutput.note = 44\ntrigger.rhythm = {{ part = 'large', mode = 'structural' }}"
+    );
+    let c = Composition::parse(&text).unwrap();
+    for id in ["large", "ref"] {
+        let key = format!("voices.{id}.trigger.cycle");
+        let error = member_clock(&c, &key).unwrap_err();
+        assert!(
+            error.contains(&key)
+                && error.contains("does not fit in u64 ticks")
+                && !error.contains("retained"),
+            "{error}"
+        );
+    }
 }

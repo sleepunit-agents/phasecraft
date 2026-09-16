@@ -284,7 +284,12 @@ suspended and refused opportunities. `voices.ID.trigger.cycle` (also `parts.ID`)
 for a retained reader is the source's material length in sixteenth slots. Both
 start at transport zero. The latter is a reading phase, not a promise that hits
 repeat. Part references to retained readers still have no structural repetition
-period; only the direct retained reader exposes this return-group clock.
+period, including through boolean expressions; only the direct retained reader
+exposes this return-group clock. Return-member errors distinguish this absent
+structural period from a fixed period that overflows the tick grid. Swap conserves
+slot count, so the initial material length stays valid throughout playback.
+Future companion loading must check an authored voice `cycle` against this derived
+length, rather than trust or silently replace the written value.
 
 `examples/studies/retained-returns.toml` joins the real 16-slot reader, 5-slot
 mutation clock and 7-slot drift clock: the checked LCM is 560 slots (35 bars).
