@@ -92,6 +92,21 @@ pub const MAX_PINS: usize = 256;
 const VOICE_DICE: [&str; 7] = [
     "fire", "accent", "burst", "flam", "ghost", "timing", "velocity",
 ];
+/// A pin as its author wrote it, in the `key = value` form of its `at` table, so an error that
+/// quotes it reads as the TOML it came from. Both owners are printed when both were authored:
+/// that is the shape the "exactly one owner" error is about, and dropping one would hide it.
+fn pin_shape(at: &PinAt) -> String {
+    let mut fields = vec![format!("roll = {:?}", at.roll)];
+    if let Some(v) = &at.voice {
+        fields.push(format!("voice = {v:?}"));
+    }
+    if let Some(a) = &at.accent {
+        fields.push(format!("accent = {a:?}"));
+    }
+    fields.push(format!("bar = {}", at.bar));
+    fields.push(format!("slot = {}", at.slot));
+    format!("pin {{ {} }}", fields.join(", "))
+}
 /// Turn every authored pin into the address its draw hashes. Errors name the pin by its shape.
 pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
     // The authored length, before this allocates for it and before the quadratic duplicate check
@@ -103,17 +118,7 @@ pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
     let mut resolved: Vec<Pin> = Vec::with_capacity(pins.len());
     for pin in pins {
         let at = &pin.at;
-        let shape = || {
-            let owner = match (&at.voice, &at.accent) {
-                (Some(v), _) => format!("voice {v:?}"),
-                (None, Some(a)) => format!("accent {a:?}"),
-                (None, None) => "no owner".into(),
-            };
-            format!(
-                "pin {{ roll = {:?}, {owner}, bar = {}, slot = {} }}",
-                at.roll, at.bar, at.slot
-            )
-        };
+        let shape = || pin_shape(at);
         if !pin.u.is_finite() || !(0.0..1.0).contains(&pin.u) {
             return Err(format!(
                 "{}: u must be finite and within 0 <= u < 1",
@@ -278,11 +283,9 @@ pub fn resolve_pins(c: &Composition, pins: &[Pin]) -> Result<Vec<Pin>, String> {
         };
         if let Some(twin) = resolved.iter().find(|p| p.address == address) {
             return Err(format!(
-                "{} names the same dice as pin {{ roll = {:?}, bar = {}, slot = {} }}; one pin per draw",
+                "{} names the same dice as {}; one pin per draw",
                 shape(),
-                twin.at.roll,
-                twin.at.bar,
-                twin.at.slot
+                pin_shape(&twin.at)
             ));
         }
         resolved.push(Pin {
