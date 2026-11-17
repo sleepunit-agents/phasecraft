@@ -438,6 +438,30 @@ fn pins_that_name_no_draw_are_rejected_by_shape() {
     assert!(pinned(&part, "[[pins]]\nat={roll='fire',voice='hat',bar=1,slot=3}\nu=0.5\n[[pins]]\nat={roll='fire',voice='hat',bar=5,slot=3}\nu=0.6").is_ok());
 }
 
+// The collision error is the only place an author learns that two bars are one draw under a
+// phrase lock, so it has to say whose draw it is. With two Parts on the same dice name, a twin
+// printed without its owner could be either Part's pin (t-509). Both shapes name their owner, and
+// in the authored `key = value` form, so the line reads as the TOML it imitates.
+#[test]
+fn a_pin_collision_names_the_owner_of_both_pins() {
+    let err = Composition::parse(&format!(
+        "tempo=132\nseed=91827\nphrase_bars=2\n\
+         [parts.kick]\nuse='techno.kick'\n{HAT}\n\
+         [parts.hat]\nuse='techno.closed_hat'\n{HAT}\n\
+         [[pins]]\nat={{roll='fire',voice='hat',bar=1,slot=1}}\nu=0.5\n\
+         [[pins]]\nat={{roll='fire',voice='hat',bar=3,slot=1}}\nu=0.6"
+    ))
+    .unwrap_err();
+    assert!(
+        err.contains(
+            "pin { roll = \"fire\", voice = \"hat\", bar = 3, slot = 1 } names the same dice as \
+             pin { roll = \"fire\", voice = \"hat\", bar = 1, slot = 1 }"
+        ),
+        "{err}"
+    );
+    assert!(!err.contains("kick"), "{err}");
+}
+
 // A grid whose cell does not divide the bar: `1/8.` is 720 ticks, so bar 1 holds six onsets
 // (0..3600) and bar 2 holds five, the first of them at tick 4320 — not on the bar line.
 const DOTTED: &str = "subdivision='1/8.'\ntrigger.rhythm={steps=1,pulses=1}\ntrigger.probability=1.0\ntrigger.probability_mode='continuous'\naccent.probability=0.0";
